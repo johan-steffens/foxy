@@ -192,7 +192,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "foxy"
+name = "foxy-io"
 version = "0.1.0"
 dependencies = [
  "async-trait",

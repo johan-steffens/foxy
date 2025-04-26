@@ -1,5 +1,5 @@
 [package]
-name = "foxy"
+name = "foxy-io"
 version = "0.1.0"
 edition = "2024"
 authors = ["Johan Steffens <johan@steff.co.za>"]
