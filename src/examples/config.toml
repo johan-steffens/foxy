@@ -1,0 +1,28 @@
+# examples/config.toml
+# Sample configuration file for Foxy
+
+[server]
+host = "127.0.0.1"
+port = 8080
+
+# Timeout in seconds
+timeout = 30
+
+[proxy]
+target = "https://example.com"
+connect_timeout = 10
+request_timeout = 30
+
+[security]
+# Security features are disabled by default and must be explicitly enabled
+enabled = false
+# CORS settings
+[security.cors]
+enabled = false
+allowed_origins = ["https://allowed-origin.com"]
+allowed_methods = ["GET", "POST"]
+
+# Logging configuration
+[logging]
+level = "info"
+format = "json"
