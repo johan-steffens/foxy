@@ -1,229 +1,84 @@
 # Foxy
 
+[![CI](https://img.shields.io/github/actions/workflow/status/johan-steffens/foxy/publish.yml?branch=main&style=flat-square)](https://github.com/johan-steffens/foxy/actions/workflows/publish.yml)
+[![Crates.io Version](https://img.shields.io/crates/v/foxy-io?style=flat-square)](https://crates.io/crates/foxy-io)
+[![Docs.rs](https://img.shields.io/docsrs/foxy-io?style=flat-square)](https://docs.rs/foxy-io)
+[![Crates.io Downloads](https://img.shields.io/crates/d/foxy-io?style=flat-square)](https://crates.io/crates/foxy-io)
+[![Crates.io License](https://img.shields.io/crates/l/foxy-io?style=flat-square)](https://github.com/johan-steffens/foxy/blob/main/LICENSE.md)
+[![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue?style=flat-square)](https://blog.rust-lang.org/2023/06/01/Rust-1.70.0.html)
+[![Deps.rs](https://deps.rs/crate/foxy-io/latest/status.svg?style=flat-square)](https://deps.rs/crate/foxy-io/latest)
+
 A minimal, configuration-driven, hyper-extendible Rust HTTP proxy library.
 
 ## Features
 
-🔒 **Security-First Design**
-- Zero trust by default with opt-in security features
-- Configurable request/response validation
-- Header sanitization and injection protection
+- 🔒 **Security-First Design**: Zero trust by default, configurable validation, header sanitization
+- 🧩 **Highly Extensible**: Trait-based middleware, flexible routing, customizable components
+- ⚙️ **Configuration Superpowers**: Layered configuration from multiple sources
+- 🚀 **Modern Async Architecture**: Built on Tokio and Hyper for high performance
+- 📦 **Lightweight Dependencies**: Minimal external dependencies for core functionality
+- 🔧 **Developer Experience**: Clear error messages, comprehensive logging, type-safe configuration
 
-🧩 **Highly Extensible**
-- Trait-based plugin architecture for custom middleware
-- Flexible routing with path, method, and header matching
-- Easy to extend with your own components
+## Quickstart
 
-⚙️ **Configuration Superpowers**
 ```rust
-// Load layered configuration from multiple sources
+use foxy::Foxy;
+
+// Create a new Foxy instance with layered configuration
 let foxy = Foxy::loader()
-    .with_env_vars()                // Environment variables (highest priority)
-    .with_config_file("config.toml") // File-based config (medium priority)
+    .with_env_vars()                  // Environment variables (highest priority)
+    .with_config_file("config.toml")  // File-based config (medium priority)
     .with_config_file("defaults.toml") // Defaults (lowest priority)
-    .build()?;
-```
+    .build().await?;
 
-🚀 **Modern Async Architecture**
-- Built on Tokio for high-performance async I/O
-- Hyper-powered HTTP implementation
-- Non-blocking request processing
-
-📦 **Lightweight Dependencies**
-- **tokio**: Async runtime with excellent performance characteristics
-- **hyper**: Battle-tested HTTP implementation
-- **serde**: Flexible serialization/deserialization
-- Minimal external dependencies for core functionality
-
-🔧 **Developer Experience**
-- Clear error messages with context
-- Comprehensive logging
-- Type-safe configuration access
-```rust
-// Type-safe configuration with fallbacks
+// Type-safe configuration access
 let timeout: u64 = config.get_or_default("proxy.timeout", 30)?;
 let host: String = config.get("server.host")?.unwrap_or_else(|| "localhost".to_string());
+
+// Start the proxy server and wait for it to complete
+foxy.start().await?;
 ```
 
 ## Core Principles
-
-- **Security**: Implements secure core routing. No features (header injection, validation) enabled by default. Security enhancements are strictly opt-in via configuration/extensions.
-- **Extensibility**: Design around traits (e.g., Middleware, Router) for user extensions. Maintains a minimal core; facilitates composable additions.
-- **Configuration**: Drives all non-default behavior via configuration.
-  - **Minimal Default**: "Zero-config" or base config results only in basic request forwarding.
-  - **Explicit Enhancement**: All features require explicit activation via layered configuration (defaults overridden by files/env/code).
+- **Security**: Secure core routing with opt-in security features via configuration/extensions
+- **Extensibility**: Trait-based design for easy extension with minimal core
+- **Configuration-Driven**: All non-default behavior controlled via flexible configuration
 
 ## Configuration System
+Foxy uses a flexible configuration system supporting multiple prioritized sources:
+- **Multiple Providers**: File-based (JSON, TOML, YAML) and environment variables
+- **Layered Configuration**: Multiple sources with priority order
+- **Type-Safe Access**: Convert configuration values to expected types with defaults
 
-Foxy's configuration system is designed to be extensible and flexible, supporting multiple configuration sources with a prioritized hierarchy.
-
-### Key Features
-
-- **Multiple Providers**: Support for file-based (JSON, TOML, YAML) and environment variables
-- **Layered Configuration**: Configure using multiple sources with priority order
-- **Extensible**: Easily create custom configuration providers
-- **Type-Safe**: Convert configuration values to the expected types
-- **Default Values**: Specify fallbacks for missing configuration
-- **Trait-Based Design**: Object-safe traits for dynamic dispatch
-
-### Usage Examples
-
-#### Load Configuration from a File
-
-```rust
-use foxy::config::Config;
-
-// Load from a file with auto-detected format (based on extension)
+### Examples
+``` rust
+// Load from a file with auto-detected format
 let config = Config::default_file("config.toml")?;
 
-// Get typed values with defaults
-let host: String = config.get("server.host")?.unwrap_or_else(|| "localhost".to_string());
-let port: u16 = config.get_or_default("server.port", 8080)?;
-```
-
-#### Build a Custom Configuration
-
-```rust
-use foxy::config::{Config, FileConfigProvider, EnvConfigProvider};
-
-// Create a layered configuration with multiple providers
+// Build a custom layered configuration
 let config = Config::builder()
-// Environment variables (highest priority)
-.with_provider(EnvConfigProvider::default())
-// File configuration (fallback)
-.with_provider(FileConfigProvider::new("config.toml")?)
-.build();
+    .with_provider(EnvConfigProvider::default())
+    .with_provider(FileConfigProvider::new("config.toml")?)
+    .build();
 ```
-
-### Architecture
-
-The configuration system uses a split-trait approach to support both dynamic dispatch and generic type parameters:
-
-- `ConfigProvider`: An object-safe trait that all configuration providers must implement, supporting dynamic dispatch
-- `ConfigProviderExt`: An extension trait that provides typed access to configuration values
-
-This design allows for a flexible system where providers can be used as trait objects while still maintaining type safety.
-
-## Loader Module
-
-The Foxy loader is the main entry point for initializing and configuring the library. It provides a fluent builder API for setting up Foxy with the desired configuration.
-
-### Key Features
-
-- **Simple Initialization**: Start Foxy with default settings or custom configuration
-- **Fluent API**: Chain method calls for a clean and readable setup
-- **Flexible Configuration**: Use files, environment variables, or custom providers
-- **Extensible**: Add custom configuration providers
-
-### Usage Examples
-
-#### Initialize with Defaults
-
-```rust
-use foxy::Foxy;
-
-// Create a new Foxy instance with default settings
-let foxy = Foxy::loader().build()?;
-```
-
-#### Initialize with a Configuration File
-
-```rust
-use foxy::Foxy;
-
-// Create a new Foxy instance with configuration from a file
-let foxy = Foxy::loader()
-.with_config_file("config.toml")
-.build()?;
-```
-
-#### Initialize with Environment Variables
-
-```rust
-use foxy::Foxy;
-
-// Create a new Foxy instance that reads from environment variables
-let foxy = Foxy::loader()
-.with_env_vars()           // Use default prefix "FOXY_"
-.build()?;
-
-// Or with a custom prefix
-let foxy = Foxy::loader()
-.with_env_prefix("MY_APP_")
-.build()?;
-```
-
-#### Initialize with a Custom Provider
-
-```rust
-use foxy::{Foxy, ConfigProvider, ConfigError};
-use serde_json::{Value, json};
-
-// Define a custom configuration provider
-#[derive(Debug)]
-struct MyProvider;
-
-impl ConfigProvider for MyProvider {
-  fn get_raw(&self, key: &str) -> Result<Option<Value>, ConfigError> {
-    match key {
-      "my.setting" => Ok(Some(json!("my value"))),
-      _ => Ok(None),
-    }
-  }
-
-  fn has(&self, key: &str) -> bool {
-    key == "my.setting"
-  }
-
-  fn provider_name(&self) -> &str {
-    "my_provider"
-  }
-}
-
-// Create a new Foxy instance with the custom provider
-let foxy = Foxy::loader()
-.with_provider(MyProvider)
-.build()?;
-```
-
-#### Combined Configuration with Priority
-
-```rust
-use foxy::Foxy;
-
-// Create a new Foxy instance with multiple configuration sources
-// Sources are checked in the order they are added (first has highest priority)
-let foxy = Foxy::loader()
-.with_env_vars()                     // Highest priority
-.with_config_file("config.toml")     // Medium priority
-.with_config_file("defaults.toml")   // Lowest priority
-.build()?;
-```
-
-### Environment Variables
-
-Environment variable names are mapped to configuration keys using the following rules:
-
+## Environment Variables
+Environment variables are mapped to configuration keys:
 - Variables must start with the prefix (`FOXY_` by default)
-- The prefix is stripped and the remainder is converted to lowercase
+- Prefix is stripped and remainder converted to lowercase
 - Underscores (`_`) are converted to dots (`.`) for nested access
 
 Examples:
 - `FOXY_SERVER_HOST` → `server.host`
 - `FOXY_LOGGING_LEVEL` → `logging.level`
-- `FOXY_DEBUG` → `debug`
 
-### File Configuration
+## File Configuration
+Supported formats:
+- JSON (`.json`)
+- TOML (`.toml`)
+- YAML (`.yaml` or `.yml`, requires the feature) `yaml`
 
-Supported file formats:
-- JSON (`.json` extension)
-- TOML (`.toml` extension)
-- YAML (`.yaml` or `.yml` extension, requires the `yaml` feature)
-
-Configuration files use a nested structure that can be accessed using dot notation:
-
-```toml
-# Example config.toml
+Example `config.toml`:
+``` toml
 [server]
 host = "127.0.0.1"
 port = 8080
@@ -231,11 +86,7 @@ port = 8080
 [proxy]
 target = "https://example.com"
 ```
-
-This can be accessed as `server.host`, `server.port`, and `proxy.target`.
-
 ## Development Status
-
 - [x] Configuration System
 - [x] Loader Module
 - [x] Core HTTP Proxy
@@ -244,5 +95,5 @@ This can be accessed as `server.host`, `server.port`, and `proxy.target`.
 - [ ] Security Features
 
 ## License
-
 This project is licensed under [Mozilla Public License Version 2.0](LICENSE.md)
+
