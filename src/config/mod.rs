@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Configuration module for Foxy.
 //!
 //! This module provides extensible configuration capabilities with
@@ -64,7 +68,7 @@
 
 mod file;
 mod env;
-mod error;
+pub mod error;
 
 pub use error::ConfigError;
 pub use file::FileConfigProvider;

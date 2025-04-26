@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Foxy - A minimal, configuration-driven, hyper-extendible Rust HTTP proxy library
 //!
 //! Foxy is designed as a drop-in component with configurable behavior. By default,
@@ -15,9 +19,9 @@
 //!
 //! Foxy's configuration system is built for flexibility and extensibility:
 //!
-//! - **Multiple Configuration Sources**: Load configuration from files (JSON, TOML, YAML)
+//! - **Multiple Configuration Sources**: Load configuration from files (JSON, TOML, YAML) 
 //!   and environment variables.
-//! - **Layered Configuration**: Create a hierarchy of configuration providers with
+//! - **Layered Configuration**: Create a hierarchy of configuration providers with 
 //!   well-defined priorities.
 //! - **Type Safety**: Parse configuration values into the appropriate Rust types.
 //! - **Extensibility**: Implement the `ConfigProvider` trait to create custom configuration sources.
@@ -29,7 +33,8 @@
 //! ```rust,no_run
 //! use foxy::Foxy;
 //!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Initialize with default settings
 //!     let foxy = Foxy::loader().build()?;
 //!
@@ -39,61 +44,98 @@
 //!         .with_env_vars()
 //!         .build()?;
 //!
-//!     // Access configuration values
-//!     let host: String = foxy.config().get("server.host")?.unwrap_or_else(|| "localhost".to_string());
-//!     let port: u16 = foxy.config().get_or_default("server.port", 8080)?;
-//!
-//!     println!("Server configured at {}:{}", host, port);
+//!     // Start the proxy server
+//!     foxy.start().await?;
 //!
 //!     Ok(())
 //! }
 //! ```
 //!
-//! # Custom Configuration Providers
+//! # Routing and Filtering
 //!
-//! You can implement the `ConfigProvider` trait to create custom configuration sources:
+//! Foxy uses a configuration-driven approach for routing and filtering:
+//!
+//! ```json
+//! {
+//!   "routes": [
+//!     {
+//!       "id": "api",
+//!       "target": "http://api-backend.com",
+//!       "path": "/api/*",
+//!       "filters": ["logging", "header"],
+//!       "priority": 10
+//!     }
+//!   ],
+//!   "filters": {
+//!     "logging": {
+//!       "type": "logging",
+//!       "config": {
+//!         "log_request_headers": true,
+//!         "log_request_body": false,
+//!         "log_level": "debug"
+//!       }
+//!     },
+//!     "header": {
+//!       "type": "header",
+//!       "config": {
+//!         "add_request_headers": {
+//!           "X-Proxy-Version": "Foxy/0.1.0"
+//!         }
+//!       }
+//!     }
+//!   }
+//! }
+//! ```
+//!
+//! # Custom Filters
+//!
+//! You can implement custom filters by implementing the `Filter` trait:
 //!
 //! ```rust,no_run
-//! use foxy::{Foxy, config::{ConfigProvider, ConfigError}};
-//! use serde_json::{Value, json};
+//! use async_trait::async_trait;
+//! use foxy::{Filter, FilterType, ProxyRequest, ProxyResponse, ProxyError};
 //!
 //! #[derive(Debug)]
-//! struct MyConfigProvider;
+//! struct MyCustomFilter;
 //!
-//! impl ConfigProvider for MyConfigProvider {
-//!     fn get_raw(&self, key: &str) -> Result<Option<Value>, ConfigError> {
-//!         // Custom implementation...
-//!         Ok(Some(json!("value")))
+//! #[async_trait]
+//! impl Filter for MyCustomFilter {
+//!     fn filter_type(&self) -> FilterType {
+//!         FilterType::Both
 //!     }
 //!
-//!     fn has(&self, key: &str) -> bool {
-//!         // Check if the key exists...
-//!         true
+//!     fn name(&self) -> &str {
+//!         "my_custom_filter"
 //!     }
 //!
-//!     fn provider_name(&self) -> &str {
-//!         "my_provider"
+//!     async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+//!         // Modify the request
+//!         Ok(request)
 //!     }
-//! }
 //!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let foxy = Foxy::loader()
-//!         .with_provider(MyConfigProvider)
-//!         .build()?;
-//!
-//!     Ok(())
+//!     async fn post_filter(&self, request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
+//!         // Modify the response
+//!         Ok(response)
+//!     }
 //! }
 //! ```
 
+// Module declarations
 pub mod config;
 pub mod loader;
+pub mod core;
+pub mod router;
+pub mod filters;
+pub mod server;
 
 // Re-export key types at the crate root for convenience
 pub use config::{ConfigProvider, ConfigProviderExt, ConfigError};
 pub use loader::{Foxy, FoxyLoader, LoaderError};
-
-// Future modules will be added here as they are implemented:
-// pub mod core;
-// pub mod middleware;
-// pub mod router;
-// pub mod security;
+pub use core::{
+    Filter, FilterType, Router, Route,
+    ProxyRequest, ProxyResponse, ProxyError,
+    RequestContext, ResponseContext, HttpMethod
+};
+pub use router::PathRouter;
+pub use filters::{LoggingFilter, HeaderFilter, TimeoutFilter, FilterFactory};
+pub use server::{ProxyServer, ServerConfig};

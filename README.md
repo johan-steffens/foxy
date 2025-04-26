@@ -2,6 +2,49 @@
 
 A minimal, configuration-driven, hyper-extendible Rust HTTP proxy library.
 
+## Features
+
+🔒 **Security-First Design**
+- Zero trust by default with opt-in security features
+- Configurable request/response validation
+- Header sanitization and injection protection
+
+🧩 **Highly Extensible**
+- Trait-based plugin architecture for custom middleware
+- Flexible routing with path, method, and header matching
+- Easy to extend with your own components
+
+⚙️ **Configuration Superpowers**
+```rust
+// Load layered configuration from multiple sources
+let foxy = Foxy::loader()
+    .with_env_vars()                // Environment variables (highest priority)
+    .with_config_file("config.toml") // File-based config (medium priority)
+    .with_config_file("defaults.toml") // Defaults (lowest priority)
+    .build()?;
+```
+
+🚀 **Modern Async Architecture**
+- Built on Tokio for high-performance async I/O
+- Hyper-powered HTTP implementation
+- Non-blocking request processing
+
+📦 **Lightweight Dependencies**
+- **tokio**: Async runtime with excellent performance characteristics
+- **hyper**: Battle-tested HTTP implementation
+- **serde**: Flexible serialization/deserialization
+- Minimal external dependencies for core functionality
+
+🔧 **Developer Experience**
+- Clear error messages with context
+- Comprehensive logging
+- Type-safe configuration access
+```rust
+// Type-safe configuration with fallbacks
+let timeout: u64 = config.get_or_default("proxy.timeout", 30)?;
+let host: String = config.get("server.host")?.unwrap_or_else(|| "localhost".to_string());
+```
+
 ## Core Principles
 
 - **Security**: Implements secure core routing. No features (header injection, validation) enabled by default. Security enhancements are strictly opt-in via configuration/extensions.
