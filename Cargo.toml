@@ -45,11 +45,3 @@ yaml = ["dep:serde_yaml"]
 [lib]
 name = "foxy"
 path = "src/lib.rs"
-
-[[example]]
-name = "basic_config"
-path = "src/examples/basic_config.rs"
-
-[[example]]
-name = "loader_example"
-path = "src/examples/loader_example.rs"

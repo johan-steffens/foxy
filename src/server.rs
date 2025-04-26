@@ -52,7 +52,7 @@ impl Default for ServerConfig {
 }
 
 /// HTTP server for the proxy.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProxyServer {
     /// Server configuration
     config: ServerConfig,

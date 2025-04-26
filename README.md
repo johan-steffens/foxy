@@ -238,7 +238,7 @@ This can be accessed as `server.host`, `server.port`, and `proxy.target`.
 
 - [x] Configuration System
 - [x] Loader Module
-- [ ] Core HTTP Proxy
+- [x] Core HTTP Proxy
 - [ ] Middleware Support
 - [ ] Router Implementation
 - [ ] Security Features

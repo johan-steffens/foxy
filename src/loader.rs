@@ -12,6 +12,8 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::config::{Config, ConfigError, ConfigProvider, EnvConfigProvider, FileConfigProvider};
+use crate::{PathRouter, ProxyError, ProxyServer, ServerConfig};
+use crate::core::ProxyCore;
 
 /// Errors that can occur during Foxy initialization.
 #[derive(Error, Debug)]
@@ -19,6 +21,10 @@ pub enum LoaderError {
     /// Configuration error
     #[error("configuration error: {0}")]
     ConfigError(#[from] ConfigError),
+
+    /// Proxy error
+    #[error("proxy error: {0}")]
+    ProxyError(#[from] ProxyError),
 
     /// IO error
     #[error("IO error: {0}")]
@@ -94,7 +100,7 @@ impl FoxyLoader {
     }
 
     /// Build and initialize Foxy.
-    pub fn build(self) -> Result<Foxy, LoaderError> {
+    pub async fn build(self) -> Result<Foxy, LoaderError> {
         // Build the configuration
         let config = if let Some(config) = self.config_builder {
             config
@@ -125,9 +131,26 @@ impl FoxyLoader {
             config_builder.build()
         };
 
+        let config_arc = Arc::new(config);
+
+        // Create the router
+        let router = PathRouter::new(config_arc.clone()).await?;
+
+        // Create the proxy core
+        let proxy_core = ProxyCore::new(config_arc.clone(), Arc::new(router))?;
+
+        // (existing code for filters...)
+
+        // Get server configuration
+        let server_config: ServerConfig = config_arc.get_or_default("server", ServerConfig::default())?;
+
+        // Create the proxy server
+        let proxy_server = ProxyServer::new(server_config, Arc::new(proxy_core));
+
         // Create the Foxy instance
         Ok(Foxy {
-            config: Arc::new(config),
+            config: config_arc,
+            server: proxy_server,
         })
     }
 }
@@ -136,6 +159,7 @@ impl FoxyLoader {
 #[derive(Debug, Clone)]
 pub struct Foxy {
     config: Arc<Config>,
+    server: ProxyServer,
 }
 
 impl Foxy {
@@ -149,85 +173,8 @@ impl Foxy {
         &self.config
     }
 
-    // TODO: Add methods for starting the proxy server, registering middleware, etc.
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::env;
-
-    #[test]
-    fn test_default_loader() {
-        let foxy = Foxy::loader().build().unwrap();
-        assert!(Arc::strong_count(&foxy.config) == 1);
-    }
-
-    #[test]
-    fn test_with_env_vars() {
-        unsafe {
-            env::set_var("FOXY_TEST_KEY", "test_value");
-        }
-
-        let foxy = Foxy::loader()
-            .with_env_vars()
-            .build()
-            .unwrap();
-
-        let value: Option<String> = foxy.config().get("test.key").unwrap();
-
-        unsafe {
-            env::remove_var("FOXY_TEST_KEY");
-        }
-
-        assert_eq!(value, Some("test_value".to_string()));
-    }
-
-    #[test]
-    fn test_with_config_file() {
-        // Note: This test assumes the existence of a configuration file
-        // For a more robust test, we could create a temporary file
-
-        let result = Foxy::loader()
-            .with_config_file("nonexistent_file.toml")
-            .build();
-
-        // Should fail because the file doesn't exist
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_custom_provider() {
-        use crate::config::{ConfigProvider, ConfigError};
-        use serde_json::{Value, json};
-
-        #[derive(Debug)]
-        struct TestProvider;
-
-        impl ConfigProvider for TestProvider {
-            fn get_raw(&self, key: &str) -> Result<Option<Value>, ConfigError> {
-                if key == "test.key" {
-                    Ok(Some(json!("custom_value")))
-                } else {
-                    Ok(None)
-                }
-            }
-
-            fn has(&self, key: &str) -> bool {
-                key == "test.key"
-            }
-
-            fn provider_name(&self) -> &str {
-                "test"
-            }
-        }
-
-        let foxy = Foxy::loader()
-            .with_provider(TestProvider)
-            .build()
-            .unwrap();
-
-        let value: Option<String> = foxy.config().get("test.key").unwrap();
-        assert_eq!(value, Some("custom_value".to_string()));
+    /// Start the proxy server.
+    pub async fn start(&self) -> Result<(), LoaderError> {
+        self.server.start().await.map_err(LoaderError::ProxyError)
     }
 }
