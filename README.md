@@ -1,8 +1,7 @@
-# Foxy
+# Foxy 🦊
 
 [![CI](https://img.shields.io/github/actions/workflow/status/johan-steffens/foxy/publish.yml)](https://github.com/johan-steffens/foxy/actions/workflows/publish.yml)
-[![Crates.io Version](https://img.shields.io/crates/v/foxy-io?style=flat-square)](https://crates.io/crates/foxy-io)
-[![Docs.rs](https://img.shields.io/docsrs/foxy-io?style=flat-square)](https://docs.rs/foxy-io)
+[![Crates.io Version](https://img.shields.io/crates/v/foxy-io)](https://crates.io/crates/foxy-io)
 [![Crates.io Downloads](https://img.shields.io/crates/d/foxy-io?style=flat-square)](https://crates.io/crates/foxy-io)
 [![Crates.io License](https://img.shields.io/github/license/johan-steffens/foxy)](https://github.com/johan-steffens/foxy/blob/main/LICENSE.md)
 [![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue?style=flat-square)](https://blog.rust-lang.org/2023/06/01/Rust-1.70.0.html)
