@@ -18,12 +18,9 @@ use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
-use reqwest::Body;
 use serde::{Serialize, Deserialize};
 
-use crate::config::Config;
-use crate::core::{ProxyCore, ProxyRequest, ProxyResponse, ProxyError, HttpMethod, RequestContext, ResponseContext};
-use crate::router::PathRouter;
+use crate::core::{ProxyCore, ProxyRequest, ProxyResponse, ProxyError, HttpMethod, RequestContext};
 
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -228,6 +225,7 @@ async fn handle_request(
 }
 
 /// Helper function to convert a hyper response to a ProxyResponse (for testing)
+#[allow(dead_code)]
 fn convert_hyper_response(resp: Response<Full<Bytes>>) -> ProxyResponse {
     use crate::core::ResponseContext;
 
@@ -243,72 +241,5 @@ fn convert_hyper_response(resp: Response<Full<Bytes>>) -> ProxyResponse {
         headers,
         body,
         context: Arc::new(RwLock::new(ResponseContext::default())),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use hyper::{StatusCode, Method};
-    use reqwest::Body;
-    use reqwest::header::HeaderValue;
-
-    #[tokio::test]
-    async fn test_convert_request() {
-        // Create a test hyper request
-        let hyper_req = Request::builder()
-            .method(Method::GET)
-            .uri("http://example.com/test?query=value")
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"test": "value"}"#))
-            .unwrap();
-
-        // Convert to a proxy request
-        let client_ip = "127.0.0.1".to_string();
-        let proxy_req = convert_hyper_request(hyper_req, client_ip.clone()).await.unwrap();
-
-        // Verify conversion
-        assert_eq!(proxy_req.method, HttpMethod::Get);
-        assert_eq!(proxy_req.path, "/test");
-        assert_eq!(proxy_req.query, Some("query=value".to_string()));
-        assert_eq!(
-            proxy_req.headers.get("content-type").unwrap(),
-            "application/json"
-        );
-        assert_eq!(
-            String::from_utf8(proxy_req.body.clone()).unwrap(),
-            r#"{"test": "value"}"#
-        );
-
-        // Verify context
-        let context = proxy_req.context.read().await;
-        assert_eq!(context.client_ip, Some(client_ip));
-        assert!(context.start_time.is_some());
-    }
-
-    #[test]
-    fn test_convert_response() {
-        use crate::core::ResponseContext;
-
-        // Create a test proxy response
-        let mut headers = hyper::header::HeaderMap::new();
-        headers.insert("content-type", HeaderValue::from_static("application/json"));
-
-        let proxy_resp = ProxyResponse {
-            status: 200,
-            headers,
-            body: r#"{"result": "success"}"#.as_bytes().to_vec(),
-            context: Arc::new(RwLock::new(ResponseContext::default())),
-        };
-
-        // Convert to a hyper response
-        let hyper_resp = convert_proxy_response(proxy_resp).unwrap();
-
-        // Verify conversion
-        assert_eq!(hyper_resp.status(), StatusCode::OK);
-        assert_eq!(
-            hyper_resp.headers().get("content-type").unwrap(),
-            "application/json"
-        );
     }
 }

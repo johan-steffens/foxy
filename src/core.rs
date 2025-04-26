@@ -336,7 +336,7 @@ pub trait Filter: fmt::Debug + Send + Sync {
     }
 
     /// Process a response after it is received from the target.
-    async fn post_filter(&self, request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
+    async fn post_filter(&self, _request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
         // Default implementation: pass through the response unchanged
         Ok(response)
     }

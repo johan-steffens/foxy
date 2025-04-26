@@ -83,7 +83,7 @@ impl FoxyLoader {
     /// Add a custom configuration provider.
     pub fn with_provider<P: ConfigProvider + 'static>(self, provider: P) -> Self {
         let config_builder = match self.config_builder {
-            Some(config) => Config::builder().with_provider(provider),
+            Some(_) => Config::builder().with_provider(provider),
             None => Config::builder().with_provider(provider),
         };
 

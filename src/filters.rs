@@ -7,7 +7,6 @@
 //! This module provides various filters that can modify or log HTTP requests
 //! and responses as they flow through the proxy.
 
-use std::fmt;
 use std::sync::Arc;
 use std::time::Instant;
 use async_trait::async_trait;
@@ -15,8 +14,7 @@ use log::{trace, debug, info, warn, error, Level};
 use serde::{Serialize, Deserialize};
 
 use crate::core::{
-    Filter, FilterType, ProxyRequest, ProxyResponse, ProxyError,
-    RequestContext, ResponseContext
+    Filter, FilterType, ProxyRequest, ProxyResponse, ProxyError
 };
 
 /// Configuration for a logging filter.
@@ -349,7 +347,7 @@ impl Filter for TimeoutFilter {
         "timeout"
     }
 
-    async fn pre_filter(&self, mut request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+    async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
         // Store the timeout in the request context
         match request.context.write().await {
             mut context => {
@@ -396,6 +394,7 @@ impl FilterFactory {
 mod tests {
     use super::*;
     use crate::core::HttpMethod;
+    use crate::RequestContext;
 
     #[tokio::test]
     async fn test_logging_filter() {

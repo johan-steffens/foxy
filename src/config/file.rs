@@ -42,7 +42,9 @@ impl FileFormat {
 /// File-based configuration provider.
 #[derive(Debug)]
 pub struct FileConfigProvider {
+    #[allow(dead_code)]
     path: PathBuf,
+    #[allow(dead_code)]
     format: FileFormat,
     data: HashMap<String, serde_json::Value>,
 }
