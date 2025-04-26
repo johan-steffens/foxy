@@ -202,9 +202,4 @@ This can be accessed as `server.host`, `server.port`, and `proxy.target`.
 
 ## License
 
-This project is licensed under either:
-
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-
-at your option.
+This project is licensed under [Mozilla Public License Version 2.0](LICENSE.md)
