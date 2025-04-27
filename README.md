@@ -21,9 +21,13 @@ A minimal, configuration-driven, hyper-extendible Rust HTTP proxy library.
 
 ### Run the basic proxy example
 
-`crate run --example basic-proxy`
+```bash
+git clone https://github.com/johan-steffens/foxy.git
+cd foxy
+crate run --example basic-proxy
+```
 
-### Run your own implementation
+### Run it in your code
 
 Add Foxy as a dependency to your `Cargo.toml` file
 ```toml
