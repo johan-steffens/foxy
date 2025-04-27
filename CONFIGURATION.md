@@ -9,8 +9,6 @@ Foxy supports multiple configuration formats:
 - TOML (.toml)
 - YAML (.yaml, .yml) - requires the `yaml` feature to be enabled
 
-If these don't suffice, you can implement a custom configuration provider to suit your needs.
-
 ## Configuration Structure
 
 The main configuration structure consists of the following sections:
@@ -46,13 +44,17 @@ The `proxy` section defines general proxy behavior:
 
 ```json
 "proxy": {
-  "timeout": 30
+  "timeout": 30,                         // Request timeout in seconds
+  "global_filters": ["logging", "cors"], // Filters applied to all routes
+  "log_level": "debug"                   // Application log level
 }
 ```
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `timeout` | Integer | `30` | Request timeout in seconds |
+| `global_filters` | String[] | `[]` | List of filter IDs to apply to all routes |
+| `log_level` | String | `"info"` | Application log level (error, warn, info, debug, trace) |
 
 ## Routes Configuration
 
@@ -62,8 +64,8 @@ The `routes` section is an array of route definitions that determine how request
 "routes": [
   {
     "id": "api",                      // Unique identifier
-    "target": "http://api-service.com", // Target URL
-    "filters": ["logging"],           // Filters to apply
+    "target": "http://api-service.example.com", // Target URL
+    "filters": ["logging"],           // Filters to apply to this route
     "priority": 100,                  // Matching priority
     "predicates": [                   // Request match conditions
       {
@@ -84,6 +86,17 @@ The `routes` section is an array of route definitions that determine how request
 | `filters` | String[] | `[]` | List of filter IDs to apply to this route |
 | `priority` | Integer | `0` | Priority for route matching (higher values have higher priority) |
 | `predicates` | Predicate[] | Required | Array of predicates that must all match for this route |
+
+### Route Target URL Behavior
+
+The `target` URL is used as specified, with no path manipulation by default. For example:
+
+- If `target` is `https://api.example.com/v1` and the request path is `/users`:
+    - Request is forwarded to `https://api.example.com/v1`
+- If `target` is `https://api.example.com` and the request path is `/users/123`:
+    - Request is forwarded to `https://api.example.com/users/123`
+
+For more control over path handling, use the `path_rewrite` filter.
 
 ### Route Matching Process
 
@@ -202,9 +215,18 @@ Filters modify requests and responses as they flow through the proxy. The `filte
 ```
 
 Each filter has:
-- An ID (used in route `filters` array)
+- An ID (used in route `filters` array and `proxy.global_filters`)
 - A type
 - Configuration specific to that filter type
+
+### Filter Application Order
+
+Filters are applied in the following order:
+1. Global pre-filters (before forwarding the request)
+2. Route-specific pre-filters (before forwarding the request)
+3. Request is forwarded to the target
+4. Route-specific post-filters (after receiving the response)
+5. Global post-filters (after receiving the response)
 
 ### Logging Filter
 
@@ -278,9 +300,32 @@ Sets a custom timeout for requests:
 |----------|------|---------|-------------|
 | `timeout_ms` | Integer | `30000` | Request timeout in milliseconds |
 
+### Path Rewrite Filter
+
+Rewrites request paths based on regex patterns:
+
+```json
+{
+  "type": "path_rewrite",
+  "config": {
+    "pattern": "^/api/v1/(.*)",
+    "replacement": "/api/v2/$1",
+    "rewrite_request": true,
+    "rewrite_response": false
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `pattern` | String | Required | Regex pattern to match in the path |
+| `replacement` | String | Required | Replacement pattern (can use capture groups) |
+| `rewrite_request` | Boolean | `true` | Whether to apply on the request path |
+| `rewrite_response` | Boolean | `false` | Whether to apply on the response path |
+
 ## Complete Configuration Example
 
-Here's a complete configuration example that demonstrates most features:
+Here's a complete configuration example:
 
 ```json
 {
@@ -289,19 +334,21 @@ Here's a complete configuration example that demonstrates most features:
     "port": 8080
   },
   "proxy": {
-    "timeout": 30
+    "timeout": 30,
+    "global_filters": ["access_log"],
+    "log_level": "debug"
   },
   "routes": [
     {
       "id": "api-get",
-      "target": "http://api-service.com",
-      "filters": ["logging"],
+      "target": "https://api.example.com/v1",
+      "filters": [],
       "priority": 100,
       "predicates": [
         {
           "type_": "path",
           "config": {
-            "pattern": "/api/*"
+            "pattern": "/"
           }
         },
         {
@@ -314,131 +361,78 @@ Here's a complete configuration example that demonstrates most features:
     },
     {
       "id": "api-post",
-      "target": "http://api-write-service.com",
-      "filters": ["logging", "header"],
+      "target": "https://api.example.com/v1",
+      "filters": [],
       "priority": 90,
+      "predicates": [
+        {
+          "type_": "path",
+          "config": {
+            "pattern": "/"
+          }
+        },
+        {
+          "type_": "method",
+          "config": {
+            "methods": ["POST"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "api-rewrite",
+      "target": "https://api.example.com",
+      "filters": ["api_rewrite"],
+      "priority": 80,
       "predicates": [
         {
           "type_": "path",
           "config": {
             "pattern": "/api/*"
           }
-        },
-        {
-          "type_": "method",
-          "config": {
-            "methods": ["POST", "PUT", "DELETE"]
-          }
         }
       ]
     },
     {
-      "id": "admin",
-      "target": "http://admin-service.com",
-      "filters": ["logging"],
-      "priority": 80,
-      "predicates": [
-        {
-          "type_": "path",
-          "config": {
-            "pattern": "/admin/*"
-          }
-        },
-        {
-          "type_": "header",
-          "config": {
-            "headers": {
-              "Authorization": "Bearer "
-            },
-            "exact_match": false
-          }
-        }
-      ]
-    },
-    {
-      "id": "static",
-      "target": "http://static-service.com",
+      "id": "resource-capture",
+      "target": "https://resources.example.com",
       "filters": [],
-      "priority": 70,
+      "priority": 50,
       "predicates": [
         {
           "type_": "path",
           "config": {
-            "pattern": "/static/*"
-          }
-        }
-      ]
-    },
-    {
-      "id": "search",
-      "target": "http://search-service.com",
-      "filters": ["logging"],
-      "priority": 60,
-      "predicates": [
-        {
-          "type_": "path",
-          "config": {
-            "pattern": "/search"
-          }
-        },
-        {
-          "type_": "query",
-          "config": {
-            "params": {
-              "q": ""
-            },
-            "exact_match": false
-          }
-        }
-      ]
-    },
-    {
-      "id": "default",
-      "target": "http://default-service.com",
-      "filters": [],
-      "priority": 0,
-      "predicates": [
-        {
-          "type_": "path",
-          "config": {
-            "pattern": "/*"
+            "pattern": "/resources/*"
           }
         }
       ]
     }
   ],
   "filters": {
-    "logging": {
+    "access_log": {
       "type": "logging",
       "config": {
         "log_request_headers": true,
-        "log_request_body": false,
-        "log_response_headers": true,
-        "log_response_body": false,
-        "log_level": "debug",
-        "max_body_size": 1024
+        "log_level": "info"
       }
     },
-    "header": {
-      "type": "header",
+    "api_rewrite": {
+      "type": "path_rewrite",
       "config": {
-        "add_request_headers": {
-          "X-Proxy-Version": "Foxy/0.1.0"
-        },
-        "add_response_headers": {
-          "X-Powered-By": "Foxy"
-        }
-      }
-    },
-    "timeout": {
-      "type": "timeout",
-      "config": {
-        "timeout_ms": 5000
+        "pattern": "^/api/(.*)",
+        "replacement": "/v2/$1"
       }
     }
   }
 }
 ```
+
+In this example:
+1. Global access logging is enabled for all routes
+2. The `/` path with GET requests is forwarded to `https://api.example.com/v1`
+3. The `/` path with POST requests is forwarded to `https://api.example.com/v1`
+4. Paths starting with `/api/` are rewritten and forwarded to `https://api.example.com/v2/...`
+5. Paths starting with `/resources/` are forwarded to `https://resources.example.com/resources/...` preserving the full path
 
 ## Environment Variable Configuration
 
@@ -451,5 +445,6 @@ Foxy also supports configuration via environment variables. The environment vari
 Examples:
 - `FOXY_SERVER_HOST=0.0.0.0` → `server.host`
 - `FOXY_PROXY_TIMEOUT=60` → `proxy.timeout`
+- `FOXY_PROXY_LOG_LEVEL=debug` → `proxy.log_level`
 
 Complex structures like routes and filters are better configured via files, but simple values can be overridden via environment variables.

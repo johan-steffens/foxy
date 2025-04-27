@@ -8,13 +8,15 @@
 //! the Foxy proxy library. It allows users to start Foxy with default settings
 //! or customize it by providing their own configuration.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use log::LevelFilter;
+use serde_json::Value;
 use thiserror::Error;
 
 use crate::config::{Config, ConfigError, ConfigProvider, EnvConfigProvider, FileConfigProvider};
-use crate::router::PredicateRouter;
-use crate::{ProxyError, ProxyServer, ServerConfig};
+use crate::router::{PredicateRouter, RouteConfig};
+use crate::{Filter, FilterFactory, ProxyError, ProxyServer, ServerConfig};
 use crate::core::ProxyCore;
 
 /// Errors that can occur during Foxy initialization.
@@ -44,6 +46,7 @@ pub struct FoxyLoader {
     config_file_path: Option<String>,
     use_env_vars: bool,
     env_prefix: Option<String>,
+    custom_filters: Vec<Arc<dyn Filter>>,
 }
 
 impl Default for FoxyLoader {
@@ -53,6 +56,7 @@ impl Default for FoxyLoader {
             config_file_path: None,
             use_env_vars: false,
             env_prefix: None,
+            custom_filters: Vec::new(),
         }
     }
 }
@@ -101,14 +105,20 @@ impl FoxyLoader {
         }
     }
 
+    /// Add a custom filter.
+    pub fn with_filter<F: Filter + 'static>(mut self, filter: F) -> Self {
+        self.custom_filters.push(Arc::new(filter));
+        self
+    }
+
     /// Build and initialize Foxy.
     pub async fn build(self) -> Result<Foxy, LoaderError> {
         env_logger::Builder::new()
             .filter_level(LevelFilter::Trace)  // Set this to Debug or Trace for more detailed logs
             .init();
-        
+
         log::info!("Foxy starting up");
-        
+
         // Build the configuration
         let config = if let Some(config) = self.config_builder {
             config
@@ -147,15 +157,63 @@ impl FoxyLoader {
         // Create the proxy core
         let proxy_core = ProxyCore::new(config_arc.clone(), Arc::new(router))?;
 
-        // (existing code for filters...)
+        // Load global filters from configuration
+        let global_filters_config: Option<Vec<String>> = config_arc.get("proxy.global_filters")?;
+
+        // Load all filter definitions
+        let filters_config: Option<HashMap<String, Value>> = config_arc.get("filters")?;
+
+        if let Some(filters_config) = filters_config {
+            // Process global filters first
+            if let Some(global_filter_ids) = global_filters_config {
+                for filter_id in global_filter_ids {
+                    if let Some(filter_def) = filters_config.get(&filter_id) {
+                        let filter_type = filter_def.get("type").and_then(|v| v.as_str())
+                            .ok_or_else(|| LoaderError::Other(format!("Missing filter type for '{}'", filter_id)))?;
+
+                        let filter_config = filter_def.get("config").cloned().unwrap_or(Value::Object(serde_json::Map::new()));
+
+                        let filter = FilterFactory::create_filter(filter_type, filter_config)?;
+                        proxy_core.add_global_filter(filter).await;
+
+                        log::info!("Added global filter: {}", filter_id);
+                    }
+                }
+            }
+
+            // Get all routes and their filter configurations
+            let routes_config: Option<Vec<RouteConfig>> = config_arc.get("routes")?;
+
+            if let Some(routes_config) = routes_config {
+                for route_config in routes_config {
+                    // For each route, add its filters
+                    for filter_id in &route_config.filters {
+                        if let Some(filter_def) = filters_config.get(filter_id) {
+                            let filter_type = filter_def.get("type").and_then(|v| v.as_str())
+                                .ok_or_else(|| LoaderError::Other(format!("Missing filter type for '{}'", filter_id)))?;
+
+                            let filter_config = filter_def.get("config").cloned().unwrap_or(Value::Object(serde_json::Map::new()));
+
+                            let filter = FilterFactory::create_filter(filter_type, filter_config)?;
+                            proxy_core.add_route_filter(&route_config.id, filter).await;
+
+                            log::info!("Added route filter: {} to route: {}", filter_id, route_config.id);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add custom filters
+        for filter in self.custom_filters {
+            proxy_core.add_global_filter(filter).await;
+        }
 
         // Get server configuration
         let server_config: ServerConfig = config_arc.get_or_default("server", ServerConfig::default())?;
 
         // Create the proxy server
         let proxy_server = ProxyServer::new(server_config, Arc::new(proxy_core));
-
-        log::info!("Foxy started up");
 
         // Create the Foxy instance
         Ok(Foxy {

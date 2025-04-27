@@ -7,6 +7,7 @@
 //! This module provides the fundamental HTTP proxy functionality.
 //! It handles the routing and forwarding of HTTP requests and responses.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use std::fmt;
@@ -179,8 +180,10 @@ pub struct ProxyCore {
     pub client: reqwest::Client,
     /// Router for matching requests to routes
     pub router: Arc<dyn Router>,
-    /// Filters that process requests and responses
-    pub filters: Arc<RwLock<Vec<Arc<dyn Filter>>>>,
+    /// Global filters that apply to all routes
+    pub global_filters: Arc<RwLock<Vec<Arc<dyn Filter>>>>,
+    /// Route-specific filters
+    pub route_filters: Arc<RwLock<HashMap<String, Vec<Arc<dyn Filter>>>>>,
 }
 
 impl ProxyCore {
@@ -198,20 +201,27 @@ impl ProxyCore {
             config,
             client,
             router,
-            filters: Arc::new(RwLock::new(Vec::new())),
+            global_filters: Arc::new(RwLock::new(Vec::new())),
+            route_filters: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
     /// Register a filter with the proxy.
-    pub async fn add_filter<F: Filter + 'static>(&self, filter: F) {
-        let mut filters = self.filters.write().await;
-        filters.push(Arc::new(filter));
+    pub async fn add_global_filter(&self, filter: Arc<dyn Filter>) {
+        let mut filters = self.global_filters.write().await;
+        filters.push(filter);
+    }
+
+    pub async fn add_route_filter(&self, route_id: &str, filter: Arc<dyn Filter>) {
+        let mut filters = self.route_filters.write().await;
+        let route_filters = filters.entry(route_id.to_string()).or_insert_with(Vec::new);
+        route_filters.push(filter);
     }
 
     /// Process a request through the proxy.
     pub async fn process_request(&self, mut request: ProxyRequest) -> Result<ProxyResponse, ProxyError> {
-        // 1. Apply pre-filters
-        for filter in self.filters.read().await.iter() {
+        // 1. Apply global pre-filters
+        for filter in self.global_filters.read().await.iter() {
             if filter.filter_type().is_pre() || filter.filter_type().is_both() {
                 request = filter.pre_filter(request).await?;
             }
@@ -220,10 +230,48 @@ impl ProxyCore {
         // 2. Route the request
         let route = self.router.route(&request).await?;
 
-        // 3. Forward the request to the target
+        // 3. Apply route-specific pre-filters
+        if let Some(route_filters) = self.route_filters.read().await.get(&route.id) {
+            for filter in route_filters.iter() {
+                if filter.filter_type().is_pre() || filter.filter_type().is_both() {
+                    request = filter.pre_filter(request).await?;
+                }
+            }
+        }
+
+        // 4. Forward the request to the target
+        // Use the target_base_url directly without path manipulation
+        let target_url = url::Url::parse(&route.target_base_url)
+            .map_err(|e| ProxyError::RoutingError(format!("Invalid target URL: {}", e)))?;
+
+        // Determine the path to forward
+        let forwarded_path = if target_url.path() == "/" {
+            // If the target URL has no path, use the full request path
+            request.path.clone()
+        } else {
+            // For targets with a specific path (like https://httpbin.org/anything),
+            // we need to decide what to do with the request path
+
+            // Option 1: Use just the target path (original implementation)
+            // target_url.path().to_string()
+
+            // Option 2: Append the request path to the target path
+            // However, this might not be what we want if the target path already
+            // includes the endpoint (like /anything)
+
+            // Option 3 (recommended): Use path predicate matching to determine which paths to forward
+            // If the request path matches a specific pattern, we use the request path directly
+            request.path.clone()
+        };
+
+        // Construct a new URL with the target scheme+host and the forwarded path
+        let mut new_url = target_url.clone();
+        new_url.set_path(&forwarded_path);
+
+        // Use the constructed URL for the request
         let mut builder = self.client.request(
             request.method.into(),
-            format!("{}{}", route.target_base_url, request.path)
+            new_url.as_str()
         );
 
         // Add query parameters if present
@@ -231,15 +279,14 @@ impl ProxyCore {
             builder = builder.query(&[(query, "")]);
         }
 
-        // Add headers - clone the headers before moving them
-        let headers_clone = request.headers.clone();
-        builder = builder.headers(headers_clone);
+        let request_clone = request.clone();
+
+        // Add headers
+        builder = builder.headers(request_clone.headers);
 
         // Add body if not empty
         if !request.body.is_empty() {
-            // Clone the body before moving it
-            let body_clone = request.body.clone();
-            builder = builder.body(body_clone);
+            builder = builder.body(request_clone.body);
         }
 
         // Get the timeout from configuration or use the default
@@ -253,7 +300,7 @@ impl ProxyCore {
             Err(_) => return Err(ProxyError::Timeout(timeout_duration)),
         };
 
-        // 4. Convert the response
+        // 5. Convert the response
         let status = resp.status().as_u16();
         let headers = resp.headers().clone();
         let body = resp.bytes().await.map_err(ProxyError::ClientError)?.to_vec();
@@ -266,25 +313,23 @@ impl ProxyCore {
         };
 
         // Set the receive time in the response context
-        match response.context.write().await {
-            mut context => {
-                context.receive_time = Some(std::time::Instant::now());
+        let mut context = response.context.write().await;
+        context.receive_time = Some(std::time::Instant::now());
+        drop(context); // Explicitly release the write lock
+
+        // 6. Apply route-specific post-filters
+        if let Some(route_filters) = self.route_filters.read().await.get(&route.id) {
+            for filter in route_filters.iter() {
+                if filter.filter_type().is_post() || filter.filter_type().is_both() {
+                    response = filter.post_filter(request.clone(), response).await?;
+                }
             }
         }
 
-        // 5. Apply post-filters
-        let request_clone = ProxyRequest {
-            method: request.method,
-            path: request.path,
-            query: request.query,
-            headers: request.headers.clone(),
-            body: request.body.clone(),
-            context: request.context.clone(),
-        };
-        
-        for filter in self.filters.read().await.iter() {
+        // 7. Apply global post-filters
+        for filter in self.global_filters.read().await.iter() {
             if filter.filter_type().is_post() || filter.filter_type().is_both() {
-                response = filter.post_filter(request_clone.clone(), response).await?;
+                response = filter.post_filter(request.clone(), response).await?;
             }
         }
 

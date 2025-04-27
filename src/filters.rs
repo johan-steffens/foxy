@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use async_trait::async_trait;
 use log::{trace, debug, info, warn, error, Level};
+use regex::Regex;
 use serde::{Serialize, Deserialize};
 
 use crate::core::{
@@ -362,6 +363,84 @@ impl Filter for TimeoutFilter {
     }
 }
 
+/// Configuration for a path rewrite filter.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathRewriteFilterConfig {
+    /// The pattern to match (regex)
+    pub pattern: String,
+    /// The replacement pattern
+    pub replacement: String,
+    /// Whether to apply on the request path
+    #[serde(default = "default_true")]
+    pub rewrite_request: bool,
+    /// Whether to apply on the response path (if found in headers or body)
+    #[serde(default = "default_false")]
+    pub rewrite_response: bool,
+}
+
+/// A filter that rewrites request and response paths based on regex patterns.
+#[derive(Debug)]
+pub struct PathRewriteFilter {
+    /// The configuration for this filter
+    config: PathRewriteFilterConfig,
+    /// Compiled regex for path matching
+    regex: Regex,
+}
+
+impl PathRewriteFilter {
+    /// Create a new path rewrite filter with the given configuration.
+    pub fn new(config: PathRewriteFilterConfig) -> Self {
+        // Compile the regex
+        let regex = Regex::new(&config.pattern)
+            .expect("Failed to compile path rewrite pattern");
+
+        Self { config, regex }
+    }
+
+    /// Create a new path rewrite filter with default configuration.
+    pub fn default() -> Self {
+        Self::new(PathRewriteFilterConfig {
+            pattern: "(.*)".to_string(),
+            replacement: "$1".to_string(),
+            rewrite_request: true,
+            rewrite_response: false,
+        })
+    }
+}
+
+#[async_trait]
+impl Filter for PathRewriteFilter {
+    fn filter_type(&self) -> FilterType {
+        FilterType::Both
+    }
+
+    fn name(&self) -> &str {
+        "path_rewrite"
+    }
+
+    async fn pre_filter(&self, mut request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+        if self.config.rewrite_request {
+            // Apply path rewriting on the request path
+            let rewritten_path = self.regex.replace_all(&request.path, &self.config.replacement).to_string();
+
+            if rewritten_path != request.path {
+                debug!("Rewriting path from {} to {}", request.path, rewritten_path);
+                request.path = rewritten_path;
+            }
+        }
+
+        Ok(request)
+    }
+
+    async fn post_filter(&self, _request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
+        // For now, we don't implement response path rewriting 
+        // as it would require parsing and modifying the response body
+        // which is complex and content-type dependent
+
+        Ok(response)
+    }
+}
+
 /// Factory for creating filters based on configuration.
 #[derive(Debug)]
 pub struct FilterFactory;
@@ -384,6 +463,11 @@ impl FilterFactory {
                 let config: TimeoutFilterConfig = serde_json::from_value(config)
                     .map_err(|e| ProxyError::FilterError(format!("Invalid timeout filter config: {}", e)))?;
                 Ok(Arc::new(TimeoutFilter::new(config)))
+            },
+            "path_rewrite" => {
+                let config: PathRewriteFilterConfig = serde_json::from_value(config)
+                    .map_err(|e| ProxyError::FilterError(format!("Invalid path rewrite filter config: {}", e)))?;
+                Ok(Arc::new(PathRewriteFilter::new(config)))
             },
             _ => Err(ProxyError::FilterError(format!("Unknown filter type: {}", filter_type))),
         }

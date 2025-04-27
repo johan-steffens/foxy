@@ -140,5 +140,8 @@ pub use router::{
     PredicateRouter, Predicate, PredicateFactory,
     PathPredicate, MethodPredicate, HeaderPredicate, QueryPredicate
 };
-pub use filters::{LoggingFilter, HeaderFilter, TimeoutFilter, FilterFactory};
+pub use filters::{
+    LoggingFilter, HeaderFilter, TimeoutFilter, FilterFactory,
+    PathRewriteFilter, PathRewriteFilterConfig
+};
 pub use server::{ProxyServer, ServerConfig};
