@@ -1,0 +1,139 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8080
+  },
+  "proxy": {
+    "timeout": 30,
+    "global_filters": ["debug_log"]
+  },
+  "routes": [
+    {
+      "id": "httpbin-get",
+      "target": "https://httpbin.org/get",
+      "filters": [],
+      "priority": 100,
+      "predicates": [
+        {
+          "type_": "path",
+          "config": {
+            "pattern": "/"
+          }
+        },
+        {
+          "type_": "method",
+          "config": {
+            "methods": ["GET"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "httpbin-post",
+      "target": "https://httpbin.org/post",
+      "filters": [],
+      "priority": 90,
+      "predicates": [
+        {
+          "type_": "path",
+          "config": {
+            "pattern": "/"
+          }
+        },
+        {
+          "type_": "method",
+          "config": {
+            "methods": ["POST"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "httpbin-put",
+      "target": "https://httpbin.org/put",
+      "filters": [],
+      "priority": 80,
+      "predicates": [
+        {
+          "type_": "path",
+          "config": {
+            "pattern": "/"
+          }
+        },
+        {
+          "type_": "method",
+          "config": {
+            "methods": ["PUT"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "httpbin-patch",
+      "target": "https://httpbin.org/patch",
+      "filters": [],
+      "priority": 70,
+      "predicates": [
+        {
+          "type_": "path",
+          "config": {
+            "pattern": "/"
+          }
+        },
+        {
+          "type_": "method",
+          "config": {
+            "methods": ["PATCH"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "httpbin-delete",
+      "target": "https://httpbin.org/delete",
+      "filters": [],
+      "priority": 60,
+      "predicates": [
+        {
+          "type_": "path",
+          "config": {
+            "pattern": "/"
+          }
+        },
+        {
+          "type_": "method",
+          "config": {
+            "methods": ["DELETE"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "httpbin-anything",
+      "target": "https://httpbin.org/anything",
+      "filters": [],
+      "priority": 50,
+      "predicates": [
+        {
+          "type_": "path",
+          "config": {
+            "pattern": "/anything/**"
+          }
+        }
+      ]
+    }
+  ],
+  "filters": {
+    "debug_log": {
+      "type": "logging",
+      "config": {
+        "log_request_headers": true,
+        "log_request_body": true,
+        "log_response_headers": true,
+        "log_response_body": true,
+        "log_level": "debug",
+        "max_body_size": 1024
+      }
+    }
+  }
+}

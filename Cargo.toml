@@ -47,3 +47,7 @@ yaml = ["dep:serde_yaml"]
 [lib]
 name = "foxy"
 path = "src/lib.rs"
+
+[[example]]
+name = "basic-proxy"
+path = "examples/basic-proxy/main.rs"

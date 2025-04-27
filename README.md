@@ -19,9 +19,16 @@ A minimal, configuration-driven, hyper-extendible Rust HTTP proxy library.
 
 ## Quickstart
 
+### Run the basic proxy example
+
+`crate run --example basic-proxy`
+
+### Run your own implementation
+
 Add Foxy as a dependency to your `Cargo.toml` file
 ```toml
-foxy-io = { version = "0.0.2" }
+[dependencies]
+foxy-io = "..."
 ```
 
 Build an instance and start the server.
@@ -35,10 +42,6 @@ let foxy = Foxy::loader()
     .with_config_file("config.toml")  // File-based config (medium priority)
     .with_config_file("defaults.toml") // Defaults (lowest priority)
     .build().await?;
-
-// Type-safe configuration access
-let timeout: u64 = config.get_or_default("proxy.timeout", 30)?;
-let host: String = config.get("server.host")?.unwrap_or_else(|| "localhost".to_string());
 
 // Start the proxy server and wait for it to complete
 foxy.start().await?;
