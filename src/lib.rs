@@ -136,6 +136,9 @@ pub use core::{
     ProxyRequest, ProxyResponse, ProxyError,
     RequestContext, ResponseContext, HttpMethod
 };
-pub use router::PathRouter;
+pub use router::{
+    PredicateRouter, Predicate, PredicateFactory,
+    PathPredicate, MethodPredicate, HeaderPredicate, QueryPredicate
+};
 pub use filters::{LoggingFilter, HeaderFilter, TimeoutFilter, FilterFactory};
 pub use server::{ProxyServer, ServerConfig};

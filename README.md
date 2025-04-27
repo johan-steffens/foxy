@@ -19,6 +19,13 @@ A minimal, configuration-driven, hyper-extendible Rust HTTP proxy library.
 
 ## Quickstart
 
+Add Foxy as a dependency to your `Cargo.toml` file
+```toml
+foxy-io = { version = "0.0.2" }
+```
+
+Build an instance and start the server.
+
 ```rust
 use foxy::Foxy;
 
@@ -47,6 +54,9 @@ Foxy uses a flexible configuration system supporting multiple prioritized source
 - **Multiple Providers**: File-based (JSON, TOML, YAML) and environment variables
 - **Layered Configuration**: Multiple sources with priority order
 - **Type-Safe Access**: Convert configuration values to expected types with defaults
+
+### Configuration Guide
+For a full guide on configuring Foxy, see the [Configuration Guide](./CONFIGURATION.md).
 
 ### Examples
 ``` rust
@@ -88,8 +98,8 @@ target = "https://example.com"
 - [x] Configuration System
 - [x] Loader Module
 - [x] Core HTTP Proxy
+- [x] Router Implementation
 - [ ] Middleware Support
-- [ ] Router Implementation
 - [ ] Security Features
 
 ## License

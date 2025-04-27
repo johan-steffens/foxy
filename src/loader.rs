@@ -9,10 +9,12 @@
 //! or customize it by providing their own configuration.
 
 use std::sync::Arc;
+use log::LevelFilter;
 use thiserror::Error;
 
 use crate::config::{Config, ConfigError, ConfigProvider, EnvConfigProvider, FileConfigProvider};
-use crate::{PathRouter, ProxyError, ProxyServer, ServerConfig};
+use crate::router::PredicateRouter;
+use crate::{ProxyError, ProxyServer, ServerConfig};
 use crate::core::ProxyCore;
 
 /// Errors that can occur during Foxy initialization.
@@ -101,6 +103,12 @@ impl FoxyLoader {
 
     /// Build and initialize Foxy.
     pub async fn build(self) -> Result<Foxy, LoaderError> {
+        env_logger::Builder::new()
+            .filter_level(LevelFilter::Trace)  // Set this to Debug or Trace for more detailed logs
+            .init();
+        
+        log::info!("Foxy starting up");
+        
         // Build the configuration
         let config = if let Some(config) = self.config_builder {
             config
@@ -134,7 +142,7 @@ impl FoxyLoader {
         let config_arc = Arc::new(config);
 
         // Create the router
-        let router = PathRouter::new(config_arc.clone()).await?;
+        let router = PredicateRouter::new(config_arc.clone()).await?;
 
         // Create the proxy core
         let proxy_core = ProxyCore::new(config_arc.clone(), Arc::new(router))?;
@@ -146,6 +154,8 @@ impl FoxyLoader {
 
         // Create the proxy server
         let proxy_server = ProxyServer::new(server_config, Arc::new(proxy_core));
+
+        log::info!("Foxy started up");
 
         // Create the Foxy instance
         Ok(Foxy {
