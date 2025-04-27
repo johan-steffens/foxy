@@ -15,7 +15,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::config::{Config, ConfigError, ConfigProvider, EnvConfigProvider, FileConfigProvider};
-use crate::router::{PredicateRouter, RouteConfig};
+use crate::router::{FilterConfig, PredicateRouter, RouteConfig};
 use crate::{Filter, FilterFactory, ProxyError, ProxyServer, ServerConfig};
 use crate::core::ProxyCore;
 
@@ -158,49 +158,17 @@ impl FoxyLoader {
         let proxy_core = ProxyCore::new(config_arc.clone(), Arc::new(router))?;
 
         // Load global filters from configuration
-        let global_filters_config: Option<Vec<String>> = config_arc.get("proxy.global_filters")?;
+        let global_filters_config: Option<Vec<FilterConfig>> = config_arc.get("proxy.global_filters")?;
 
-        // Load all filter definitions
-        let filters_config: Option<HashMap<String, Value>> = config_arc.get("filters")?;
+        if let Some(global_filters) = global_filters_config {
+            for filter_config in global_filters {
+                let filter = FilterFactory::create_filter(
+                    &filter_config.type_,
+                    filter_config.config.clone(),
+                )?;
+                proxy_core.add_global_filter(filter).await;
 
-        if let Some(filters_config) = filters_config {
-            // Process global filters first
-            if let Some(global_filter_ids) = global_filters_config {
-                for filter_id in global_filter_ids {
-                    if let Some(filter_def) = filters_config.get(&filter_id) {
-                        let filter_type = filter_def.get("type").and_then(|v| v.as_str())
-                            .ok_or_else(|| LoaderError::Other(format!("Missing filter type for '{}'", filter_id)))?;
-
-                        let filter_config = filter_def.get("config").cloned().unwrap_or(Value::Object(serde_json::Map::new()));
-
-                        let filter = FilterFactory::create_filter(filter_type, filter_config)?;
-                        proxy_core.add_global_filter(filter).await;
-
-                        log::info!("Added global filter: {}", filter_id);
-                    }
-                }
-            }
-
-            // Get all routes and their filter configurations
-            let routes_config: Option<Vec<RouteConfig>> = config_arc.get("routes")?;
-
-            if let Some(routes_config) = routes_config {
-                for route_config in routes_config {
-                    // For each route, add its filters
-                    for filter_id in &route_config.filters {
-                        if let Some(filter_def) = filters_config.get(filter_id) {
-                            let filter_type = filter_def.get("type").and_then(|v| v.as_str())
-                                .ok_or_else(|| LoaderError::Other(format!("Missing filter type for '{}'", filter_id)))?;
-
-                            let filter_config = filter_def.get("config").cloned().unwrap_or(Value::Object(serde_json::Map::new()));
-
-                            let filter = FilterFactory::create_filter(filter_type, filter_config)?;
-                            proxy_core.add_route_filter(&route_config.id, filter).await;
-
-                            log::info!("Added route filter: {} to route: {}", filter_id, route_config.id);
-                        }
-                    }
-                }
+                log::info!("Added global filter: {}", filter_config.type_);
             }
         }
 

@@ -10,12 +10,13 @@ A minimal, configuration-driven, hyper-extendible Rust HTTP proxy library.
 
 ## Features
 
-- 🔒 **Security-First Design**: Zero trust by default, configurable validation, header sanitization
-- 🧩 **Highly Extensible**: Trait-based middleware, flexible routing, customizable components
-- ⚙️ **Configuration Superpowers**: Layered configuration from multiple sources
+- 🛣️ **Powerful Routing**: Predicate-based routing with path patterns, HTTP methods, headers, and query matching
+- 🔄 **Flexible Filters**: Pre and post-processing filters for request/response modification
+- ⚙️ **Configuration Superpowers**: Layered configuration from files and environment variables
+- 🌐 **Fine-grained Control**: Route-specific filter chains for precise request handling
 - 🚀 **Modern Async Architecture**: Built on Tokio and Hyper for high performance
 - 📦 **Lightweight Dependencies**: Minimal external dependencies for core functionality
-- 🔧 **Developer Experience**: Clear error messages, comprehensive logging, type-safe configuration
+- 🧩 **Highly Extensible**: Custom predicates and filters through trait-based design
 
 ## Quickstart
 
@@ -52,63 +53,69 @@ foxy.start().await?;
 ```
 
 ## Core Principles
-- **Security**: Secure core routing with opt-in security features via configuration/extensions
-- **Extensibility**: Trait-based design for easy extension with minimal core
-- **Configuration-Driven**: All non-default behavior controlled via flexible configuration
 
-## Configuration System
-Foxy uses a flexible configuration system supporting multiple prioritized sources:
-- **Multiple Providers**: File-based (JSON, TOML, YAML) and environment variables
-- **Layered Configuration**: Multiple sources with priority order
-- **Type-Safe Access**: Convert configuration values to expected types with defaults
+- **Predictable Routing**: Predicate-based matching with clear priorities determines how requests are routed
+- **Configurable Processing**: Route-specific and global filters for request/response modification
+- **Extensibility**: Trait-based design enables custom predicates and filters
+- **Configuration-Driven**: All behavior controlled via flexible configuration with sensible defaults
 
-### Configuration Guide
-For a full guide on configuring Foxy, see the [Configuration Guide](./CONFIGURATION.md).
+## Configuration
 
-### Examples
-``` rust
-// Load from a file with auto-detected format
-let config = Config::default_file("config.toml")?;
+Foxy's power comes from its rich configuration system. Here's a brief overview:
 
-// Build a custom layered configuration
-let config = Config::builder()
-    .with_provider(EnvConfigProvider::default())
-    .with_provider(FileConfigProvider::new("config.toml")?)
-    .build();
+```json
+{
+  "routes": [
+    {
+      "id": "api-route",
+      "target": "https://api.example.com",
+      "filters": [
+        {
+          "type": "path_rewrite",
+          "config": {
+            "pattern": "^/api/(.*)$",
+            "replacement": "/v2/$1"
+          }
+        }
+      ],
+      "predicates": [
+        {
+          "type_": "path",
+          "config": {
+            "pattern": "/api/*"
+          }
+        }
+      ]
+    }
+  ]
+}
 ```
-## Environment Variables
-Environment variables are mapped to configuration keys:
-- Variables must start with the prefix (`FOXY_` by default)
-- Prefix is stripped and remainder converted to lowercase
-- Underscores (`_`) are converted to dots (`.`) for nested access
 
-Examples:
-- `FOXY_SERVER_HOST` → `server.host`
-- `FOXY_LOGGING_LEVEL` → `logging.level`
+For detailed information on all configuration options, see the [Configuration Guide](./CONFIGURATION.md).
 
-## File Configuration
-Supported formats:
-- JSON (`.json`)
-- TOML (`.toml`)
-- YAML (`.yaml` or `.yml`, requires the feature) `yaml`
+### Configuration Sources
 
-Example `config.toml`:
-``` toml
-[server]
-host = "127.0.0.1"
-port = 8080
+Foxy supports multiple configuration sources with priority order:
 
-[proxy]
-target = "https://example.com"
+```rust
+// Build a layered configuration
+let foxy = Foxy::loader()
+    .with_env_vars()                   // First priority
+    .with_config_file("config.json")   // Second priority
+    .build().await?;
 ```
+
+Example: `FOXY_SERVER_PORT=8080` → `server.port`
+
 ## Development Status
+
 - [x] Configuration System
 - [x] Loader Module
 - [x] Core HTTP Proxy
-- [x] Router Implementation
-- [ ] Middleware Support
-- [ ] Security Features
+- [x] Predicate-based Routing
+- [x] Request/Response Filters
+- [ ] Additional Security Features
 
 ## License
-This project is licensed under [Mozilla Public License Version 2.0](LICENSE.md)
 
+This project is licensed under [Mozilla Public License Version 2.0](LICENSE.md)

@@ -182,8 +182,6 @@ pub struct ProxyCore {
     pub router: Arc<dyn Router>,
     /// Global filters that apply to all routes
     pub global_filters: Arc<RwLock<Vec<Arc<dyn Filter>>>>,
-    /// Route-specific filters
-    pub route_filters: Arc<RwLock<HashMap<String, Vec<Arc<dyn Filter>>>>>,
 }
 
 impl ProxyCore {
@@ -202,20 +200,13 @@ impl ProxyCore {
             client,
             router,
             global_filters: Arc::new(RwLock::new(Vec::new())),
-            route_filters: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
-    /// Register a filter with the proxy.
+    /// Add a global filter.
     pub async fn add_global_filter(&self, filter: Arc<dyn Filter>) {
         let mut filters = self.global_filters.write().await;
         filters.push(filter);
-    }
-
-    pub async fn add_route_filter(&self, route_id: &str, filter: Arc<dyn Filter>) {
-        let mut filters = self.route_filters.write().await;
-        let route_filters = filters.entry(route_id.to_string()).or_insert_with(Vec::new);
-        route_filters.push(filter);
     }
 
     /// Process a request through the proxy.
@@ -230,48 +221,26 @@ impl ProxyCore {
         // 2. Route the request
         let route = self.router.route(&request).await?;
 
-        // 3. Apply route-specific pre-filters
-        if let Some(route_filters) = self.route_filters.read().await.get(&route.id) {
-            for filter in route_filters.iter() {
-                if filter.filter_type().is_pre() || filter.filter_type().is_both() {
-                    request = filter.pre_filter(request).await?;
-                }
+        // 3. Get the route filters
+        let route_filters = match route.filters {
+            Some(ref filters) => filters.clone(),
+            None => Vec::new(),
+        };
+
+        // 4. Apply route-specific pre-filters
+        for filter in &route_filters {
+            if filter.filter_type().is_pre() || filter.filter_type().is_both() {
+                request = filter.pre_filter(request).await?;
             }
         }
 
-        // 4. Forward the request to the target
-        // Use the target_base_url directly without path manipulation
-        let target_url = url::Url::parse(&route.target_base_url)
-            .map_err(|e| ProxyError::RoutingError(format!("Invalid target URL: {}", e)))?;
+        // 5. Construct the full URL including any path modifications from filters
+        let final_url = format!("{}{}", route.target_base_url, request.path);
 
-        // Determine the path to forward
-        let forwarded_path = if target_url.path() == "/" {
-            // If the target URL has no path, use the full request path
-            request.path.clone()
-        } else {
-            // For targets with a specific path (like https://httpbin.org/anything),
-            // we need to decide what to do with the request path
-
-            // Option 1: Use just the target path (original implementation)
-            // target_url.path().to_string()
-
-            // Option 2: Append the request path to the target path
-            // However, this might not be what we want if the target path already
-            // includes the endpoint (like /anything)
-
-            // Option 3 (recommended): Use path predicate matching to determine which paths to forward
-            // If the request path matches a specific pattern, we use the request path directly
-            request.path.clone()
-        };
-
-        // Construct a new URL with the target scheme+host and the forwarded path
-        let mut new_url = target_url.clone();
-        new_url.set_path(&forwarded_path);
-
-        // Use the constructed URL for the request
+        // 6. Forward the request to the target
         let mut builder = self.client.request(
             request.method.into(),
-            new_url.as_str()
+            &final_url
         );
 
         // Add query parameters if present
@@ -279,14 +248,12 @@ impl ProxyCore {
             builder = builder.query(&[(query, "")]);
         }
 
-        let request_clone = request.clone();
-
         // Add headers
-        builder = builder.headers(request_clone.headers);
+        builder = builder.headers(request.headers.clone());
 
         // Add body if not empty
         if !request.body.is_empty() {
-            builder = builder.body(request_clone.body);
+            builder = builder.body(request.body.clone());
         }
 
         // Get the timeout from configuration or use the default
@@ -300,7 +267,7 @@ impl ProxyCore {
             Err(_) => return Err(ProxyError::Timeout(timeout_duration)),
         };
 
-        // 5. Convert the response
+        // 7. Convert the response
         let status = resp.status().as_u16();
         let headers = resp.headers().clone();
         let body = resp.bytes().await.map_err(ProxyError::ClientError)?.to_vec();
@@ -317,16 +284,14 @@ impl ProxyCore {
         context.receive_time = Some(std::time::Instant::now());
         drop(context); // Explicitly release the write lock
 
-        // 6. Apply route-specific post-filters
-        if let Some(route_filters) = self.route_filters.read().await.get(&route.id) {
-            for filter in route_filters.iter() {
-                if filter.filter_type().is_post() || filter.filter_type().is_both() {
-                    response = filter.post_filter(request.clone(), response).await?;
-                }
+        // 8. Apply route-specific post-filters
+        for filter in &route_filters {
+            if filter.filter_type().is_post() || filter.filter_type().is_both() {
+                response = filter.post_filter(request.clone(), response).await?;
             }
         }
 
-        // 7. Apply global post-filters
+        // 9. Apply global post-filters
         for filter in self.global_filters.read().await.iter() {
             if filter.filter_type().is_post() || filter.filter_type().is_both() {
                 response = filter.post_filter(request.clone(), response).await?;
@@ -396,8 +361,8 @@ pub struct Route {
     pub target_base_url: String,
     /// The path pattern that this route matches
     pub path_pattern: String,
-    /// The filter IDs that should be applied to this route
-    pub filter_ids: Vec<String>,
+    /// The filters that should be applied to this route
+    pub filters: Option<Vec<Arc<dyn Filter>>>,
 }
 
 /// A router that matches requests to routes.

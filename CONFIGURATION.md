@@ -18,7 +18,6 @@ The main configuration structure consists of the following sections:
   "server": { ... },      // Server configuration
   "proxy": { ... },       // Proxy configuration
   "routes": [ ... ],      // Route definitions
-  "filters": { ... }      // Filter definitions
 }
 ```
 
@@ -44,16 +43,24 @@ The `proxy` section defines general proxy behavior:
 
 ```json
 "proxy": {
-  "timeout": 30,                         // Request timeout in seconds
-  "global_filters": ["logging", "cors"], // Filters applied to all routes
-  "log_level": "debug"                   // Application log level
+  "timeout": 30,                       // Request timeout in seconds
+  "global_filters": [                  // Filters applied to all routes
+    {
+      "type": "logging",
+      "config": {
+        "log_request_headers": true,
+        "log_level": "debug"
+      }
+    }
+  ],
+  "log_level": "debug"                 // Application log level
 }
 ```
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `timeout` | Integer | `30` | Request timeout in seconds |
-| `global_filters` | String[] | `[]` | List of filter IDs to apply to all routes |
+| `global_filters` | Array | `[]` | List of filters to apply to all routes |
 | `log_level` | String | `"info"` | Application log level (error, warn, info, debug, trace) |
 
 ## Routes Configuration
@@ -63,11 +70,19 @@ The `routes` section is an array of route definitions that determine how request
 ```json
 "routes": [
   {
-    "id": "api",                      // Unique identifier
-    "target": "http://api-service.example.com", // Target URL
-    "filters": ["logging"],           // Filters to apply to this route
-    "priority": 100,                  // Matching priority
-    "predicates": [                   // Request match conditions
+    "id": "api",                        // Unique identifier
+    "target": "http://api.example.com", // Target URL
+    "filters": [                        // Filters to apply to this route
+      {
+        "type": "path_rewrite",
+        "config": {
+          "pattern": "^/api/(.*)$",
+          "replacement": "/v2/$1"
+        }
+      }
+    ],
+    "priority": 100,                    // Matching priority
+    "predicates": [                     // Request match conditions
       {
         "type_": "path",
         "config": {
@@ -83,20 +98,19 @@ The `routes` section is an array of route definitions that determine how request
 |----------|------|---------|-------------|
 | `id` | String | Required | Unique identifier for the route |
 | `target` | String | Required | Base URL to forward matching requests to |
-| `filters` | String[] | `[]` | List of filter IDs to apply to this route |
+| `filters` | Array | `[]` | List of filters to apply to this route |
 | `priority` | Integer | `0` | Priority for route matching (higher values have higher priority) |
-| `predicates` | Predicate[] | Required | Array of predicates that must all match for this route |
+| `predicates` | Array | Required | Array of predicates that must all match for this route |
 
 ### Route Target URL Behavior
 
-The `target` URL is used as specified, with no path manipulation by default. For example:
+The `target` URL is used as the base URL for forwarding requests. The final URL is constructed by combining the target URL with the modified path from filters:
 
-- If `target` is `https://api.example.com/v1` and the request path is `/users`:
-    - Request is forwarded to `https://api.example.com/v1`
-- If `target` is `https://api.example.com` and the request path is `/users/123`:
-    - Request is forwarded to `https://api.example.com/users/123`
+```
+final_url = target_url + request_path
+```
 
-For more control over path handling, use the `path_rewrite` filter.
+If you need to modify the path before it's appended to the target URL, use the `path_rewrite` filter.
 
 ### Route Matching Process
 
@@ -199,25 +213,25 @@ Matches query parameters:
 
 ## Filters
 
-Filters modify requests and responses as they flow through the proxy. The `filters` section maps filter IDs to filter configurations:
+Filters modify requests and responses as they flow through the proxy. Filters can be defined:
+
+1. Globally for all routes (in `proxy.global_filters`)
+2. Per-route (in each route's `filters` array)
+
+Each filter has:
+- A type
+- Configuration specific to that filter type
+
+### Filter Definition Format
 
 ```json
-"filters": {
-  "logging": {
-    "type": "logging",
-    "config": {
-      "log_request_headers": true,
-      "log_request_body": false,
-      "log_level": "debug"
-    }
+{
+  "type": "filter_type_name",
+  "config": {
+    // Filter-specific configuration options
   }
 }
 ```
-
-Each filter has:
-- An ID (used in route `filters` array and `proxy.global_filters`)
-- A type
-- Configuration specific to that filter type
 
 ### Filter Application Order
 
@@ -335,14 +349,33 @@ Here's a complete configuration example:
   },
   "proxy": {
     "timeout": 30,
-    "global_filters": ["access_log"],
-    "log_level": "debug"
+    "global_filters": [
+      {
+        "type": "logging",
+        "config": {
+          "log_request_headers": true,
+          "log_request_body": true,
+          "log_response_headers": true,
+          "log_response_body": true,
+          "log_level": "debug",
+          "max_body_size": 1024
+        }
+      }
+    ]
   },
   "routes": [
     {
       "id": "api-get",
-      "target": "https://api.example.com/v1",
-      "filters": [],
+      "target": "https://api.example.com",
+      "filters": [
+        {
+          "type": "path_rewrite",
+          "config": {
+            "pattern": "^/$",
+            "replacement": "/get"
+          }
+        }
+      ],
       "priority": 100,
       "predicates": [
         {
@@ -361,8 +394,16 @@ Here's a complete configuration example:
     },
     {
       "id": "api-post",
-      "target": "https://api.example.com/v1",
-      "filters": [],
+      "target": "https://api.example.com",
+      "filters": [
+        {
+          "type": "path_rewrite",
+          "config": {
+            "pattern": "^/$",
+            "replacement": "/post"
+          }
+        }
+      ],
       "priority": 90,
       "predicates": [
         {
@@ -380,21 +421,7 @@ Here's a complete configuration example:
       ]
     },
     {
-      "id": "api-rewrite",
-      "target": "https://api.example.com",
-      "filters": ["api_rewrite"],
-      "priority": 80,
-      "predicates": [
-        {
-          "type_": "path",
-          "config": {
-            "pattern": "/api/*"
-          }
-        }
-      ]
-    },
-    {
-      "id": "resource-capture",
+      "id": "resources",
       "target": "https://resources.example.com",
       "filters": [],
       "priority": 50,
@@ -407,32 +434,15 @@ Here's a complete configuration example:
         }
       ]
     }
-  ],
-  "filters": {
-    "access_log": {
-      "type": "logging",
-      "config": {
-        "log_request_headers": true,
-        "log_level": "info"
-      }
-    },
-    "api_rewrite": {
-      "type": "path_rewrite",
-      "config": {
-        "pattern": "^/api/(.*)",
-        "replacement": "/v2/$1"
-      }
-    }
-  }
+  ]
 }
 ```
 
 In this example:
-1. Global access logging is enabled for all routes
-2. The `/` path with GET requests is forwarded to `https://api.example.com/v1`
-3. The `/` path with POST requests is forwarded to `https://api.example.com/v1`
-4. Paths starting with `/api/` are rewritten and forwarded to `https://api.example.com/v2/...`
-5. Paths starting with `/resources/` are forwarded to `https://resources.example.com/resources/...` preserving the full path
+1. Global logging filter is applied to all routes
+2. The `/` path with GET requests is rewritten to `/get` and forwarded to `https://api.example.com/get`
+3. The `/` path with POST requests is rewritten to `/post` and forwarded to `https://api.example.com/post`
+4. Paths starting with `/resources/` are forwarded to `https://resources.example.com/resources/...` without modification
 
 ## Environment Variable Configuration
 

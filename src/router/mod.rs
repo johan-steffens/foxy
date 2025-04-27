@@ -19,6 +19,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::config::Config;
 use crate::core::{ProxyRequest, ProxyError, Route};
+use crate::FilterFactory;
 
 /// Configuration for a route.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,15 +28,25 @@ pub struct RouteConfig {
     pub id: String,
     /// The base URL of the target
     pub target: String,
-    /// The filter IDs that should be applied to this route
+    /// Filters to apply to this route
     #[serde(default)]
-    pub filters: Vec<String>,
+    pub filters: Vec<FilterConfig>,
     /// Priority of the route (higher means higher priority)
     #[serde(default = "default_priority")]
     pub priority: i32,
     /// Predicates for this route
     #[serde(default)]
     pub predicates: Vec<PredicateConfig>,
+}
+
+/// Configuration for a filter.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FilterConfig {
+    /// The type of filter
+    #[serde(rename = "type")]
+    pub type_: String,
+    /// The configuration for the filter
+    pub config: serde_json::Value,
 }
 
 fn default_priority() -> i32 {
@@ -106,13 +117,6 @@ impl PredicateRouter {
         if let Some(route_configs) = route_configs {
             // Add each route
             for route_config in route_configs {
-                let route = Route {
-                    id: route_config.id.clone(),
-                    target_base_url: route_config.target.clone(),
-                    path_pattern: String::new(), // No longer used
-                    filter_ids: route_config.filters.clone(),
-                };
-
                 // Create predicates for this route
                 let mut predicates = Vec::new();
                 for predicate_config in &route_config.predicates {
@@ -122,6 +126,32 @@ impl PredicateRouter {
                     )?;
                     predicates.push(predicate);
                 }
+
+                // Create filters for this route
+                let mut filters = Vec::new();
+                for filter_config in &route_config.filters {
+                    let filter = FilterFactory::create_filter(
+                        &filter_config.type_,
+                        filter_config.config.clone(),
+                    )?;
+                    filters.push(filter);
+                }
+
+                // Find the first path predicate to use as the route pattern
+                let path_pattern = route_config.predicates.iter()
+                    .find(|p| p.type_ == "path")
+                    .map(|p| p.config.get("pattern")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("/*"))
+                    .unwrap_or("/*")
+                    .to_string();
+
+                let route = Route {
+                    id: route_config.id.clone(),
+                    target_base_url: route_config.target.clone(),
+                    path_pattern,
+                    filters: if filters.is_empty() { None } else { Some(filters) },
+                };
 
                 // Add the route with its predicates
                 self.add_route_with_predicates(
