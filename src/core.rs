@@ -9,8 +9,8 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
-use std::fmt;
+use std::time::{Duration, Instant};
+use std::{fmt, mem};
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
@@ -122,32 +122,36 @@ impl From<HttpMethod> for reqwest::Method {
 }
 
 /// Represents an HTTP request that can be processed by the proxy.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ProxyRequest {
-    /// The HTTP method
     pub method: HttpMethod,
-    /// The request path
     pub path: String,
-    /// The query string, if any
     pub query: Option<String>,
-    /// The request headers
     pub headers: reqwest::header::HeaderMap,
-    /// The request body
-    pub body: Vec<u8>,
-    /// Additional context for the request
+    pub body: reqwest::Body,
     pub context: Arc<RwLock<RequestContext>>,
 }
 
+impl Clone for ProxyRequest {
+    fn clone(&self) -> Self {
+        // A streaming body can’t be duplicated.  Give filters an empty one.
+        Self {
+            method:   self.method,
+            path:     self.path.clone(),
+            query:    self.query.clone(),
+            headers:  self.headers.clone(),
+            body:     reqwest::Body::from(""),
+            context:  self.context.clone(),
+        }
+    }
+}
+
 /// Represents an HTTP response returned by the proxy.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ProxyResponse {
-    /// The HTTP status code
     pub status: u16,
-    /// The response headers
     pub headers: reqwest::header::HeaderMap,
-    /// The response body
-    pub body: Vec<u8>,
-    /// Additional context for the response
+    pub body: reqwest::Body,
     pub context: Arc<RwLock<ResponseContext>>,
 }
 
@@ -210,95 +214,91 @@ impl ProxyCore {
     }
 
     /// Process a request through the proxy.
-    pub async fn process_request(&self, mut request: ProxyRequest) -> Result<ProxyResponse, ProxyError> {
-        // 1. Apply global pre-filters
-        for filter in self.global_filters.read().await.iter() {
-            if filter.filter_type().is_pre() || filter.filter_type().is_both() {
-                request = filter.pre_filter(request).await?;
+    pub async fn process_request(
+        &self,
+        mut request: ProxyRequest,
+    ) -> Result<ProxyResponse, ProxyError> {
+        let overall_start = Instant::now();
+
+        /* ---------- PRE-filters ---------- */
+        for f in self.global_filters.read().await.iter() {
+            if f.filter_type().is_pre() || f.filter_type().is_both() {
+                request = f.pre_filter(request).await?;
+            }
+        }
+        let route          = self.router.route(&request).await?;
+        let route_filters  = route.filters.clone().unwrap_or_default();
+        for f in &route_filters {
+            if f.filter_type().is_pre() || f.filter_type().is_both() {
+                request = f.pre_filter(request).await?;
             }
         }
 
-        // 2. Route the request
-        let route = self.router.route(&request).await?;
+        /* ---------- build outbound req ---------- */
+        let url = format!("{}{}", route.target_base_url, request.path);
+        let outbound_body = mem::replace(&mut request.body, reqwest::Body::from(""));
 
-        // 3. Get the route filters
-        let route_filters = match route.filters {
-            Some(ref filters) => filters.clone(),
-            None => Vec::new(),
-        };
+        let mut builder = self
+            .client
+            .request(request.method.into(), &url)
+            .headers(request.headers.clone())
+            .body(outbound_body);
 
-        // 4. Apply route-specific pre-filters
-        for filter in &route_filters {
-            if filter.filter_type().is_pre() || filter.filter_type().is_both() {
-                request = filter.pre_filter(request).await?;
-            }
+        if let Some(q) = &request.query {
+            builder = builder.query(&[(q, "")]);
         }
 
-        // 5. Construct the full URL including any path modifications from filters
-        let final_url = format!("{}{}", route.target_base_url, request.path);
+        /* ---------- send with timeout ---------- */
+        let timeout_dur =
+            Duration::from_secs(self.config.get_or_default("proxy.timeout", 30)?);
 
-        // 6. Forward the request to the target
-        let mut builder = self.client.request(
-            request.method.into(),
-            &final_url
-        );
+        let upstream_start = Instant::now();
+        let resp = timeout(timeout_dur, builder.send())
+            .await
+            .map_err(|_| ProxyError::Timeout(timeout_dur))?
+            .map_err(ProxyError::ClientError)?;
+        let upstream_elapsed = upstream_start.elapsed();
 
-        // Add query parameters if present
-        if let Some(query) = &request.query {
-            builder = builder.query(&[(query, "")]);
-        }
+        /* ---------- wrap streaming response ---------- */
+        let status   = resp.status().as_u16();
+        let headers  = resp.headers().clone();
+        let body     = reqwest::Body::wrap_stream(resp.bytes_stream());
 
-        // Add headers
-        builder = builder.headers(request.headers.clone());
-
-        // Add body if not empty
-        if !request.body.is_empty() {
-            builder = builder.body(request.body.clone());
-        }
-
-        // Get the timeout from configuration or use the default
-        let timeout_secs: u64 = self.config.get_or_default("proxy.timeout", 30)?;
-        let timeout_duration = Duration::from_secs(timeout_secs);
-
-        // Send the request with a timeout
-        let resp = match timeout(timeout_duration, builder.send()).await {
-            Ok(Ok(resp)) => resp,
-            Ok(Err(e)) => return Err(ProxyError::ClientError(e)),
-            Err(_) => return Err(ProxyError::Timeout(timeout_duration)),
-        };
-
-        // 7. Convert the response
-        let status = resp.status().as_u16();
-        let headers = resp.headers().clone();
-        let body = resp.bytes().await.map_err(ProxyError::ClientError)?.to_vec();
-
-        let mut response = ProxyResponse {
+        let mut proxy_resp = ProxyResponse {
             status,
             headers,
             body,
             context: Arc::new(RwLock::new(ResponseContext::default())),
         };
+        proxy_resp.context.write().await.receive_time = Some(Instant::now());
 
-        // Set the receive time in the response context
-        let mut context = response.context.write().await;
-        context.receive_time = Some(std::time::Instant::now());
-        drop(context); // Explicitly release the write lock
-
-        // 8. Apply route-specific post-filters
-        for filter in &route_filters {
-            if filter.filter_type().is_post() || filter.filter_type().is_both() {
-                response = filter.post_filter(request.clone(), response).await?;
+        /* ---------- POST-filters ---------- */
+        for f in &route_filters {
+            if f.filter_type().is_post() || f.filter_type().is_both() {
+                proxy_resp = f.post_filter(request.clone(), proxy_resp).await?;
+            }
+        }
+        for f in self.global_filters.read().await.iter() {
+            if f.filter_type().is_post() || f.filter_type().is_both() {
+                proxy_resp = f.post_filter(request.clone(), proxy_resp).await?;
             }
         }
 
-        // 9. Apply global post-filters
-        for filter in self.global_filters.read().await.iter() {
-            if filter.filter_type().is_post() || filter.filter_type().is_both() {
-                response = filter.post_filter(request.clone(), response).await?;
-            }
-        }
+        /* ---------- timing log ---------- */
+        let overall_elapsed = overall_start.elapsed();
+        let internal_elapsed = overall_elapsed.saturating_sub(upstream_elapsed);
 
-        Ok(response)
+        log::debug!(
+            "[timing] {} {} -> {} | total={:?} upstream={:?} internal={:?}",
+            request.method,
+            request.path,
+            proxy_resp.status,
+            overall_elapsed,
+            upstream_elapsed,
+            internal_elapsed
+        );
+
+        Ok(proxy_resp)
     }
 }
 

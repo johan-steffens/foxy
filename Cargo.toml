@@ -1,6 +1,6 @@
 [package]
 name = "foxy-io"
-version = "0.0.5"
+version = "0.0.6"
 edition = "2024"
 authors = ["Johan Steffens <johan@steff.co.za>"]
 description = "A configuration-driven and hyper-extensible HTTP proxy library"
@@ -33,12 +33,14 @@ bytes = "1.5.0"
 
 # Testing utilities
 tempfile = "3.6"
-reqwest = "0.12.15"
+reqwest = { version = "0.12.15", features = ["stream"] }
 async-trait = "0.1.88"
 log = "0.4.27"
 regex = "1.11.1"
 env_logger = "0.11.8"
 url = "2.5.4"
+futures-util = { version = "0.3.31", default-features = false, features = ["alloc"] }
+
 
 [features]
 default = []

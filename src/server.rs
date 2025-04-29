@@ -11,13 +11,17 @@ use std::sync::Arc;
 use std::net::SocketAddr;
 use std::convert::Infallible;
 use tokio::sync::RwLock;
+use http_body_util::StreamBody;
 use hyper::body::Incoming;
 use hyper::{Request, Response};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use bytes::Bytes;
+use futures_util::TryStreamExt;
 use http_body_util::{BodyExt, Full};
+use http_body_util::combinators::BoxBody;
+use reqwest::Body;
 use serde::{Serialize, Deserialize};
 
 use crate::core::{ProxyCore, ProxyRequest, ProxyResponse, ProxyError, HttpMethod, RequestContext};
@@ -115,59 +119,52 @@ impl ProxyServer {
 }
 
 /// Convert a hyper request to a proxy request.
-async fn convert_hyper_request(req: Request<Incoming>, client_ip: String) -> Result<ProxyRequest, ProxyError> {
-    // Extract components from the hyper request
+async fn convert_hyper_request(
+    req: Request<Incoming>,
+    client_ip: String,
+) -> Result<ProxyRequest, ProxyError> {
     let method = HttpMethod::from(req.method());
-    let uri = req.uri();
-    let path = uri.path().to_string();
-    let query = uri.query().map(|q| q.to_string());
+    let uri = req.uri().clone();
+    let path = uri.path().to_owned();
+    let query = uri.query().map(|q| q.to_owned());
     let headers = req.headers().clone();
 
-    // Read the body
-    let body_bytes = req.into_body().collect()
-        .await
-        .map_err(|e| ProxyError::Other(format!("Failed to read request body: {}", e)))?
-        .to_bytes()
-        .to_vec();
-
-    // Create the request context with client IP
-    let context = Arc::new(RwLock::new(RequestContext {
-        client_ip: Some(client_ip),
-        start_time: Some(std::time::Instant::now()),
-        attributes: std::collections::HashMap::new(),
-    }));
+    // Incoming → Stream → reqwest::Body
+    let hyper_stream = req.into_body().into_data_stream();
+    let byte_stream = hyper_stream.map_ok(Bytes::from);
+    let body = reqwest::Body::wrap_stream(byte_stream);
 
     Ok(ProxyRequest {
         method,
         path,
         query,
         headers,
-        body: body_bytes,
-        context,
+        body,
+        context: Arc::new(RwLock::new(RequestContext {
+            client_ip: Some(client_ip),
+            start_time: Some(std::time::Instant::now()),
+            attributes: std::collections::HashMap::new(),
+        })),
     })
 }
 
 /// Convert a proxy response to a hyper response.
-fn convert_proxy_response(resp: ProxyResponse) -> Result<Response<Full<Bytes>>, ProxyError> {
-    // Create a new hyper response
-    let mut builder = Response::builder()
-        .status(resp.status);
+fn convert_proxy_response(resp: ProxyResponse) -> Result<Response<Body>, ProxyError> {
+    let stream = resp
+        .body
+        .into_data_stream()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
 
-    // Add headers
-    let headers = builder.headers_mut().ok_or_else(||
-        ProxyError::Other("Failed to get response headers".to_string())
-    )?;
+    let body = Body::wrap_stream(stream);
 
-    for (name, value) in resp.headers.iter() {
-        headers.insert(name, value.clone());
-    }
+    let mut builder = Response::builder().status(resp.status);
+    *builder
+        .headers_mut()
+        .ok_or_else(|| ProxyError::Other("unable to set headers".into()))? = resp.headers;
 
-    // Create the response with the body
-    let response = builder
-        .body(Full::new(Bytes::from(resp.body)))
-        .map_err(|e| ProxyError::Other(format!("Failed to create response: {}", e)))?;
-
-    Ok(response)
+    Ok(builder
+        .body(body)
+        .map_err(|e| ProxyError::Other(e.to_string()))?)
 }
 
 /// Handle an incoming HTTP request.
@@ -175,50 +172,41 @@ async fn handle_request(
     req: Request<Incoming>,
     core: Arc<ProxyCore>,
     client_ip: String,
-) -> Result<Response<Full<Bytes>>, Infallible> {
-    // Convert the hyper request to a proxy request
+) -> Result<Response<Body>, Infallible> {
+    /* ---- convert Hyper → ProxyRequest ---- */
     let proxy_req = match convert_hyper_request(req, client_ip).await {
-        Ok(req) => req,
+        Ok(r) => r,
         Err(e) => {
-            log::error!("Failed to convert request: {}", e);
+            log::error!("convert request: {e}");
             return Ok(Response::builder()
                 .status(500)
-                .body(Full::new(Bytes::from("Internal Server Error")))
+                .body(Body::from("Internal Server Error"))
                 .unwrap());
         }
     };
 
-    // Process the request through the proxy core
+    /* ---- core processing ---- */
     match core.process_request(proxy_req).await {
-        Ok(proxy_resp) => {
-            // Convert the proxy response back to a hyper response
-            match convert_proxy_response(proxy_resp) {
-                Ok(resp) => Ok(resp),
-                Err(e) => {
-                    log::error!("Failed to convert response: {}", e);
-                    Ok(Response::builder()
-                        .status(500)
-                        .body(Full::new(Bytes::from("Internal Server Error")))
-                        .unwrap())
-                }
+        Ok(proxy_resp) => match convert_proxy_response(proxy_resp) {
+            Ok(resp) => Ok(resp),
+            Err(e) => {
+                log::error!("convert response: {e}");
+                Ok(Response::builder()
+                    .status(500)
+                    .body(Body::from("Internal Server Error"))
+                    .unwrap())
             }
         },
         Err(e) => {
-            log::error!("Proxy error: {}", e);
-
-            // Create an appropriate error response
-            let (status, message) = match e {
-                ProxyError::Timeout(duration) =>
-                    (504, format!("Gateway Timeout: Request timed out after {:?}", duration)),
-                ProxyError::RoutingError(_) =>
-                    (404, "Not Found: No route matched the request".to_string()),
-                _ =>
-                    (500, "Internal Server Error".to_string()),
+            log::error!("proxy error: {e}");
+            let (status, msg) = match e {
+                ProxyError::Timeout(d)     => (504, format!("Gateway Timeout after {d:?}")),
+                ProxyError::RoutingError(_) => (404, "Route not found".into()),
+                _                           => (500, "Internal Server Error".into()),
             };
-
             Ok(Response::builder()
                 .status(status)
-                .body(Full::new(Bytes::from(message)))
+                .body(Body::from(msg))
                 .unwrap())
         }
     }
@@ -239,7 +227,7 @@ fn convert_hyper_response(resp: Response<Full<Bytes>>) -> ProxyResponse {
     ProxyResponse {
         status,
         headers,
-        body,
+        body: reqwest::Body::from(body),
         context: Arc::new(RwLock::new(ResponseContext::default())),
     }
 }

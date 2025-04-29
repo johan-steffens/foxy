@@ -7,9 +7,13 @@
 //! This module provides various filters that can modify or log HTTP requests
 //! and responses as they flow through the proxy.
 
+use std::cmp;
 use std::sync::Arc;
 use std::time::Instant;
 use async_trait::async_trait;
+use bytes::Bytes;
+use futures_util::{stream, StreamExt, TryStreamExt};
+use http_body_util::BodyExt;
 use log::{trace, debug, info, warn, error, Level};
 use regex::Regex;
 use serde::{Serialize, Deserialize};
@@ -157,50 +161,78 @@ impl Filter for LoggingFilter {
         "logging"
     }
 
-    async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
-        self.log(&format!(">> Request: {} {}", request.method, request.path));
-
+    async fn pre_filter(&self, mut request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
         if self.config.log_request_headers {
-            self.log(&format!(">> Headers:\n{}", self.format_headers(&request.headers)));
-        }
-
-        if self.config.log_request_body && !request.body.is_empty() {
-            self.log(&format!(">> Body:\n{}", self.format_body(&request.body)));
-        }
-
-        // Store the start time in the request context
-        match request.context.write().await {
-            mut context => {
-                context.start_time = Some(Instant::now());
+            self.log(&format!(">> {} {}", request.method, request.path));
+            for (k, v) in request.headers.iter() {
+                self.log(&format!(">> {}: {:?}", k, v));
             }
         }
-
+        if self.config.log_request_body {
+            let (new_body, snippet) = tee_body(request.body, 1_000).await?;
+            let truncated = if (snippet.len() == 1000) {"(truncated)"} else {""};
+            
+            self.log(&format!(">> Request Body:\n{}{}", snippet, truncated));
+            request.body = new_body;
+        }
         Ok(request)
     }
 
-    async fn post_filter(&self, request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
-        self.log(&format!("<< Response: {} {} (Status: {})", request.method, request.path, response.status));
-
-        // Calculate and log the request duration if we have start time
-        match request.context.read().await {
-            request_context => {
-                if let Some(start_time) = request_context.start_time {
-                    let duration = start_time.elapsed();
-                    self.log(&format!("<< Duration: {:?}", duration));
-                }
+    async fn post_filter(
+        &self,
+        _req: ProxyRequest,
+        mut response: ProxyResponse,
+    ) -> Result<ProxyResponse, ProxyError> {
+        if self.config.log_response_headers {
+            self.log(&format!("<< {}", response.status));
+            for (k, v) in response.headers.iter() {
+                self.log(&format!("<< {}: {:?}", k, v));
             }
         }
+        if self.config.log_response_body {
+            let (new_body, snippet) = tee_body(response.body, 1_000).await?;
+            let truncated = if (snippet.len() == 1000) {"(truncated)"} else {""};
 
-        if self.config.log_response_headers {
-            self.log(&format!("<< Headers:\n{}", self.format_headers(&response.headers)));
+            self.log(&format!(">> Response Body:\n{}{}", snippet, truncated));
+            response.body = new_body;
         }
-
-        if self.config.log_response_body && !response.body.is_empty() {
-            self.log(&format!("<< Body:\n{}", self.format_body(&response.body)));
-        }
-
         Ok(response)
     }
+}
+
+async fn tee_body(
+    body: reqwest::Body,
+    limit: usize,
+) -> Result<(reqwest::Body, String), ProxyError> {
+    // Turn the body into a stream of Bytes
+    let mut stream_in = body.into_data_stream();
+
+    // Collect prefix while buffering chunks for replay
+    let mut captured = Vec::<u8>::new();
+    let mut buffered  = Vec::<Result<Bytes, std::io::Error>>::new();
+
+    while captured.len() < limit {
+        match stream_in.try_next().await {
+            Ok(Some(chunk)) => {
+                let take = cmp::min(limit - captured.len(), chunk.len());
+                captured.extend_from_slice(&chunk[..take]);
+                buffered.push(Ok(chunk));
+            }
+            Ok(None) => break,            // EOF
+            Err(e) => return Err(ProxyError::Other(e.to_string())),
+        }
+    }
+
+    // `stream_in` now yields the remainder of the body.
+    // Concatenate the buffered prefix with the remaining stream.
+    let combined_stream = stream::iter(buffered).chain(
+        stream_in.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
+    );
+
+    let new_body = reqwest::Body::wrap_stream(combined_stream);
+    let snippet  = String::from_utf8_lossy(&captured).to_string();
+
+    Ok((new_body, snippet))
 }
 
 /// Configuration for a header modification filter.
@@ -476,6 +508,7 @@ impl FilterFactory {
 
 #[cfg(test)]
 mod tests {
+    use reqwest::Body;
     use super::*;
     use crate::core::HttpMethod;
     use crate::RequestContext;
@@ -495,7 +528,7 @@ mod tests {
                 );
                 map
             },
-            body: b"{\"test\": \"value\"}".to_vec(),
+            body: Body::from(b"{\"test\": \"value\"}".to_vec()),
             context: Arc::new(tokio::sync::RwLock::new(RequestContext::default())),
         };
 
@@ -533,7 +566,7 @@ mod tests {
                 );
                 map
             },
-            body: Vec::new(),
+            body: Vec::new().into(),
             context: Arc::new(tokio::sync::RwLock::new(RequestContext::default())),
         };
 
@@ -563,7 +596,7 @@ mod tests {
             path: "/test".to_string(),
             query: None,
             headers: reqwest::header::HeaderMap::new(),
-            body: Vec::new(),
+            body: Vec::new().into(),
             context: Arc::new(tokio::sync::RwLock::new(RequestContext::default())),
         };
 
