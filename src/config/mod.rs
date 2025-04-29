@@ -25,45 +25,6 @@
 //! * **Type Safety**: Configuration values are parsed into the appropriate Rust types.
 //! * **Minimal Default**: The base configuration provides only essential functionality.
 //!
-//! # Usage Examples
-//!
-//! ## Basic File Configuration
-//!
-//! ```rust,no_run
-//! use foxy::config::Config;
-//!
-//! let config = Config::default_file("config.toml")?;
-//! let server_port: u16 = config.get_or_default("server.port", 8080)?;
-//! ```
-//!
-//! ## Environment Variables
-//!
-//! Environment variables are mapped to configuration keys by:
-//! 1. Stripping the prefix (default is "FOXY_")
-//! 2. Converting to lowercase
-//! 3. Replacing underscores with dots
-//!
-//! For example, `FOXY_SERVER_PORT=8080` becomes `server.port` with value `8080`.
-//!
-//! ```rust,no_run
-//! use foxy::config::{Config, EnvConfigProvider};
-//!
-//! // Uses environment variables with the "FOXY_" prefix
-//! let config = Config::builder()
-//!     .with_provider(EnvConfigProvider::default())
-//!     .build();
-//! ```
-//!
-//! ## Multiple Configuration Sources
-//!
-//! ```rust,no_run
-//! use foxy::config::{Config, FileConfigProvider, EnvConfigProvider};
-//!
-//! // Environment variables override file configuration
-//! let config = Config::builder()
-//!     .with_provider(EnvConfigProvider::default())
-//!     .with_provider(FileConfigProvider::new("config.toml")?)
-//!     .build();
 //! ```
 
 mod file;

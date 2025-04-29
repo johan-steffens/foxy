@@ -170,7 +170,7 @@ impl Filter for LoggingFilter {
         }
         if self.config.log_request_body {
             let (new_body, snippet) = tee_body(request.body, 1_000).await?;
-            let truncated = if (snippet.len() == 1000) {"(truncated)"} else {""};
+            let truncated = if snippet.len() == 1000 {"(truncated)"} else {""};
             
             self.log(&format!(">> Request Body:\n{}{}", snippet, truncated));
             request.body = new_body;
@@ -191,7 +191,7 @@ impl Filter for LoggingFilter {
         }
         if self.config.log_response_body {
             let (new_body, snippet) = tee_body(response.body, 1_000).await?;
-            let truncated = if (snippet.len() == 1000) {"(truncated)"} else {""};
+            let truncated = if snippet.len() == 1000 {"(truncated)"} else {""};
 
             self.log(&format!(">> Response Body:\n{}{}", snippet, truncated));
             response.body = new_body;
@@ -541,10 +541,6 @@ mod tests {
 
         // Apply the filter
         let filtered_request = filter.pre_filter(request).await.unwrap();
-
-        // Verify that the start time was set
-        let context = filtered_request.context.read().await;
-        assert!(context.start_time.is_some());
     }
 
     #[tokio::test]

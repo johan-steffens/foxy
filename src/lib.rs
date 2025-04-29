@@ -26,66 +26,10 @@
 //! - **Type Safety**: Parse configuration values into the appropriate Rust types.
 //! - **Extensibility**: Implement the `ConfigProvider` trait to create custom configuration sources.
 //!
-//! # Initialization and Usage
-//!
-//! Foxy is initialized using the `Foxy` loader, which provides a fluent API for configuration:
-//!
-//! ```rust,no_run
-//! use foxy::Foxy;
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Initialize with default settings
-//!     let foxy = Foxy::loader().build()?;
-//!
-//!     // Or with custom configuration
-//!     let custom_foxy = Foxy::loader()
-//!         .with_config_file("config.toml")
-//!         .with_env_vars()
-//!         .build()?;
-//!
-//!     // Start the proxy server
-//!     foxy.start().await?;
-//!
-//!     Ok(())
-//! }
-//! ```
 //!
 //! # Routing and Filtering
 //!
-//! Foxy uses a configuration-driven approach for routing and filtering:
-//!
-//! ```json
-//! {
-//!   "routes": [
-//!     {
-//!       "id": "api",
-//!       "target": "http://api-backend.com",
-//!       "path": "/api/*",
-//!       "filters": ["logging", "header"],
-//!       "priority": 10
-//!     }
-//!   ],
-//!   "filters": {
-//!     "logging": {
-//!       "type": "logging",
-//!       "config": {
-//!         "log_request_headers": true,
-//!         "log_request_body": false,
-//!         "log_level": "debug"
-//!       }
-//!     },
-//!     "header": {
-//!       "type": "header",
-//!       "config": {
-//!         "add_request_headers": {
-//!           "X-Proxy-Version": "Foxy/0.1.0"
-//!         }
-//!       }
-//!     }
-//!   }
-//! }
-//! ```
+//! Foxy uses a configuration-driven approach for routing and filtering.
 //!
 //! # Custom Filters
 //!
