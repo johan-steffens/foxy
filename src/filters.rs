@@ -2,10 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Filters for processing HTTP requests and responses.
+//! Built-in filters
 //!
-//! This module provides various filters that can modify or log HTTP requests
-//! and responses as they flow through the proxy.
+//! Filters are **opt-in** – you must reference them in the `filters` array of
+//! a `route` for them to execute.  Each filter is documented below together
+//! with its configuration schema.
 
 use std::cmp;
 use std::sync::Arc;

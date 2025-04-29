@@ -2,10 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Core proxy module for Foxy.
+//! Core primitives – requests, responses, filters & routing.
 //!
-//! This module provides the fundamental HTTP proxy functionality.
-//! It handles the routing and forwarding of HTTP requests and responses.
+//! Everything that physically moves through the proxy pipeline is defined
+//! in this module.  No protocol-level logic lives here; that sits in
+//! `server.rs` (IO) and `filters.rs` (behaviour).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -50,7 +51,6 @@ pub enum ProxyError {
     Other(String),
 }
 
-// Implement From<ConfigError> for ProxyError to allow using ? with ConfigError results
 impl From<crate::config::error::ConfigError> for ProxyError {
     fn from(err: crate::config::error::ConfigError) -> Self {
         ProxyError::ConfigError(err.to_string())

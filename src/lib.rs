@@ -2,67 +2,45 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Foxy - A minimal, configuration-driven, hyper-extendible Rust HTTP proxy library
+//! Foxy - A zero-config, configuration-*driven* HTTP proxy library
 //!
-//! Foxy is designed as a drop-in component with configurable behavior. By default,
-//! it provides only basic pass-through routing, with all other functionality
-//! requiring explicit opt-in via configuration or code extension.
+//! Foxy offers a *minimal attack-surface* out of the box – it does nothing
+//! but forward HTTP/1.1 requests until you deliberately opt-in to extra
+//! behaviour via **configuration files** or **extension traits**.
 //!
-//! # Core Principles
+//! ## Quick-start
 //!
-//! - **Security**: Secure core routing with no features enabled by default
-//! - **Extensibility**: Design around traits for user extensions
-//! - **Configuration**: Drive all non-default behavior via configuration
-//! - **Minimal Default**: "Zero-config" results in only basic request forwarding
-//!
-//! # Configuration System
-//!
-//! Foxy's configuration system is built for flexibility and extensibility:
-//!
-//! - **Multiple Configuration Sources**: Load configuration from files (JSON, TOML, YAML) 
-//!   and environment variables.
-//! - **Layered Configuration**: Create a hierarchy of configuration providers with 
-//!   well-defined priorities.
-//! - **Type Safety**: Parse configuration values into the appropriate Rust types.
-//! - **Extensibility**: Implement the `ConfigProvider` trait to create custom configuration sources.
-//!
-//!
-//! # Routing and Filtering
-//!
-//! Foxy uses a configuration-driven approach for routing and filtering.
-//!
-//! # Custom Filters
-//!
-//! You can implement custom filters by implementing the `Filter` trait:
+//! ```bash
+//! cargo add foxy-io
+//! ```
 //!
 //! ```rust,no_run
-//! use async_trait::async_trait;
-//! use foxy::{Filter, FilterType, ProxyRequest, ProxyResponse, ProxyError};
+//! use foxy::{Foxy};
+//! use std::error::Error;
 //!
-//! #[derive(Debug)]
-//! struct MyCustomFilter;
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn Error>> {
+//!     
+//!     let foxy = Foxy::loader()
+//!         .with_config_file("config.json")
+//!         .build().await?;
 //!
-//! #[async_trait]
-//! impl Filter for MyCustomFilter {
-//!     fn filter_type(&self) -> FilterType {
-//!         FilterType::Both
-//!     }
-//!
-//!     fn name(&self) -> &str {
-//!         "my_custom_filter"
-//!     }
-//!
-//!     async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
-//!         // Modify the request
-//!         Ok(request)
-//!     }
-//!
-//!     async fn post_filter(&self, request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
-//!         // Modify the response
-//!         Ok(response)
-//!     }
+//!     foxy.start().await?;
+//!     Ok(())
 //! }
 //! ```
+//!
+//! ## Feature flags
+//! | feature | default | description |
+//! |---------|---------|-------------|
+//! | `yaml`  | ❌      | Enables YAML configuration alongside TOML/JSON |
+//!
+//! ## Extension points
+//! * `ConfigProvider` – plug in an arbitrary configuration backend
+//! * `Filter`         – inject pre/post processing stages
+//! * `Predicate`      – custom routing logic
+//!
+//! See the *examples* directory for a working proxy with logging & path-rewrite.
 
 // Module declarations
 pub mod config;

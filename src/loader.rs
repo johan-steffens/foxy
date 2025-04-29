@@ -2,11 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Loader module for Foxy.
+//! High-level entry-point – “turn the key and go”.
 //!
-//! This module provides the entry point for initializing and configuring
-//! the Foxy proxy library. It allows users to start Foxy with default settings
-//! or customize it by providing their own configuration.
+//! The [`FoxyLoader`] consumes configuration, builds the predicate-router,
+//! wires up the filter graph and returns a single [`ProxyCore`] ready to be
+//! passed into [`ProxyServer::serve`].
 
 use std::collections::HashMap;
 use std::sync::Arc;

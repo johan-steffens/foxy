@@ -4,8 +4,15 @@
 
 //! HTTP server implementation for Foxy.
 //!
-//! This module provides the HTTP server that listens for incoming requests
-//! and forwards them to the proxy core.
+//! The server is a *thin* wrapper around **hyper-util**.  It owns the
+//! listening socket(s) and translates between Hyper’s body types and the
+//! internal [`ProxyRequest`] / [`ProxyResponse`] generics that the core uses.
+//
+//! ## Body streaming
+//! Inbound bodies are **streamed** straight into the upstream connection; no
+//! intermediate buffering beyond the configured `server.body_limit` takes
+//! place.  This prevents unbounded memory usage when clients upload large
+//! files but still gives you a safety-valve.
 
 use std::sync::Arc;
 use std::net::SocketAddr;

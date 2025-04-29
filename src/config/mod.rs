@@ -2,30 +2,29 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Configuration module for Foxy.
+//! Foxy configuration subsystem
 //!
-//! This module provides extensible configuration capabilities with
-//! implementations for file-based and environment-variable based configuration.
+//! The subsystem is deliberately **pluggable**.  A running proxy is created
+//! from an ordered list of [`ConfigProvider`]s; later providers override
+//! earlier ones.  Typical stacking order looks like this:
 //!
-//! # Architecture
+//! 1. `FileConfigProvider` – `foxy.{toml,json,yaml}`
+//! 2. `EnvConfigProvider`  – `FOXY__ROUTES__0__TARGET=https://…`
+//! 3. *your* provider implementing [`ConfigProvider`]
 //!
-//! The configuration system is built around the following components:
+//! Calling [`Config::get`] is therefore *deterministic*: the first provider
+//! in the chain that yields a key wins.
 //!
-//! * **`ConfigProvider` trait**: The core interface that all configuration sources must implement.
-//! * **`Config` struct**: The main configuration aggregator that manages multiple providers.
-//! * **`ConfigBuilder` struct**: Builder pattern for creating `Config` instances.
-//! * **Provider implementations**:
-//!   * `FileConfigProvider`: Loads configuration from JSON, TOML, or YAML files.
-//!   * `EnvConfigProvider`: Loads configuration from environment variables.
+//! The following document describes every *first-class* configuration key.
 //!
-//! # Design Principles
+//! | key | type | default | description |
+//! |-----|------|---------|-------------|
+//! | `server.listen`      | `"[::]:8080"` | – | Socket-address to bind       |
+//! | `server.body_limit`  | `5mb`         | – | Maximum inbound body size     |
+//! | `server.header_limit`| `256kb`       | – | Maximum combined header bytes |
+//! | `routes`             | *array*       | – | List of routing rules         |
 //!
-//! * **Extensibility**: New configuration sources can be added by implementing the `ConfigProvider` trait.
-//! * **Layered Configuration**: Multiple providers can be used with a clear priority order.
-//! * **Type Safety**: Configuration values are parsed into the appropriate Rust types.
-//! * **Minimal Default**: The base configuration provides only essential functionality.
-//!
-//! ```
+//! See [`README.md`](../../README.md#configuration) for a more narrative guide.
 
 mod file;
 mod env;

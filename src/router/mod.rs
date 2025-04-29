@@ -2,10 +2,19 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Router module for Foxy.
+//! Routing DSL – *predicates* & helper logic.
 //!
-//! This module provides routing functionality based on predicates
-//! that determine which target a request should be forwarded to.
+//! A [`PredicateRouter`] owns an ordered vector of [`Route`]s.  
+//! The first route whose **predicate stack** returns `true` wins and its
+//! filter-chain is executed.
+//!
+//! ### Built-in predicates
+//! | type              | configuration key     | example                              |
+//! |-------------------|-----------------------|--------------------------------------|
+//! | `MethodPredicate` | `method`              | `"GET"`                              |
+//! | `PathPredicate`   | `path` (regex)        | `"/api/v1/.*"`                       |
+//! | `HeaderPredicate` | `header.<NAME>`       | `"X-Request-Id" = "^[0-9a-f-]{36}$"` |
+//! | `QueryPredicate`  | `query.<NAME>`        | `"tenant"` = `"acme-corp"`           |
 
 mod predicates;
 

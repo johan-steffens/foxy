@@ -107,7 +107,7 @@ let foxy = Foxy::loader()
 
 Example: `FOXY_SERVER_PORT=8080` → `server.port`
 
-### Streaming bodies
+## Streaming bodies
 
 * Foxy proxies **request and response bodies as streams** end-to-end to ensure there's no full body buffering in memory.
     * Large uploads/downloads back-pressure correctly.
@@ -128,12 +128,12 @@ Example: `FOXY_SERVER_PORT=8080` → `server.port`
 
 ### Request and Response body logging
 
-* `LoggingFilter` now **peeks and logs the first 1 000 bytes/characters** of every
+* `LoggingFilter` peeks and logs the first 1 000 bytes/characters of every
   request and response body (UTF-8-lossy).  
-  Binary or very large payloads are safe—the remainder of the stream is forwarded
+* Binary or very large payloads are safe—the remainder of the stream is forwarded
   untouched.
-* Please note that enabling request and response body logging will introduce additional 
-  latency to your calls
+* **Please note:** enabling request and response logging will introduce additional 
+  latency to your calls.
 
 ## Development Status
 
