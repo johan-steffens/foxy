@@ -7,7 +7,11 @@
 //! The server is a *thin* wrapper around **hyper-util**.  It owns the
 //! listening socket(s) and translates between Hyper’s body types and the
 //! internal [`ProxyRequest`] / [`ProxyResponse`] generics that the core uses.
-//
+//!
+//! **Protocol support**  
+//! Uses `hyper_util::server::conn::auto::Builder`, so the same
+//! connection transparently handles both HTTP/1.1 *and* HTTP/2.
+//!
 //! ## Body streaming
 //! Inbound bodies are **streamed** straight into the upstream connection; no
 //! intermediate buffering beyond the configured `server.body_limit` takes
@@ -18,18 +22,18 @@ use std::sync::Arc;
 use std::net::SocketAddr;
 use std::convert::Infallible;
 use tokio::sync::RwLock;
-use http_body_util::StreamBody;
 use hyper::body::Incoming;
 use hyper::{Request, Response};
-use hyper::server::conn::http1;
+use hyper_util::server::conn::auto::Builder as AutoBuilder;
+use hyper_util::rt::TokioExecutor;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use bytes::Bytes;
 use futures_util::TryStreamExt;
 use http_body_util::{BodyExt, Full};
-use http_body_util::combinators::BoxBody;
 use reqwest::Body;
 use serde::{Serialize, Deserialize};
+use log::{debug};
 
 use crate::core::{ProxyCore, ProxyRequest, ProxyResponse, ProxyError, HttpMethod, RequestContext};
 
@@ -107,17 +111,20 @@ impl ProxyServer {
             // Spawn a task to handle the connection
             tokio::spawn(async move {
                 let service = service_fn(move |req| {
+                    debug!("Incoming request over {:?}", req.version());
                     let core = core.clone();
                     let client_ip = client_ip.clone();
                     handle_request(req, core, client_ip)
                 });
-                
+
                 // Wrap the TcpStream with TokioIo for compatibility with hyper
                 let io = TokioIo::new(stream);
-                
-                if let Err(e) = http1::Builder::new()
+
+                // Serve either HTTP/1.1 or HTTP/2, negotiated automatically.
+                if let Err(e) = AutoBuilder::new(TokioExecutor::new())
                     .serve_connection(io, service)
-                    .await {
+                    .await
+                {
                     log::error!("Error serving connection: {}", e);
                 }
             });

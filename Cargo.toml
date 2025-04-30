@@ -1,6 +1,6 @@
 [package]
 name = "foxy-io"
-version = "0.0.7"
+version = "0.0.8"
 edition = "2024"
 authors = ["Johan Steffens <johan@steff.co.za>"]
 description = "A configuration-driven and hyper-extensible HTTP proxy library"
@@ -33,8 +33,8 @@ serde_yaml = { version = "0.9", optional = true }
 
 # HTTP and networking
 bytes = "1.5.0"
-hyper = { version = "1.6.0", features = ["server", "http1"] }
-hyper-util = { version = "0.1.3", features = ["tokio"] }
+hyper = { version = "1.6.0", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1.3", features = ["tokio", "server"] }
 http-body-util = "0.1.0"
 reqwest = { version = "0.12.15", features = ["stream"] }
 regex = "1.11.1"
