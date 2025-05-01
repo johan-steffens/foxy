@@ -15,6 +15,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read crate version
+        id: crate
+        run: |
+          version=$(grep -E '^version\s*=' Cargo.toml | head -n1 | cut -d'"' -f2)
+          echo "CARGO_VERSION=$version" >> "$GITHUB_ENV"
+        shell: bash
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -36,4 +43,4 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/foxy:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/foxy:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/foxy:${{ CARGO_VERSION }}
