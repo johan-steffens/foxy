@@ -1,10 +1,10 @@
 # -------- Build stage -------------------------------------------------
 FROM rust:1.86.0-alpine AS builder
-RUN RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig build-base \
-    && export CC_x86_64_unknown_linux_musl=musl-gcc \
-    && export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc \
-    && export CC_aarch64_unknown_linux_musl=musl-gcc \
-    && export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig build-base
+ENV CC_x86_64_unknown_linux_musl=musl-gcc
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+ENV CC_aarch64_unknown_linux_musl=musl-gcc
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
 ENV OPENSSL_STATIC=1
 
 COPY . .
