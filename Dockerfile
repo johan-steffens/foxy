@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 # --- Build stage ---
-FROM --platform=$BUILDPLATFORM rust:1.86.0-alpine AS builder
+FROM --platform=$TARGETPLATFORM rust:1.86.0-alpine3.21 AS builder
 ARG TARGETPLATFORM
 
 #—Install compiler toolchain and common build deps
@@ -34,7 +34,7 @@ RUN set -eux; \
     mkdir -p /out && cp /cargo_target/$RUST_TARGET/release/foxy /out/
 
 # --- Runtime stage ---
-FROM alpine:3.20
+FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /out/foxy /usr/local/bin/foxy
