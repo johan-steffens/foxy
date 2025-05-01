@@ -1,9 +1,9 @@
 on:
   push:
     tags:
-      - "*"
+      - "*-crate"
 
-name: Publish
+name: Publish Crate
 
 jobs:
   audit:

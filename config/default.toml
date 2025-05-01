@@ -1,0 +1,15 @@
+###############################################################################
+#  Minimal baseline configuration for Foxy                                  #
+#                                                                           #
+#  • The image copies this file to /etc/foxy/config.toml at build-time.      #
+#  • Override it at run-time with:                                           #
+#      docker run -v $(pwd)/my-config.toml:/etc/foxy/config.toml …          #
+###############################################################################
+
+[server]
+listen = "0.0.0.0:8080"
+
+# Example route (uncomment / customise)
+# [[routes]]
+# id       = "echo"
+# upstream = "http://example.com"
