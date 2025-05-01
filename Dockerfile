@@ -5,7 +5,7 @@ ARG TARGETPLATFORM
 
 #—Install compiler toolchain and common build deps
 RUN --mount=type=cache,target=/var/cache/apk \
-    apk add --no-cache build-base musl-dev openssl-dev pkgconf git
+    apk add --no-cache build-base musl-dev openssl-dev pkgconf git perl perl-utils
 
 WORKDIR /app
 
