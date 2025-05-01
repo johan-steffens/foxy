@@ -35,6 +35,7 @@ RUN set -eux; \
         *) echo "Unsupported platform $TARGETPLATFORM" && exit 1 ;; \
     esac; \
     rustup target add $RUST_TARGET; \
+    export OPENSSL_NO_ASM=1; \
     cargo build --release --bin foxy --target $RUST_TARGET --target-dir /cargo_target; \
     strip /cargo_target/$RUST_TARGET/release/foxy; \
     mkdir -p /out; \
