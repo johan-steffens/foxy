@@ -1,5 +1,5 @@
 # -------- Build stage -------------------------------------------------
-FROM rust:1.77-alpine AS builder
+FROM rust:1.86.0-alpine AS builder
 RUN apk add --no-cache musl-dev openssl-dev pkgconfig build-base
 
 WORKDIR /src
