@@ -5,13 +5,15 @@ ENV OPENSSL_STATIC=1
 
 COPY . .
 RUN rustup target add x86_64-unknown-linux-musl
-RUN cargo install --path . --target x86_64-unknown-linux-musl
+RUN cargo build --release --bin foxy --path . --target x86_64-unknown-linux-musl
+RUN pwd
+RUN ls -la
 
 # -------- Runtime stage ----------------------------------------------
 FROM scratch
 LABEL org.opencontainers.image.source="https://github.com/johan-steffens/foxy"
 
-COPY --from=builder /usr/local/cargo/bin/foxy /foxy
+COPY --from=builder target/x86_64-unknown-linux-musl/release/foxy /foxy
 # Conventional config location
 COPY config/default.toml /etc/foxy/config.toml
 
