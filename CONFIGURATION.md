@@ -337,6 +337,134 @@ Rewrites request paths based on regex patterns:
 | `rewrite_request` | Boolean | `true` | Whether to apply on the request path |
 | `rewrite_response` | Boolean | `false` | Whether to apply on the response path |
 
+## Security Chain
+
+The **security chain** is an ordered list of *security providers* that can
+inspect and/or mutate requests **before** they enter the normal filter
+pipeline (and optionally **after** the response is returned).  
+Providers are declared in the `proxy.security_chain` array and are executed in
+the order they appear.
+
+```jsonc
+"proxy": {
+  // …existing proxy properties…
+  "security_chain": [
+    {
+      "type": "oidc",        // security-provider type
+      "config": { … }        // provider-specific settings
+    }
+    // additional providers can be added here in future
+  ]
+}
+```
+
+### Execution flow
+
+1. **Pre-security providers** (e.g., JWT validation)
+2. **Global & route filters** (pre)
+3. **Upstream call**
+4. **Global & route filters** (post)
+5. **Post-security providers** (if the provider implements `post`)
+
+If a request matches a provider’s *bypass rules* the provider is skipped,
+but the rest of the chain continues.
+
+---
+
+## OIDC Provider (`type: "oidc"`)
+
+Authenticates requests that contain an `Authorization: Bearer <jwt>` header
+using OpenID Connect discovery and JWKS key retrieval.  
+Supports **HS256/384/512, RS256/384/512, PS256/384/512, ES256/384, EdDSA**
+algorithms.
+
+```jsonc
+{
+  "type": "oidc",
+  "config": {
+    "issuer-uri": "https://id.example.com/.well-known/openid-configuration",
+    // Optional – validate the `aud` claim
+    "aud": "my-api",
+    // Required for HS* algorithms only
+    "shared-secret": "base64url-or-hex-encoded-secret",
+    // Optional per-provider bypass rules
+    "bypass-routes": [
+      {
+        "methods": ["GET", "POST"],    // HTTP methods (“*” for any)
+        "path": "/public/**"           // Glob pattern (see below)
+      },
+      {
+        "methods": ["*"],
+        "path": "/swagger-ui/**"
+      }
+    ]
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `issuer-uri` | String | — | OIDC discovery endpoint ending with `/.well-known/openid-configuration`. |
+| `aud` | String\|null | `null` | Expected audience (`aud`) claim. Omit to disable audience checking. |
+| `shared-secret` | String\|null | `null` | Shared secret for **HS*** algorithms. Ignored for RSA/EC/EdDSA. |
+| `bypass-routes` | Array | `[]` | Per-provider list of routes that skip OIDC checks. |
+
+### Bypass Route Rules
+
+Each object inside `bypass-routes` has:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `methods` | String[] | List of HTTP methods to match. Use `"*"` to match any method. |
+| `path` | String | Glob pattern applied to the request path (`/api/**`, `/static/*.jpg`, etc.). Globbing follows the same semantics as the path predicate. |
+
+> **Tip:** You can have multiple OIDC providers in the chain—for example, one
+> for first-party tokens and another for partner identities.
+
+---
+
+### Minimal Example with Security
+
+```jsonc
+{
+  "server": { "host": "0.0.0.0", "port": 8080 },
+
+  "proxy": {
+    "timeout": 30,
+    "security_chain": [
+      {
+        "type": "oidc",
+        "config": {
+          "issuer-uri": "https://id.example.com/.well-known/openid-configuration",
+          "aud": "my-api",
+          "bypass-routes": [
+            { "methods": ["GET"], "path": "/health" },
+            { "methods": ["*"],   "path": "/public/**" }
+          ]
+        }
+      }
+    ]
+  },
+
+  "routes": [
+    {
+      "id": "api",
+      "target": "https://api.example.com",
+      "predicates": [
+        { "type_": "path", "config": { "pattern": "/api/**" } }
+      ]
+    }
+  ]
+}
+```
+
+With this configuration:
+
+* Any request to `/health` or `/public/**` bypasses JWT validation.
+* All other `/api/**` requests must contain a valid bearer token issued by
+  `https://id.example.com` with `aud` =`"my-api"`.
+
+
 ## Complete Configuration Example
 
 Here's a complete configuration example:

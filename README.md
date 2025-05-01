@@ -14,9 +14,10 @@ A minimal, configuration-driven, hyper-extendible Rust HTTP proxy library.
 - 🔄 **Flexible Filters**: Pre and post-processing filters for request/response modification
 - ⚙️ **Configuration Superpowers**: Layered configuration from files and environment variables
 - 🌐 **Fine-grained Control**: Route-specific filter chains for precise request handling
+- 🔒 **Pluggable Security Chain** – configurable, provider-based request authentication with built-in providers
 - 🚀 **Modern Async Architecture**: Built on Tokio and Hyper for high performance
 - 📦 **Lightweight Dependencies**: Minimal external dependencies for core functionality
-- 🧩 **Highly Extensible**: Custom predicates and filters through trait-based design
+- 🧩 **Highly Extensible**: Custom predicates, filters *and* security providers via simple traits
 
 ## Quickstart
 
@@ -25,7 +26,7 @@ A minimal, configuration-driven, hyper-extendible Rust HTTP proxy library.
 ```bash
 git clone https://github.com/johan-steffens/foxy.git
 cd foxy
-crate run --example basic-proxy
+cargo run --example basic-proxy
 ```
 
 ### Run it in your code
@@ -52,6 +53,31 @@ let foxy = Foxy::loader()
 foxy.start().await?;
 ```
 
+### Enabling security
+
+Create (or extend) `config.toml`:
+
+```jsonc
+{
+  "proxy": {
+    "security_chain": [
+      {
+        "type": "oidc",
+        "config": {
+          "issuer-uri": "https://id.example.com/.well-known/openid-configuration",
+          "aud": "my-api",
+          "bypass-routes": [
+            { "methods": ["GET"], "path": "/health" }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+That’s it — requests hitting `/api/**` will be validated against the IDP while `/health` remains public.
+Full configuration examples can be found in the [Configuration Guide](CONFIGURATION.md).
 ## Core Principles
 
 - **Predictable Routing**: Predicate-based matching with clear priorities determines how requests are routed
@@ -142,7 +168,9 @@ Example: `FOXY_SERVER_PORT=8080` → `server.port`
 - [x] Core HTTP Proxy
 - [x] Predicate-based Routing
 - [x] Request/Response Filters
-- [ ] Additional Security Features
+- [x] Security Chain
+  - [x] OIDC provider
+  - [ ] Basic auth provider
 
 ## License
 
