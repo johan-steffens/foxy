@@ -24,7 +24,7 @@ RUN set -eux; \
         *) echo "Unsupported platform $TARGETPLATFORM" && exit 1 ;; \
     esac; \
     rustup target add $RUST_TARGET; \
-    cargo build --release --bin foxy --target $RUST_TARGET --features "openssl/vendored" --target-dir /cargo_target; \
+    cargo build --release --bin foxy --target $RUST_TARGET --target-dir /cargo_target; \
     strip /cargo_target/$RUST_TARGET/release/foxy; \
     mkdir -p /out; \
     cp /cargo_target/$RUST_TARGET/release/foxy /out/
