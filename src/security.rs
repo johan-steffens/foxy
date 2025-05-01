@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Security subsystem – runs before/after the main filter pipeline.
 //!
 //! Initially ships with *zero* providers; downstream crates add their own by
@@ -65,7 +69,7 @@ impl SecurityChain {
     /// Build from raw config list.
     pub async fn from_configs(cfgs: Vec<ProviderConfig>) -> Result<Self, ProxyError> {
         let mut chain = SecurityChain { providers: Vec::new(), bypass_routes: Vec::new() };
-        
+
         for c in cfgs {
             match c {
                 ProviderConfig::Oidc { config } => {
@@ -74,7 +78,7 @@ impl SecurityChain {
                 }
             }
         }
-        
+
         Ok(chain)
     }
 
