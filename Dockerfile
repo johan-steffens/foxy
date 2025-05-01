@@ -5,7 +5,7 @@ ENV OPENSSL_STATIC=1
 
 COPY . .
 RUN rustup target add x86_64-unknown-linux-musl
-RUN cargo build --release --bin foxy --path . --target x86_64-unknown-linux-musl
+RUN cargo build --release --bin foxy --target x86_64-unknown-linux-musl
 RUN pwd
 RUN ls -la
 
