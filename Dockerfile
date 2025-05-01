@@ -5,7 +5,18 @@ ARG TARGETPLATFORM
 
 #—Install compiler toolchain and common build deps
 RUN --mount=type=cache,target=/var/cache/apk \
-    apk add --no-cache build-base musl-dev openssl-dev pkgconf git perl perl-utils
+    apk add --no-cache \
+        build-base \
+        musl-dev \
+        perl perl-utils \
+        pkgconf git && \
+    # ── OPENSSL EXPECTS canonical *-linux-musl-gcc ──
+    case "$TARGETPLATFORM" in \
+        "linux/arm64") \
+            ln -sf /usr/bin/cc /usr/local/bin/aarch64-linux-musl-gcc ;; \
+        "linux/arm/v7") \
+            ln -sf /usr/bin/cc /usr/local/bin/armv7-linux-musleabihf-gcc ;; \
+    esac
 
 WORKDIR /app
 
