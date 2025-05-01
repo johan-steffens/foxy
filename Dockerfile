@@ -14,7 +14,10 @@ RUN case "$TARGETPLATFORM" in \
        "linux/arm64")  export RUST_TARGET=aarch64-unknown-linux-musl ;; \
        "linux/arm/v7") export RUST_TARGET=armv7-unknown-linux-musleabihf ;; \
        *) echo "Unsupported platform $TARGETPLATFORM" && exit 1 ;; \
-    esac && rustup target add "$RUST_TARGET"
+    esac && rustup target add "$RUST_TARGET" && \
+    echo "RUST_TARGET=$RUST_TARGET" > /tmp/rust-target
+
+ENV RUST_TARGET=$(cat /tmp/rust-target)
 
 #—Build the code
 WORKDIR /app
