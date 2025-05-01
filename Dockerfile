@@ -1,6 +1,7 @@
 # -------- Build stage -------------------------------------------------
 FROM rust:1.86.0-alpine AS builder
-RUN apk add --no-cache musl-dev gcc openssl-dev openssl-libs-static pkgconfig build-base
+RUN apk add --no-cache musl-dev gcc openssl-dev openssl-libs-static pkgconfig build-base \
+    rustup target add x86_64-unknown-linux-musl
 ENV OPENSSL_STATIC=1
 
 COPY . .
