@@ -155,7 +155,7 @@ impl FoxyLoader {
         let router = PredicateRouter::new(config_arc.clone()).await?;
 
         // Create the proxy core
-        let proxy_core = ProxyCore::new(config_arc.clone(), Arc::new(router))?;
+        let proxy_core = ProxyCore::new(config_arc.clone(), Arc::new(router)).await?;
 
         // Load global filters from configuration
         let global_filters_config: Option<Vec<FilterConfig>> = config_arc.get("proxy.global_filters")?;

@@ -49,6 +49,7 @@ pub mod core;
 pub mod router;
 pub mod filters;
 pub mod server;
+pub mod security;
 
 // Re-export key types at the crate root for convenience
 pub use config::{ConfigProvider, ConfigProviderExt, ConfigError};
@@ -65,5 +66,11 @@ pub use router::{
 pub use filters::{
     LoggingFilter, HeaderFilter, TimeoutFilter, FilterFactory,
     PathRewriteFilter, PathRewriteFilterConfig
+};
+pub use security::{
+    SecurityProvider,
+    SecurityStage,
+    SecurityChain,
+    oidc::{OidcProvider, OidcConfig},
 };
 pub use server::{ProxyServer, ServerConfig};

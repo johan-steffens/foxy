@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, mem};
 use thiserror::Error;
+use crate::security::{ProviderConfig, SecurityChain, SecurityProvider, SecurityStage};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
 use serde::{Serialize, Deserialize};
@@ -46,6 +47,10 @@ pub enum ProxyError {
     #[error("configuration error: {0}")]
     ConfigError(String),
 
+    /// Security provider error
+    #[error("security error: {0}")]
+    SecurityError(String),
+
     /// Generic error
     #[error("{0}")]
     Other(String),
@@ -54,6 +59,18 @@ pub enum ProxyError {
 impl From<crate::config::error::ConfigError> for ProxyError {
     fn from(err: crate::config::error::ConfigError) -> Self {
         ProxyError::ConfigError(err.to_string())
+    }
+}
+
+impl From<globset::Error> for ProxyError {
+    fn from(e: globset::Error) -> Self {
+        ProxyError::SecurityError(e.to_string())
+    }
+}
+
+impl From<jsonwebtoken::errors::Error> for ProxyError {
+    fn from(e: jsonwebtoken::errors::Error) -> Self {
+        ProxyError::SecurityError(e.to_string())
     }
 }
 
@@ -186,11 +203,13 @@ pub struct ProxyCore {
     pub router: Arc<dyn Router>,
     /// Global filters that apply to all routes
     pub global_filters: Arc<RwLock<Vec<Arc<dyn Filter>>>>,
+    /// Security chain that applies to all routes
+    pub security_chain: Arc<RwLock<SecurityChain>>,
 }
 
 impl ProxyCore {
     /// Create a new proxy core with the given configuration and router.
-    pub fn new(config: Arc<Config>, router: Arc<dyn Router>) -> Result<Self, ProxyError> {
+    pub async fn new(config: Arc<Config>, router: Arc<dyn Router>) -> Result<Self, ProxyError> {
         // Configure the HTTP client based on the configuration
         let timeout_secs: u64 = config.get_or_default("proxy.timeout", 30)?;
 
@@ -199,11 +218,20 @@ impl ProxyCore {
             .build()
             .map_err(ProxyError::ClientError)?;
 
+        let security_config = config
+            .get::<Vec<ProviderConfig>>("proxy.security_chain")
+            .unwrap_or_default();
+
+        let security_chain = SecurityChain::from_configs(
+            security_config.unwrap_or_default()
+        ).await?;
+
         Ok(Self {
             config,
             client,
             router,
             global_filters: Arc::new(RwLock::new(Vec::new())),
+            security_chain: Arc::new(RwLock::new(security_chain)),
         })
     }
 
@@ -213,12 +241,20 @@ impl ProxyCore {
         filters.push(filter);
     }
 
+    /// Add a security filter to the chain.
+    pub async fn add_security_provider(&self, p: Arc<dyn SecurityProvider>) {
+        self.security_chain.write().await.add(p);
+    }
+
     /// Process a request through the proxy.
     pub async fn process_request(
         &self,
         mut request: ProxyRequest,
     ) -> Result<ProxyResponse, ProxyError> {
         let overall_start = Instant::now();
+
+        /* ---------- Security chain pre auth ---------- */
+        let mut request = self.security_chain.read().await.apply_pre(request).await?;
 
         /* ---------- PRE-filters ---------- */
         for f in self.global_filters.read().await.iter() {
@@ -284,6 +320,9 @@ impl ProxyCore {
             }
         }
 
+        /* ---------- Security chain post auth ---------- */
+        proxy_resp = self.security_chain.read().await.apply_post(request.clone(), proxy_resp).await?;
+        
         /* ---------- timing log ---------- */
         let overall_elapsed = overall_start.elapsed();
         let internal_elapsed = overall_elapsed.saturating_sub(upstream_elapsed);
