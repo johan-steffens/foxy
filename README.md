@@ -3,9 +3,11 @@
 [![CI-Crate](https://img.shields.io/github/actions/workflow/status/johan-steffens/foxy/crate.yml?label=crate-build)](https://github.com/johan-steffens/foxy/actions/workflows/crate.yml)
 [![CI-Docker](https://img.shields.io/github/actions/workflow/status/johan-steffens/foxy/docker.yml?label=docker-build)](https://github.com/johan-steffens/foxy/actions/workflows/crate.yml)
 [![Crates.io Version](https://img.shields.io/crates/v/foxy-io)](https://crates.io/crates/foxy-io)
-[![Crates.io Downloads](https://img.shields.io/crates/d/foxy-io?style=flat-square)](https://crates.io/crates/foxy-io)
-[![Crates.io License](https://img.shields.io/github/license/johan-steffens/foxy)](https://github.com/johan-steffens/foxy/blob/main/LICENSE.md)
-[![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue?style=flat-square)](https://blog.rust-lang.org/2023/06/01/Rust-1.70.0.html)
+[![Crates.io Downloads](https://img.shields.io/crates/d/foxy-io)](https://crates.io/crates/foxy-io)
+[![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue)](https://blog.rust-lang.org/2023/06/01/Rust-1.70.0.html)
+[![Docker Version](https://img.shields.io/docker/v/johansteffens/foxy?label=docker%20tag)](https://hub.docker.com/r/johansteffens/foxy)
+[![Docker Pulls](https://img.shields.io/docker/pulls/johansteffens/foxy)](https://crates.io/crates/foxy-io)
+[![License](https://img.shields.io/github/license/johan-steffens/foxy)](https://github.com/johan-steffens/foxy/blob/main/LICENSE.md)
 
 A minimal, configuration-driven, hyper-extendible Rust HTTP proxy library.
 
