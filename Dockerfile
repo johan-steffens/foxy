@@ -1,21 +1,38 @@
-# -------- Build stage -------------------------------------------------
-FROM rust:1.86.0-alpine AS builder
-RUN apk add --no-cache musl-dev gcc openssl-dev openssl-libs-static pkgconfig build-base \
-    && rustup target add x86_64-unknown-linux-musl
-ENV OPENSSL_STATIC=1
+# --- Build stage ---
+FROM --platform=$BUILDPLATFORM rust:1.86.0-alpine AS builder
+ARG TARGETPLATFORM
 
-COPY . .
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/target \
-    cargo build --release --bin foxy --target x86_64-unknown-linux-musl
+#—Install compiler toolchain and common build deps
+RUN --mount=type=cache,target=/var/cache/apk \
+    apk add --no-cache \
+      build-base \
+      musl-dev \
+      openssl-dev \
+      pkgconf \
+      git
 
-# -------- Runtime stage ----------------------------------------------
-FROM scratch
-LABEL org.opencontainers.image.source="https://github.com/johan-steffens/foxy"
+#—Map Docker’s platform string -> Rust musl target triple
+#  (extend this case block if you need more architectures)
+SHELL ["/bin/sh", "-euxo", "pipefail", "-c"]
+RUN case "$TARGETPLATFORM" in \
+        "linux/amd64")   export RUST_TARGET=x86_64-unknown-linux-musl ;; \
+        "linux/arm64")   export RUST_TARGET=aarch64-unknown-linux-musl ;; \
+        "linux/arm/v7")  export RUST_TARGET=armv7-unknown-linux-musleabihf ;; \
+        *) echo "Unsupported platform $TARGETPLATFORM" && exit 1 ;; \
+    esac && \
+    rustup target add "${RUST_TARGET}" && \
+    # cache the target directory across layers for faster rebuilds
+    cargo build --release --bin foxy --target "${RUST_TARGET}" \
+      --target-dir /cargo_target && \
+    # strip symbols to minimise size
+    strip /cargo_target/${RUST_TARGET}/release/foxy && \
+    mkdir -p /out && cp /cargo_target/${RUST_TARGET}/release/foxy /out/
 
-COPY --from=builder target/x86_64-unknown-linux-musl/release/foxy /foxy
-# Conventional config location
-COPY config/default.toml /etc/foxy/config.toml
+# --- Runtime stage ---
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /out/foxy /usr/local/bin/foxy
 
 EXPOSE 8080
-ENTRYPOINT ["/foxy"]
+ENTRYPOINT ["foxy"]

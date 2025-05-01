@@ -1,4 +1,6 @@
 # Ignore build noise & docs
+!/target
+!/config
 .git
 .github
 .idea
