@@ -1,0 +1,6 @@
+# Ignore build noise & docs
+target
+.git
+.github
+.idea
+*.md

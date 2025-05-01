@@ -53,31 +53,6 @@ let foxy = Foxy::loader()
 foxy.start().await?;
 ```
 
-### Enabling security
-
-Add a `security_chain` with a configured provider to your proxy configuration:
-
-```jsonc
-{
-  "proxy": {
-    "security_chain": [
-      {
-        "type": "oidc",
-        "config": {
-          "issuer-uri": "https://id.example.com/.well-known/openid-configuration",
-          "aud": "my-api",
-          "bypass-routes": [
-            { "methods": ["GET"], "path": "/health" }
-          ]
-        }
-      }
-    ]
-  }
-}
-```
-
-That’s it — requests hitting `/api/**` will be validated against the IDP while `/health` remains public.
-Full configuration examples can be found in the [Configuration Guide](CONFIGURATION.md).
 ## Core Principles
 
 - **Predictable Routing**: Predicate-based matching with clear priorities determines how requests are routed
@@ -132,6 +107,32 @@ let foxy = Foxy::loader()
 ```
 
 Example: `FOXY_SERVER_PORT=8080` → `server.port`
+
+### Enabling security
+
+Add a `security_chain` with a configured provider to your proxy configuration:
+
+```jsonc
+{
+  "proxy": {
+    "security_chain": [
+      {
+        "type": "oidc",
+        "config": {
+          "issuer-uri": "https://id.example.com/.well-known/openid-configuration",
+          "aud": "my-api",
+          "bypass-routes": [
+            { "methods": ["GET"], "path": "/health" }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+That’s it — requests hitting `/api/**` will be validated against the IDP while `/health` remains public.
+Full configuration examples can be found in the [Configuration Guide](CONFIGURATION.md).
 
 ## Streaming bodies
 

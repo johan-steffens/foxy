@@ -1,6 +1,6 @@
 [package]
 name = "foxy-io"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["Johan Steffens <johan@steff.co.za>"]
 description = "A configuration-driven and hyper-extensible HTTP proxy library"
@@ -54,6 +54,10 @@ yaml = ["dep:serde_yaml"]
 [lib]
 name = "foxy"
 path = "src/lib.rs"
+
+[[bin]]
+name = "foxy"
+path = "src/bin/foxy.rs"
 
 [[example]]
 name = "basic-proxy"
