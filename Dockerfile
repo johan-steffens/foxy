@@ -8,7 +8,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/target \
     cargo build --release --bin foxy --target x86_64-unknown-linux-musl \
     && ls -la target \
-    && ls -la target/x86_64-unknown-linux-musl
+    && ls -la target/x86_64-unknown-linux-musl \
+    && ls -la target/x86_64-unknown-linux-musl/release
 
 # -------- Runtime stage ----------------------------------------------
 FROM scratch
