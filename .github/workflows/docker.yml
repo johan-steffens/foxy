@@ -43,4 +43,4 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/foxy:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/foxy:${{ CARGO_VERSION }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/foxy:${{ env.CARGO_VERSION }}
