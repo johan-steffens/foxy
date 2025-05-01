@@ -1,6 +1,6 @@
 # Foxy 🦊
 
-[![CI](https://img.shields.io/github/actions/workflow/status/johan-steffens/foxy/publish.yml)](https://github.com/johan-steffens/foxy/actions/workflows/publish.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/johan-steffens/foxy/crate.yml)](https://github.com/johan-steffens/foxy/actions/workflows/publish.yml)
 [![Crates.io Version](https://img.shields.io/crates/v/foxy-io)](https://crates.io/crates/foxy-io)
 [![Crates.io Downloads](https://img.shields.io/crates/d/foxy-io?style=flat-square)](https://crates.io/crates/foxy-io)
 [![Crates.io License](https://img.shields.io/github/license/johan-steffens/foxy)](https://github.com/johan-steffens/foxy/blob/main/LICENSE.md)
