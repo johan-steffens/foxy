@@ -1,3 +1,4 @@
 # Ignore build noise & docs
 *
 !target/
+!config/
