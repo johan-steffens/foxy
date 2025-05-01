@@ -55,7 +55,7 @@ foxy.start().await?;
 
 ### Enabling security
 
-Create (or extend) `config.toml`:
+Add a `security_chain` with a configured provider to your proxy configuration:
 
 ```jsonc
 {
