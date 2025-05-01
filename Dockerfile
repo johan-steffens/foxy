@@ -1,13 +1,18 @@
 # -------- Build stage -------------------------------------------------
 FROM rust:1.86.0-alpine AS builder
-RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig build-base
+RUN RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig build-base \
+    && export CC_x86_64_unknown_linux_musl=musl-gcc \
+    && export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc \
+    && export CC_aarch64_unknown_linux_musl=musl-gcc \
+    && export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
 ENV OPENSSL_STATIC=1
 
 COPY . .
-RUN rustup target add x86_64-unknown-linux-musl
-RUN cargo build --release --bin foxy --target x86_64-unknown-linux-musl
-RUN pwd
-RUN ls -la
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/target \
+    cargo build --release --bin foxy --target x86_64-unknown-linux-musl \
+    && ls -la target \
+    && ls -la target/x86_64-unknown-linux-musl
 
 # -------- Runtime stage ----------------------------------------------
 FROM scratch
