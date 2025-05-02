@@ -76,7 +76,7 @@ docker run --rm -p 8080:8080 johansteffens/foxy:latest
 
 #### Passing a custom configuration file
 
-1. Create (or copy) a `config.toml` file on your host.
+1. Create (or copy) a `config.*` file on your host.
 2. Ensure your configuration binds to address `0.0.0.0`
 3. Mount it into the container and tell Foxy where to find it with the `FOXY_CONFIG_FILE` environment variable:
 
