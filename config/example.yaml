@@ -1,0 +1,98 @@
+server:
+  host: 0.0.0.0
+  port: 8080
+proxy:
+  timeout: 30
+  global_filters:
+    - type: logging
+      config:
+        log_request_headers: true
+        log_request_body: false
+        log_response_headers: true
+        log_response_body: false
+        log_level: debug
+        max_body_size: 1024
+routes:
+  - id: httpbin-get
+    target: https://httpbin.org
+    filters:
+      - type: path_rewrite
+        config:
+          pattern: ^/$
+          replacement: /get
+    priority: 100
+    predicates:
+      - type_: path
+        config:
+          pattern: /
+      - type_: method
+        config:
+          methods: [ GET ]
+  - id: httpbin-post
+    target: https://httpbin.org
+    filters:
+      - type: path_rewrite
+        config:
+          pattern: ^/$
+          replacement: /post
+    priority: 90
+    predicates:
+      - type_: path
+        config:
+          pattern: /
+      - type_: method
+        config:
+          methods: [ POST ]
+  - id: httpbin-put
+    target: https://httpbin.org
+    filters:
+      - type: path_rewrite
+        config:
+          pattern: ^/$
+          replacement: /put
+    priority: 80
+    predicates:
+      - type_: path
+        config:
+          pattern: /
+      - type_: method
+        config:
+          methods: [ PUT ]
+  - id: httpbin-delete
+    target: https://httpbin.org
+    filters:
+      - type: path_rewrite
+        config:
+          pattern: ^/$
+          replacement: /delete
+    priority: 70
+    predicates:
+      - type_: path
+        config:
+          pattern: /
+      - type_: method
+        config:
+          methods: [ DELETE ]
+  - id: httpbin-patch
+    target: https://httpbin.org
+    filters:
+      - type: path_rewrite
+        config:
+          pattern: ^/$
+          replacement: /patch
+    priority: 60
+    predicates:
+      - type_: path
+        config:
+          pattern: /
+      - type_: method
+        config:
+          methods: [ PATCH ]
+  - id: httpbin-anything
+    target: https://httpbin.org
+    filters: [ ]
+    priority: 50
+    predicates:
+      - type_: path
+        config:
+          pattern: /anything/*

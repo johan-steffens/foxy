@@ -1,0 +1,143 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+
+[proxy]
+timeout = 30
+
+[[proxy.global_filters]]
+type = "logging"
+
+[proxy.global_filters.config]
+log_request_headers = true
+log_request_body = false
+log_response_headers = true
+log_response_body = false
+log_level = "debug"
+max_body_size = 1024
+[[routes]]
+id = "httpbin-get"
+target = "https://httpbin.org"
+priority = 100
+
+[[routes.filters]]
+type = "path_rewrite"
+
+[routes.filters.config]
+pattern = "^/$"
+replacement = "/get"
+
+[[routes.predicates]]
+type_ = "path"
+
+[routes.predicates.config]
+pattern = "/"
+
+[[routes.predicates]]
+type_ = "method"
+
+[routes.predicates.config]
+methods = ["GET"]
+[[routes]]
+id = "httpbin-post"
+target = "https://httpbin.org"
+priority = 90
+
+[[routes.filters]]
+type = "path_rewrite"
+
+[routes.filters.config]
+pattern = "^/$"
+replacement = "/post"
+
+[[routes.predicates]]
+type_ = "path"
+
+[routes.predicates.config]
+pattern = "/"
+
+[[routes.predicates]]
+type_ = "method"
+
+[routes.predicates.config]
+methods = ["POST"]
+[[routes]]
+id = "httpbin-put"
+target = "https://httpbin.org"
+priority = 80
+
+[[routes.filters]]
+type = "path_rewrite"
+
+[routes.filters.config]
+pattern = "^/$"
+replacement = "/put"
+
+[[routes.predicates]]
+type_ = "path"
+
+[routes.predicates.config]
+pattern = "/"
+
+[[routes.predicates]]
+type_ = "method"
+
+[routes.predicates.config]
+methods = ["PUT"]
+[[routes]]
+id = "httpbin-delete"
+target = "https://httpbin.org"
+priority = 70
+
+[[routes.filters]]
+type = "path_rewrite"
+
+[routes.filters.config]
+pattern = "^/$"
+replacement = "/delete"
+
+[[routes.predicates]]
+type_ = "path"
+
+[routes.predicates.config]
+pattern = "/"
+
+[[routes.predicates]]
+type_ = "method"
+
+[routes.predicates.config]
+methods = ["DELETE"]
+[[routes]]
+id = "httpbin-patch"
+target = "https://httpbin.org"
+priority = 60
+
+[[routes.filters]]
+type = "path_rewrite"
+
+[routes.filters.config]
+pattern = "^/$"
+replacement = "/patch"
+
+[[routes.predicates]]
+type_ = "path"
+
+[routes.predicates.config]
+pattern = "/"
+
+[[routes.predicates]]
+type_ = "method"
+
+[routes.predicates.config]
+methods = ["PATCH"]
+[[routes]]
+id = "httpbin-anything"
+target = "https://httpbin.org"
+filters = []
+priority = 50
+
+[[routes.predicates]]
+type_ = "path"
+
+[routes.predicates.config]
+pattern = "/anything/*"
