@@ -65,7 +65,7 @@ foxy.start().await?;
 The project publishes multi‑arch images to GitHub Container Registry:
 
 ```bash
-docker pull johan-steffens/foxy:latest
+docker pull johansteffens/foxy:latest
 ```
 
 Run the proxy, exposing the default port **8080** on your host:
