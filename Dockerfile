@@ -5,8 +5,11 @@ FROM --platform=$BUILDPLATFORM rust:alpine AS chef
 
 WORKDIR /app
 
-ENV PKGCONFIG_SYSROOTDIR=/
-RUN apk add --no-cache musl-dev openssl-dev zig
+ # vendored OpenSSL: no system openssl-dev, but we need perl & make
+ENV PKG_CONFIG_ALLOW_CROSS=1 \
+    PKGCONFIG_SYSROOTDIR=/ \
+    OPENSSL_STATIC=1
+RUN apk add --no-cache musl-dev zig perl make pkgconf
 RUN cargo install --locked cargo-zigbuild cargo-chef
 RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
