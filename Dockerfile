@@ -1,42 +1,36 @@
 # syntax=docker/dockerfile:1.6
 # --- Build stage ---
-FROM --platform=$TARGETPLATFORM rust:1.86.0-alpine3.21 AS builder
-ARG TARGETPLATFORM
-
-#—Install compiler toolchain and common build deps
-RUN --mount=type=cache,target=/var/cache/apk \
-    apk add --no-cache \
-        build-base musl-dev pkgconf git \
-        openssl-dev openssl-libs-static   \
-        perl perl-utils
+# (1) Add zigbuild & Cargo targets
+FROM --platform=$BUILDPLATFORM rust:alpine AS chef
 
 WORKDIR /app
 
-COPY Cargo.toml Cargo.lock* ./
-RUN cargo fetch
+ENV PKGCONFIG_SYSROOTDIR=/
+RUN apk add --no-cache musl-dev openssl-dev zig
+RUN cargo install --locked cargo-zigbuild cargo-chef
+RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
+# (2) plan the build using chef
+FROM chef AS planner
 COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-ENV OPENSSL_STATIC=1
-ENV OPENSSL_NO_VENDOR=1
+# (3) building project dependencies
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --recipe-path recipe.json --release --zigbuild \
+  --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl
 
-RUN set -eux; \
-    case "$TARGETPLATFORM" in \
-        "linux/amd64")   RUST_TARGET=x86_64-unknown-linux-musl   ;; \
-        "linux/arm64")   RUST_TARGET=aarch64-unknown-linux-musl ;; \
-        *) echo "Unsupported platform $TARGETPLATFORM" && exit 1 ;; \
-    esac; \
-    rustup target add $RUST_TARGET; \
-    cargo build --release --bin foxy \
-        --target $RUST_TARGET --target-dir /cargo_target; \
-    strip /cargo_target/$RUST_TARGET/release/foxy; \
-    mkdir -p /out && cp /cargo_target/$RUST_TARGET/release/foxy /out/
+# (4) build for current architecture
+COPY . .
+RUN cargo zigbuild -r --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl && \
+  mkdir /app/linux && \
+  cp target/aarch64-unknown-linux-musl/release/prog /app/linux/arm64 && \
+  cp target/x86_64-unknown-linux-musl/release/prog /app/linux/amd64
 
 # --- Runtime stage ---
 FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates
-COPY --from=builder /out/foxy /usr/local/bin/foxy
-
-EXPOSE 8080
-ENTRYPOINT ["foxy"]
+COPY --from=builder /app/${TARGETPLATFORM} /foxy
+CMD "/foxy"
