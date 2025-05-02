@@ -24,7 +24,6 @@ RUN set -eux; \
     case "$TARGETPLATFORM" in \
         "linux/amd64")   RUST_TARGET=x86_64-unknown-linux-musl   ;; \
         "linux/arm64")   RUST_TARGET=aarch64-unknown-linux-musl ;; \
-        "linux/arm/v7")  RUST_TARGET=armv7-unknown-linux-musleabihf ;; \
         *) echo "Unsupported platform $TARGETPLATFORM" && exit 1 ;; \
     esac; \
     rustup target add $RUST_TARGET; \
