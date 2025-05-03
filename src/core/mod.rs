@@ -151,7 +151,7 @@ pub struct ProxyRequest {
 
 impl Clone for ProxyRequest {
     fn clone(&self) -> Self {
-        // A streaming body can’t be duplicated.  Give filters an empty one.
+        // A streaming body can't be duplicated.  Give filters an empty one.
         Self {
             method:   self.method,
             path:     self.path.clone(),

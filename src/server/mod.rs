@@ -5,7 +5,7 @@
 //! HTTP server implementation for Foxy.
 //!
 //! The server is a *thin* wrapper around **hyper-util**.  It owns the
-//! listening socket(s) and translates between Hyper’s body types and the
+//! listening socket(s) and translates between Hyper's body types and the
 //! internal [`ProxyRequest`] / [`ProxyResponse`] generics that the core uses.
 //!
 //! **Protocol support**  
@@ -223,25 +223,5 @@ async fn handle_request(
                 .body(Body::from(msg))
                 .unwrap())
         }
-    }
-}
-
-/// Helper function to convert a hyper response to a ProxyResponse (for testing)
-#[allow(dead_code)]
-fn convert_hyper_response(resp: Response<Full<Bytes>>) -> ProxyResponse {
-    use crate::core::ResponseContext;
-
-    let status = resp.status().as_u16();
-    let headers = resp.headers().clone();
-
-    // In a real implementation, you would read the body asynchronously,
-    // but for testing purposes we'll use an empty body
-    let body = Vec::new();
-
-    ProxyResponse {
-        status,
-        headers,
-        body: reqwest::Body::from(body),
-        context: Arc::new(RwLock::new(ResponseContext::default())),
     }
 }

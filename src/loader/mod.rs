@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! High-level entry-point – “turn the key and go”.
+//! High-level entry-point – "turn the key and go".
 //!
 //! The [`FoxyLoader`] consumes configuration, builds the predicate-router,
 //! wires up the filter graph and returns a single [`ProxyCore`] ready to be
