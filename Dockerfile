@@ -10,10 +10,7 @@ WORKDIR /app
 ENV PKG_CONFIG_ALLOW_CROSS=1 \
     PKGCONFIG_SYSROOTDIR=/ \
     OPENSSL_STATIC=1
-RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 379CE192D401AB61 \
-    && echo 'deb https://dl.bintray.com/dryzig/zig-ubuntu groovy main' | sudo tee -a /etc/apt/sources.list \
-    && apt update \
-    && apt install zig
+RUN snap install zig --classic --beta
 RUN cargo install --locked cargo-zigbuild cargo-chef
 RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
