@@ -10,11 +10,7 @@ WORKDIR /app
 ENV PKG_CONFIG_ALLOW_CROSS=1 \
     PKGCONFIG_SYSROOTDIR=/ \
     OPENSSL_STATIC=1
-RUN wget https://ziglang.org/builds/zig-linux-aarch64-0.15.0-dev.452+c0ec264f7.tar.xz \
-    && tar xvf zig-linux-aarch64-0.15.0-dev.452+c0ec264f7.tar.xz \
-    && rm -f zig-linux-aarch64-0.15.0-dev.452+c0ec264f7.tar.xz \
-    && mv zig-linux-aarch64-0.15.0-dev.452+c0ec264f7 /usr/local/zig
-RUN cargo install --locked cargo-zigbuild cargo-chef
+RUN cargo install --locked cargo-chef
 RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
 # (2) plan the build using chef
@@ -25,12 +21,12 @@ RUN cargo chef prepare --recipe-path recipe.json
 # (3) building project dependencies
 FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --recipe-path recipe.json --release --zigbuild \
+RUN cargo chef cook --recipe-path recipe.json --release \
     --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl
 
 # (4) build for current architecture
 COPY . .
-RUN cargo zigbuild -r --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl \
+RUN cargo cargo build --release --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl --bin foxy \
     && mkdir /app/linux \
     && cp target/aarch64-unknown-linux-musl/release/foxy /app/linux/arm64 \
     && cp target/x86_64-unknown-linux-musl/release/foxy /app/linux/amd64
