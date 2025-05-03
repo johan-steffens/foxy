@@ -1,29 +1,29 @@
 # Configuration Guide
 
-Foxy is a highly configurable HTTP proxy with a flexible routing system based on predicates. This document provides a comprehensive guide to all configuration options available.
+Foxy provides a flexible configuration system that supports multiple formats and sources. This guide covers all available configuration options and provides examples to help you get started.
 
-## Configuration Format
+## Configuration Formats
 
-Foxy supports multiple configuration formats:
-- JSON (.json)
-- TOML (.toml)
-- YAML (.yaml, .yml) - requires the `yaml` feature to be enabled
+Foxy supports the following configuration formats:
+- JSON (`.json`)
+- TOML (`.toml`)
+- YAML (`.yaml`, `.yml`)
 
 ## Configuration Structure
 
-The main configuration structure consists of the following sections:
+The main configuration consists of three primary sections:
 
 ```json
 {
-  "server": { ... },      // Server configuration
-  "proxy": { ... },       // Proxy configuration
-  "routes": [ ... ],      // Route definitions
+  "server": { ... },      // HTTP server settings
+  "proxy": { ... },       // Proxy behavior and global filters
+  "routes": [ ... ]       // Route definitions and predicates
 }
 ```
 
 ## Server Configuration
 
-The `server` section defines the HTTP server settings:
+The `server` section controls the HTTP server settings:
 
 ```json
 "server": {
@@ -53,6 +53,12 @@ The `proxy` section defines general proxy behavior:
       }
     }
   ],
+  "security_chain": [                  // Security providers (optional)
+    {
+      "type": "oidc",
+      "config": { ... }
+    }
+  ],
   "log_level": "debug"                 // Application log level
 }
 ```
@@ -61,18 +67,19 @@ The `proxy` section defines general proxy behavior:
 |----------|------|---------|-------------|
 | `timeout` | Integer | `30` | Request timeout in seconds |
 | `global_filters` | Array | `[]` | List of filters to apply to all routes |
+| `security_chain` | Array | `[]` | List of security providers to apply |
 | `log_level` | String | `"info"` | Application log level (error, warn, info, debug, trace) |
 
 ## Routes Configuration
 
-The `routes` section is an array of route definitions that determine how requests are matched and where they are forwarded:
+The `routes` section defines how requests are matched and where they are forwarded:
 
 ```json
 "routes": [
   {
     "id": "api",                        // Unique identifier
     "target": "http://api.example.com", // Target URL
-    "filters": [                        // Filters to apply to this route
+    "filters": [                        // Route-specific filters
       {
         "type": "path_rewrite",
         "config": {
@@ -102,22 +109,22 @@ The `routes` section is an array of route definitions that determine how request
 | `priority` | Integer | `0` | Priority for route matching (higher values have higher priority) |
 | `predicates` | Array | Required | Array of predicates that must all match for this route |
 
-### Route Target URL Behavior
-
-The `target` URL is used as the base URL for forwarding requests. The final URL is constructed by combining the target URL with the modified path from filters:
-
-```
-final_url = target_url + request_path
-```
-
-If you need to modify the path before it's appended to the target URL, use the `path_rewrite` filter.
-
 ### Route Matching Process
 
 1. Routes are evaluated in priority order (highest priority first)
 2. All predicates for a route must match for the route to be selected
 3. The first matching route is used
 4. If no route matches, a "No route matched" error is returned
+
+### URL Construction
+
+The final URL is constructed by combining the target URL with the request path:
+
+```
+final_url = target_url + request_path
+```
+
+To modify the path before it's appended to the target URL, use the `path_rewrite` filter.
 
 ## Predicates
 
@@ -213,14 +220,10 @@ Matches query parameters:
 
 ## Filters
 
-Filters modify requests and responses as they flow through the proxy. Filters can be defined:
+Filters modify requests and responses as they flow through the proxy. They can be defined:
 
 1. Globally for all routes (in `proxy.global_filters`)
 2. Per-route (in each route's `filters` array)
-
-Each filter has:
-- A type
-- Configuration specific to that filter type
 
 ### Filter Definition Format
 
@@ -339,59 +342,44 @@ Rewrites request paths based on regex patterns:
 
 ## Security Chain
 
-The **security chain** is an ordered list of *security providers* that can
-inspect and/or mutate requests **before** they enter the normal filter
-pipeline (and optionally **after** the response is returned).  
-Providers are declared in the `proxy.security_chain` array and are executed in
-the order they appear.
+The security chain is an ordered list of security providers that authenticate requests before they enter the filter pipeline. Providers are defined in the `proxy.security_chain` array:
 
-```jsonc
+```json
 "proxy": {
-  // …existing proxy properties…
   "security_chain": [
     {
-      "type": "oidc",        // security-provider type
-      "config": { … }        // provider-specific settings
+      "type": "oidc",
+      "config": { ... }
     }
-    // additional providers can be added here in future
   ]
 }
 ```
 
-### Execution flow
+### Security Chain Execution Flow
 
-1. **Pre-security providers** (e.g., JWT validation)
-2. **Global & route filters** (pre)
-3. **Upstream call**
-4. **Global & route filters** (post)
-5. **Post-security providers** (if the provider implements `post`)
+1. Pre-security providers (e.g., JWT validation)
+2. Global & route filters (pre)
+3. Upstream call
+4. Global & route filters (post)
+5. Post-security providers (if the provider implements `post`)
 
-If a request matches a provider’s *bypass rules* the provider is skipped,
-but the rest of the chain continues.
+If a request matches a provider's bypass rules, the provider is skipped, but the rest of the chain continues.
 
----
+## OIDC Provider
 
-## OIDC Provider (`type: "oidc"`)
+The OIDC provider authenticates requests with JWT tokens using OpenID Connect discovery:
 
-Authenticates requests that contain an `Authorization: Bearer <jwt>` header
-using OpenID Connect discovery and JWKS key retrieval.  
-Supports **HS256/384/512, RS256/384/512, PS256/384/512, ES256/384, EdDSA**
-algorithms.
-
-```jsonc
+```json
 {
   "type": "oidc",
   "config": {
     "issuer-uri": "https://id.example.com/.well-known/openid-configuration",
-    // Optional – validate the `aud` claim
     "aud": "my-api",
-    // Required for HS* algorithms only
     "shared-secret": "base64url-or-hex-encoded-secret",
-    // Optional per-provider bypass rules
     "bypass-routes": [
       {
-        "methods": ["GET", "POST"],    // HTTP methods (“*” for any)
-        "path": "/public/**"           // Glob pattern (see below)
+        "methods": ["GET", "POST"],
+        "path": "/public/**"
       },
       {
         "methods": ["*"],
@@ -404,10 +392,10 @@ algorithms.
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `issuer-uri` | String | — | OIDC discovery endpoint ending with `/.well-known/openid-configuration`. |
-| `aud` | String\|null | `null` | Expected audience (`aud`) claim. Omit to disable audience checking. |
-| `shared-secret` | String\|null | `null` | Shared secret for **HS*** algorithms. Ignored for RSA/EC/EdDSA. |
-| `bypass-routes` | Array | `[]` | Per-provider list of routes that skip OIDC checks. |
+| `issuer-uri` | String | Required | OIDC discovery endpoint ending with `/.well-known/openid-configuration` |
+| `aud` | String\|null | `null` | Expected audience (`aud`) claim. Omit to disable audience checking |
+| `shared-secret` | String\|null | `null` | Shared secret for HS* algorithms. Ignored for RSA/EC/EdDSA |
+| `bypass-routes` | Array | `[]` | List of routes that skip OIDC checks |
 
 ### Bypass Route Rules
 
@@ -415,20 +403,68 @@ Each object inside `bypass-routes` has:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `methods` | String[] | List of HTTP methods to match. Use `"*"` to match any method. |
-| `path` | String | Glob pattern applied to the request path (`/api/**`, `/static/*.jpg`, etc.). Globbing follows the same semantics as the path predicate. |
+| `methods` | String[] | List of HTTP methods to match. Use `"*"` to match any method |
+| `path` | String | Glob pattern applied to the request path |
 
-> **Tip:** You can have multiple OIDC providers in the chain—for example, one
-> for first-party tokens and another for partner identities.
+> **Tip:** You can have multiple OIDC providers in the chain—for example, one for first-party tokens and another for partner identities.
 
----
+## Environment Variable Configuration
 
-### Minimal Example with Security
+Foxy supports configuration via environment variables using the following mapping rules:
 
-```jsonc
+- Variables must start with the prefix (`FOXY_` by default)
+- The prefix is stripped and the remainder is converted to lowercase
+- Underscores (`_`) are converted to dots (`.`) for nested access
+
+Examples:
+- `FOXY_SERVER_HOST=0.0.0.0` → `server.host`
+- `FOXY_PROXY_TIMEOUT=60` → `proxy.timeout`
+- `FOXY_PROXY_LOG_LEVEL=debug` → `proxy.log_level`
+
+## Configuration Examples
+
+### Basic Proxy with Path Rewriting
+
+```json
 {
-  "server": { "host": "0.0.0.0", "port": 8080 },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080
+  },
+  "routes": [
+    {
+      "id": "api",
+      "target": "https://api.example.com",
+      "filters": [
+        {
+          "type": "path_rewrite",
+          "config": {
+            "pattern": "^/api/(.*)",
+            "replacement": "/v2/$1"
+          }
+        }
+      ],
+      "predicates": [
+        {
+          "type_": "path",
+          "config": {
+            "pattern": "/api/*"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
 
+### Proxy with Security
+
+```json
+{
+  "server": { 
+    "host": "0.0.0.0", 
+    "port": 8080 
+  },
   "proxy": {
     "timeout": 30,
     "security_chain": [
@@ -439,13 +475,12 @@ Each object inside `bypass-routes` has:
           "aud": "my-api",
           "bypass-routes": [
             { "methods": ["GET"], "path": "/health" },
-            { "methods": ["*"],   "path": "/public/**" }
+            { "methods": ["*"], "path": "/public/**" }
           ]
         }
       }
     ]
   },
-
   "routes": [
     {
       "id": "api",
@@ -459,34 +494,24 @@ Each object inside `bypass-routes` has:
 ```
 
 With this configuration:
+* Any request to `/health` or `/public/**` bypasses JWT validation
+* All other `/api/**` requests must contain a valid bearer token issued by `https://id.example.com` with `aud` = `"my-api"`
 
-* Any request to `/health` or `/public/**` bypasses JWT validation.
-* All other `/api/**` requests must contain a valid bearer token issued by
-  `https://id.example.com` with `aud` =`"my-api"`.
-
-
-## Complete Configuration Example
-
-Here's a complete configuration example:
+### Advanced Routing Example
 
 ```json
 {
   "server": {
-    "host": "127.0.0.1",
+    "host": "0.0.0.0",
     "port": 8080
   },
   "proxy": {
-    "timeout": 30,
     "global_filters": [
       {
         "type": "logging",
         "config": {
           "log_request_headers": true,
-          "log_request_body": true,
-          "log_response_headers": true,
-          "log_response_body": true,
-          "log_level": "debug",
-          "max_body_size": 1024
+          "log_level": "debug"
         }
       }
     ]
@@ -551,7 +576,6 @@ Here's a complete configuration example:
     {
       "id": "resources",
       "target": "https://resources.example.com",
-      "filters": [],
       "priority": 50,
       "predicates": [
         {
@@ -570,19 +594,4 @@ In this example:
 1. Global logging filter is applied to all routes
 2. The `/` path with GET requests is rewritten to `/get` and forwarded to `https://api.example.com/get`
 3. The `/` path with POST requests is rewritten to `/post` and forwarded to `https://api.example.com/post`
-4. Paths starting with `/resources/` are forwarded to `https://resources.example.com/resources/...` without modification
-
-## Environment Variable Configuration
-
-Foxy also supports configuration via environment variables. The environment variable names are mapped to configuration keys using the following rules:
-
-- Variables must start with the prefix (`FOXY_` by default)
-- The prefix is stripped and the remainder is converted to lowercase
-- Underscores (`_`) are converted to dots (`.`) for nested access
-
-Examples:
-- `FOXY_SERVER_HOST=0.0.0.0` → `server.host`
-- `FOXY_PROXY_TIMEOUT=60` → `proxy.timeout`
-- `FOXY_PROXY_LOG_LEVEL=debug` → `proxy.log_level`
-
-Complex structures like routes and filters are better configured via files, but simple values can be overridden via environment variables.
+4. Paths starting with `/resources/` are forwarded to `https://resources.example.com/resources/...`
