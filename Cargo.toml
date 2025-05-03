@@ -11,6 +11,8 @@ keywords = ["http", "proxy", "extensible", "configurable"]
 categories = ["web-programming", "network-programming"]
 
 [dependencies]
+openssl = { version = "0.10.72", features = ["vendored"] }
+
 # General
 env_logger = "0.11.8"
 log = "0.4.27"
