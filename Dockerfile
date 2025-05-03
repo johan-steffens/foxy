@@ -10,7 +10,10 @@ WORKDIR /app
 ENV PKG_CONFIG_ALLOW_CROSS=1 \
     PKGCONFIG_SYSROOTDIR=/ \
     OPENSSL_STATIC=1
-RUN snap install zig --classic --beta
+RUN wget https://ziglang.org/builds/zig-linux-aarch64-0.15.0-dev.452+c0ec264f7.tar.xz \
+    && tar xvf zig-linux-aarch64-0.15.0-dev.452+c0ec264f7.tar.xz \
+    && rm -f zig-linux-aarch64-0.15.0-dev.452+c0ec264f7.tar.xz \
+    && mv zig-linux-aarch64-0.15.0-dev.452+c0ec264f7 /usr/local/zig
 RUN cargo install --locked cargo-zigbuild cargo-chef
 RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
