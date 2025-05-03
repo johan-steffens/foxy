@@ -6,6 +6,10 @@ FROM --platform=$BUILDPLATFORM clux/muslrust:stable AS chef
 USER root
 WORKDIR /app
 
+RUN dpkg --add-architecture arm64 \
+    && apt update \
+    && apt install musl-dev
+
 RUN cargo install --locked cargo-chef
 RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
