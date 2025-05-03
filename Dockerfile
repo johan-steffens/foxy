@@ -6,10 +6,6 @@ FROM --platform=$BUILDPLATFORM clux/muslrust:stable AS chef
 USER root
 WORKDIR /app
 
-# vendored OpenSSL: no system openssl-dev, but we need perl & make
-ENV PKG_CONFIG_ALLOW_CROSS=1 \
-    PKGCONFIG_SYSROOTDIR=/ \
-    OPENSSL_STATIC=1
 RUN cargo install --locked cargo-chef
 RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
