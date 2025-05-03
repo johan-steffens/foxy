@@ -10,7 +10,7 @@ WORKDIR /app
 ENV PKG_CONFIG_ALLOW_CROSS=1 \
     PKGCONFIG_SYSROOTDIR=/ \
     OPENSSL_STATIC=1
-RUN apt install --no-cache musl-dev zig perl make pkgconf
+RUN apt install zig perl make pkgconf
 RUN cargo install --locked cargo-zigbuild cargo-chef
 RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
