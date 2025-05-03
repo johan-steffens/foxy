@@ -8,6 +8,9 @@
 //! in this module.  No protocol-level logic lives here; that sits in
 //! `server.rs` (IO) and `filters.rs` (behaviour).
 
+#[cfg(test)]
+mod tests;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};

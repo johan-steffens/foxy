@@ -18,6 +18,9 @@
 
 mod predicates;
 
+#[cfg(test)]
+mod tests;
+
 pub use predicates::*;
 
 use std::collections::HashMap;

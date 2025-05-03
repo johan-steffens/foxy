@@ -8,6 +8,9 @@
 //! wires up the filter graph and returns a single [`ProxyCore`] ready to be
 //! passed into [`ProxyServer::serve`].
 
+#[cfg(test)]
+mod tests;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use log::LevelFilter;
@@ -113,9 +116,14 @@ impl FoxyLoader {
 
     /// Build and initialize Foxy.
     pub async fn build(self) -> Result<Foxy, LoaderError> {
-        env_logger::Builder::new()
-            .filter_level(LevelFilter::Trace)  // Set this to Debug or Trace for more detailed logs
-            .init();
+        // Only initialize the logger if it hasn't been initialized yet
+        // This helps prevent issues in tests that run multiple builds
+        if env_logger::try_init().is_ok() {
+            env_logger::Builder::new()
+                .filter_level(LevelFilter::Trace)  // Set this to Debug or Trace for more detailed logs
+                .try_init()
+                .ok(); // Ignore errors if logger is already initialized
+        }
 
         log::info!("Foxy starting up");
 

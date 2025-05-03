@@ -30,6 +30,9 @@ mod file;
 mod env;
 pub mod error;
 
+#[cfg(test)]
+mod tests;
+
 pub use error::ConfigError;
 pub use file::FileConfigProvider;
 pub use env::EnvConfigProvider;
@@ -112,7 +115,9 @@ impl Config {
 
     /// Get a raw configuration value.
     fn get_raw(&self, key: &str) -> Result<Option<Value>, ConfigError> {
-        for provider in &self.providers {
+        // Iterate through providers in reverse order to respect priority
+        // Later providers (higher index) should override earlier ones
+        for provider in self.providers.iter().rev() {
             if provider.has(key) {
                 return provider.get_raw(key);
             }
@@ -145,45 +150,5 @@ impl Config {
     pub fn default_file(file_path: &str) -> Result<Self, ConfigError> {
         let provider = FileConfigProvider::new(file_path)?;
         Ok(Self::builder().with_provider(provider).build())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_builder_pattern() {
-        let config = Config::builder()
-            .with_provider(MockProvider::new("mock1"))
-            .with_provider(MockProvider::new("mock2"))
-            .build();
-
-        assert_eq!(config.providers.len(), 2);
-    }
-
-    #[derive(Debug)]
-    struct MockProvider {
-        name: String,
-    }
-
-    impl MockProvider {
-        fn new(name: &str) -> Self {
-            Self { name: name.to_string() }
-        }
-    }
-
-    impl ConfigProvider for MockProvider {
-        fn get_raw(&self, _key: &str) -> Result<Option<Value>, ConfigError> {
-            Ok(None)
-        }
-
-        fn has(&self, _key: &str) -> bool {
-            false
-        }
-
-        fn provider_name(&self) -> &str {
-            &self.name
-        }
     }
 }

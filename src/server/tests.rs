@@ -26,3 +26,30 @@ fn convert_hyper_response(resp: Response<Full<Bytes>>) -> ProxyResponse {
         context: Arc::new(RwLock::new(ResponseContext::default())),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{HttpMethod, ProxyRequest, ProxyResponse, RequestContext};
+    use hyper::{Request, StatusCode};
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn test_convert_hyper_response() {
+        // Create a hyper response
+        let hyper_response = Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "application/json")
+            .body(Full::new(Bytes::from(r#"{"result":"success"}"#)))
+            .unwrap();
+        
+        // Convert to proxy response
+        let proxy_response = convert_hyper_response(hyper_response);
+        
+        // Verify the conversion
+        assert_eq!(proxy_response.status, 200);
+        assert!(proxy_response.headers.contains_key("content-type"));
+        let content_type = proxy_response.headers.get("content-type").unwrap();
+        assert_eq!(content_type, "application/json");
+    }
+}

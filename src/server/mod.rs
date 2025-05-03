@@ -18,6 +18,9 @@
 //! place.  This prevents unbounded memory usage when clients upload large
 //! files but still gives you a safety-valve.
 
+#[cfg(test)]
+mod tests;
+
 use std::sync::Arc;
 use std::net::SocketAddr;
 use std::convert::Infallible;

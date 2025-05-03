@@ -9,6 +9,9 @@
 
 pub mod oidc;
 
+#[cfg(test)]
+mod tests;
+
 use async_trait::async_trait;
 use std::{fmt, sync::Arc};
 use serde::Deserialize;

@@ -8,6 +8,9 @@
 //! a `route` for them to execute.  Each filter is documented below together
 //! with its configuration schema.
 
+#[cfg(test)]
+mod tests;
+
 use std::cmp;
 use std::sync::Arc;
 use std::time::Instant;
