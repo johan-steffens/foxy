@@ -36,9 +36,14 @@ use futures_util::TryStreamExt;
 use http_body_util::{BodyExt, Full};
 use reqwest::Body;
 use serde::{Serialize, Deserialize};
-use log::{debug};
-
+use log::{debug, info, warn, error, trace};
+use tokio::signal;
+use tokio::signal::unix::{signal, SignalKind};
+use tokio::task::{Id, JoinSet};
 use crate::core::{ProxyCore, ProxyRequest, ProxyResponse, ProxyError, HttpMethod, RequestContext};
+use std::collections::HashMap;
+use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,62 +81,161 @@ pub struct ProxyServer {
     config: ServerConfig,
     /// Proxy core
     core: Arc<ProxyCore>,
+    /// Shutdown senders for each connection task
+    shutdown_senders: Arc<RwLock<HashMap<Id, oneshot::Sender<()>>>>,
 }
 
 impl ProxyServer {
     /// Create a new proxy server with the given configuration and proxy core.
     pub fn new(config: ServerConfig, core: Arc<ProxyCore>) -> Self {
-        Self { config, core }
+        Self { 
+            config, 
+            core,
+            shutdown_senders: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
     /// Start the proxy server.
     pub async fn start(&self) -> Result<(), ProxyError> {
-        let addr: SocketAddr = format!("{}:{}", self.config.host, self.config.port)
-            .parse()
+        let addr = format!("{}:{}", self.config.host, self.config.port)
+            .parse::<SocketAddr>()
             .map_err(|e| ProxyError::Other(format!("Invalid server address: {}", e)))?;
+        
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .map_err(|e| ProxyError::Other(format!("Failed to bind: {}", e)))?;
+        
+        info!("Foxy proxy listening on http://{}", addr);
 
+        // prepare signal futures (no errors at creation)
+        let ctrl_c = signal::ctrl_c();
+
+        // On Unix, install the SIGTERM stream once and store it in a variable
+        #[cfg(unix)]
+        let mut term_stream = signal(SignalKind::terminate())
+            .map_err(|e| ProxyError::Other(format!("Cannot install SIGTERM handler: {}", e)))?;
+
+        // Build the actual future that we'll await
+        #[cfg(unix)]
+        let sigterm = term_stream.recv();
+        #[cfg(not(unix))]
+        let sigterm = std::future::pending();
+
+        // Pin them on the stack so select! can poll them
+        tokio::pin!(ctrl_c);
+        tokio::pin!(sigterm);
+
+        // Create and use the shared shutdown senders map
+        let shutdown_senders = self.shutdown_senders.clone();
+        
+        // Track spawned connection tasks
+        let mut join_set = JoinSet::new();
         let core = self.core.clone();
 
-        // Create a TCP listener
-        let listener = tokio::net::TcpListener::bind(addr).await
-            .map_err(|e| ProxyError::Other(format!("Failed to bind to address: {}", e)))?;
-        
-        log::info!("Foxy proxy server listening on http://{}", addr);
-        
-        // Accept connections
+        // Flag to indicate shutdown has been initiated
+        let shutdown_initiated = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let shutdown_initiated_clone = shutdown_initiated.clone();
+
         loop {
-            let (stream, remote_addr) = match listener.accept().await {
-                Ok(conn) => conn,
-                Err(e) => {
-                    log::error!("Failed to accept connection: {}", e);
-                    continue;
+            tokio::select! {
+                _ = &mut ctrl_c => {
+                    info!("Received Ctrl-C; initiating graceful shutdown");
+                    shutdown_initiated_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+                    break;
                 }
-            };
-            
-            let core = core.clone();
-            let client_ip = remote_addr.ip().to_string();
-            
-            // Spawn a task to handle the connection
-            tokio::spawn(async move {
-                let service = service_fn(move |req| {
-                    debug!("Incoming request over {:?}", req.version());
-                    let core = core.clone();
-                    let client_ip = client_ip.clone();
-                    handle_request(req, core, client_ip)
-                });
-
-                // Wrap the TcpStream with TokioIo for compatibility with hyper
-                let io = TokioIo::new(stream);
-
-                // Serve either HTTP/1.1 or HTTP/2, negotiated automatically.
-                if let Err(e) = AutoBuilder::new(TokioExecutor::new())
-                    .serve_connection(io, service)
-                    .await
-                {
-                    log::error!("Error serving connection: {}", e);
+                _ = &mut sigterm => {
+                    info!("Received SIGTERM; initiating graceful shutdown");
+                    shutdown_initiated_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+                    break;
                 }
-            });
+                accept = listener.accept() => {
+                    match accept {
+                        Ok((stream, remote_addr)) => {
+                            // If shutdown has been initiated, reject new connections
+                            if shutdown_initiated.load(std::sync::atomic::Ordering::SeqCst) {
+                                info!("Rejecting new connection during shutdown");
+                                continue;
+                            }
+
+                            let core = core.clone();
+                            let client_ip = remote_addr.ip().to_string();
+                            let (tx, rx) = oneshot::channel();
+                            
+                            let handle = join_set.spawn(async move {
+                                let service = service_fn(move |req: Request<Incoming>| {
+                                    debug!("Incoming over {:?}", req.version());
+                                    handle_request(req, core.clone(), client_ip.clone())
+                                });
+                                let io = TokioIo::new(stream);
+
+                                // Use the shutdown signal to properly close connections
+                                let builder = {
+                                    let mut b = AutoBuilder::new(TokioExecutor::new());
+                                    b.http1();
+                                    b.http2();
+                                    b
+                                };
+
+                                // Create a graceful shutdown future
+                                let graceful_shutdown = async {
+                                    // Wait for the shutdown signal
+                                    let _ = rx.await;
+                                    debug!("Connection received shutdown signal");
+                                };
+
+                                // Create the connection future
+                                let connection = builder.serve_connection(io, service);
+
+                                // Run both futures concurrently
+                                tokio::select! {
+                                    res = connection => {
+                                        if let Err(e) = res {
+                                            error!("Connection error: {}", e);
+                                        }
+                                    }
+                                    _ = graceful_shutdown => {
+                                        debug!("Connection shutting down gracefully");
+                                    }
+                                }
+                            });
+                            
+                            // Store the shutdown sender for this task
+                            shutdown_senders.write().await.insert(handle.id(), tx);
+                        }
+                        Err(e) => error!("Accept error: {}", e),
+                    }
+                }
+            }
         }
+
+        // Stop accepting connections and signal existing ones to shut down
+        info!("Shutting down; waiting for {} connection(s)", join_set.len());
+        
+        // Signal all connections to close gracefully
+        {
+            let mut senders = shutdown_senders.write().await;
+            for (_, sender) in senders.drain() {
+                let _ = sender.send(());
+            }
+        }
+        
+        // Wait for connections to complete gracefully with a timeout
+        let shutdown_timeout = tokio::time::Duration::from_secs(30);
+        let shutdown_future = async {
+            while let Some(res) = join_set.join_next().await {
+                if let Err(e) = res {
+                    error!("Connection task failed: {}", e);
+                }
+            }
+        };
+
+        match tokio::time::timeout(shutdown_timeout, shutdown_future).await {
+            Ok(_) => info!("All connections drained gracefully"),
+            Err(_) => warn!("Shutdown timed out after {} seconds", shutdown_timeout.as_secs()),
+        }
+        
+        info!("Shutdown complete");
+        Ok(())
     }
 }
 
@@ -194,7 +298,7 @@ async fn handle_request(
     let proxy_req = match convert_hyper_request(req, client_ip).await {
         Ok(r) => r,
         Err(e) => {
-            log::error!("convert request: {e}");
+            error!("convert request: {e}");
             return Ok(Response::builder()
                 .status(500)
                 .body(Body::from("Internal Server Error"))
@@ -207,7 +311,7 @@ async fn handle_request(
         Ok(proxy_resp) => match convert_proxy_response(proxy_resp) {
             Ok(resp) => Ok(resp),
             Err(e) => {
-                log::error!("convert response: {e}");
+                error!("convert response: {e}");
                 Ok(Response::builder()
                     .status(500)
                     .body(Body::from("Internal Server Error"))
@@ -215,7 +319,7 @@ async fn handle_request(
             }
         },
         Err(e) => {
-            log::error!("proxy error: {e}");
+            error!("proxy error: {e}");
             let (status, msg) = match e {
                 ProxyError::Timeout(d)     => (504, format!("Gateway Timeout after {d:?}")),
                 ProxyError::RoutingError(_) => (404, "Route not found".into()),
