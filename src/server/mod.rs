@@ -38,12 +38,14 @@ use reqwest::Body;
 use serde::{Serialize, Deserialize};
 use log::{debug, info, warn, error, trace};
 use tokio::signal;
-use tokio::signal::unix::{signal, SignalKind};
 use tokio::task::{Id, JoinSet};
 use crate::core::{ProxyCore, ProxyRequest, ProxyResponse, ProxyError, HttpMethod, RequestContext};
 use std::collections::HashMap;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+
+#[cfg(unix)]
+use tokio::signal::unix::{signal, SignalKind};
 
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
