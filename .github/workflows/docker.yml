@@ -15,6 +15,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cache Cargo registry & git index
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: Read crate version
         id: crate
         run: |
@@ -44,3 +54,5 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/foxy:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/foxy:${{ env.CARGO_VERSION }}
+          cache-from: type=gha,scope=foxy
+          cache-to:   type=gha,scope=foxy,mode=max

@@ -26,14 +26,15 @@ RUN cargo chef cook --recipe-path recipe.json --release --zigbuild \
 
 # (4) build for current architecture
 COPY . .
-RUN cargo zigbuild -r --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl && \
-  mkdir /app/linux && \
-  cp target/aarch64-unknown-linux-musl/release/foxy /app/linux/arm64 && \
-  cp target/x86_64-unknown-linux-musl/release/foxy /app/linux/amd64
+RUN cargo zigbuild -r --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl \
+  && mkdir /app/linux \
+  && cp target/aarch64-unknown-linux-musl/release/foxy /app/foxy-arm64 \
+  && cp target/x86_64-unknown-linux-musl/release/foxy /app/foxy-amd64
 
 # --- Runtime stage ---
 FROM alpine:3.21
-
+ARG TARGETARCH
 RUN apk add --no-cache ca-certificates
-COPY --from=builder /app/${TARGETPLATFORM} /foxy
+
+COPY --from=builder /app/foxy-${TARGETARCH} /foxy
 CMD "/foxy"
