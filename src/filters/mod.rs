@@ -210,32 +210,43 @@ async fn tee_body(
 ) -> Result<(reqwest::Body, String), ProxyError> {
     // Turn the body into a stream of Bytes
     let mut stream_in = body.into_data_stream();
-
-    // Collect prefix while buffering chunks for replay
-    let mut captured = Vec::<u8>::new();
-    let mut buffered  = Vec::<Result<Bytes, std::io::Error>>::new();
-
+    
+    // Create a buffer to capture the first `limit` bytes
+    let mut captured = Vec::<u8>::with_capacity(limit);
+    
+    // Create a vector to collect chunks for replay
+    let mut chunks = Vec::new();
+    
+    // Read chunks until we have enough bytes or reach EOF
     while captured.len() < limit {
-        match stream_in.try_next().await {
-            Ok(Some(chunk)) => {
-                let take = cmp::min(limit - captured.len(), chunk.len());
-                captured.extend_from_slice(&chunk[..take]);
-                buffered.push(Ok(chunk));
+        match stream_in.next().await {
+            Some(Ok(chunk)) => {
+                // Store the chunk for replay
+                let chunk_clone = chunk.clone();
+                chunks.push(Ok(chunk));
+                
+                // Capture bytes up to the limit
+                if captured.len() < limit {
+                    let remaining = limit - captured.len();
+                    let take = cmp::min(remaining, chunk_clone.len());
+                    captured.extend_from_slice(&chunk_clone[..take]);
+                }
             }
-            Ok(None) => break,            // EOF
-            Err(e) => return Err(ProxyError::Other(e.to_string())),
+            Some(Err(e)) => return Err(ProxyError::Other(e.to_string())),
+            None => break, // EOF
         }
     }
-
-    // `stream_in` now yields the remainder of the body.
-    // Concatenate the buffered prefix with the remaining stream.
-    let combined_stream = stream::iter(buffered).chain(
-        stream_in.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
-    );
-
+    
+    // Create a stream that yields our buffered chunks followed by any remaining chunks
+    let combined_stream = futures_util::stream::iter(chunks)
+        .chain(stream_in.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
+    
+    // Wrap the stream back into a reqwest::Body
     let new_body = reqwest::Body::wrap_stream(combined_stream);
-    let snippet  = String::from_utf8_lossy(&captured).to_string();
-
+    
+    // Convert captured bytes to string
+    let snippet = String::from_utf8_lossy(&captured).to_string();
+    
     Ok((new_body, snippet))
 }
 

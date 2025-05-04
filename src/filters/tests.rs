@@ -4,6 +4,9 @@
 
 #[cfg(test)]
 mod tests {
+    use bytes::Bytes;
+    use futures_util::StreamExt;
+    use http_body_util::BodyExt;
     use crate::{
         HttpMethod, ProxyRequest,
         LoggingFilter, HeaderFilter, TimeoutFilter,
@@ -175,5 +178,46 @@ mod tests {
 
         // Verify path was not changed
         assert_eq!(filtered_request.path, "/other/path");
+    }
+    
+    #[tokio::test]
+    async fn test_tee_body_streaming() {
+        use crate::filters::tee_body;
+        use std::time::Duration;
+        
+        // Create a large body with multiple chunks
+        let chunk1 = Bytes::from(vec![b'a'; 500]);
+        let chunk2 = Bytes::from(vec![b'b'; 500]);
+        let chunk3 = Bytes::from(vec![b'c'; 500]);
+        
+        // Create a stream of chunks
+        let stream = futures_util::stream::iter(vec![
+            Ok::<_, std::io::Error>(chunk1),
+            Ok(chunk2),
+            Ok(chunk3),
+        ]);
+        
+        // Create a body from the stream
+        let body = reqwest::Body::wrap_stream(stream);
+        
+        // Apply tee_body with a limit of 800 bytes
+        let (new_body, snippet) = tee_body(body, 800).await.unwrap();
+        
+        // Consume the body to ensure all chunks are processed
+        let mut stream = new_body.into_data_stream();
+        let mut total_bytes = 0;
+        
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result.unwrap();
+            total_bytes += chunk.len();
+        }
+        
+        // Verify we read all 1500 bytes
+        assert_eq!(total_bytes, 1500);
+        
+        // Verify the snippet contains the first 800 bytes (500 'a's and 300 'b's)
+        assert_eq!(snippet.len(), 800);
+        assert_eq!(&snippet[0..500], &"a".repeat(500));
+        assert_eq!(&snippet[500..800], &"b".repeat(300));
     }
 }
