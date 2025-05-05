@@ -20,6 +20,7 @@
 
 #[cfg(test)]
 mod tests;
+mod health;
 
 use std::sync::Arc;
 use std::net::SocketAddr;
@@ -42,7 +43,7 @@ use tokio::task::{Id, JoinSet};
 use crate::core::{ProxyCore, ProxyRequest, ProxyResponse, ProxyError, HttpMethod, RequestContext};
 use std::collections::HashMap;
 use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
+use health::HealthServer;
 
 #[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};
@@ -57,6 +58,10 @@ pub struct ServerConfig {
     /// Port to listen on
     #[serde(default = "default_port")]
     pub port: u16,
+
+    /// Port to listen on for health/readiness checks
+    #[serde(default = "default_health_port")]
+    pub health_port: u16,
 }
 
 fn default_host() -> String {
@@ -67,11 +72,16 @@ fn default_port() -> u16 {
     8080
 }
 
+fn default_health_port() -> u16 {
+    8081
+}
+
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             host: default_host(),
             port: default_port(),
+            health_port: default_health_port(),
         }
     }
 }
@@ -108,6 +118,9 @@ impl ProxyServer {
             .map_err(|e| ProxyError::Other(format!("Failed to bind: {}", e)))?;
         
         info!("Foxy proxy listening on http://{}", addr);
+
+        let health_server = HealthServer::new(self.config.health_port);
+        health_server.set_ready();
 
         // prepare signal futures (no errors at creation)
         let ctrl_c = signal::ctrl_c();
