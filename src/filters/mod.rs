@@ -436,16 +436,20 @@ pub struct PathRewriteFilter {
 
 impl PathRewriteFilter {
     /// Create a new path rewrite filter with the given configuration.
-    pub fn new(config: PathRewriteFilterConfig) -> Self {
+    pub fn new(config: PathRewriteFilterConfig) -> Result<Self, ProxyError> {
         // Compile the regex
         let regex = Regex::new(&config.pattern)
-            .expect("Failed to compile path rewrite pattern");
+            .map_err(|e| {
+                let err = ProxyError::FilterError(format!("Invalid regex pattern '{}': {}", config.pattern, e));
+                log::error!("{}", err);
+                err
+            })?;
 
-        Self { config, regex }
+        Ok(Self { config, regex })
     }
 
     /// Create a new path rewrite filter with default configuration.
-    pub fn default() -> Self {
+    pub fn default() -> Result<Self, ProxyError> {
         Self::new(PathRewriteFilterConfig {
             pattern: "(.*)".to_string(),
             replacement: "$1".to_string(),
@@ -468,11 +472,14 @@ impl Filter for PathRewriteFilter {
     async fn pre_filter(&self, mut request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
         if self.config.rewrite_request {
             // Apply path rewriting on the request path
+            let original_path = request.path.clone();
             let rewritten_path = self.regex.replace_all(&request.path, &self.config.replacement).to_string();
 
-            if rewritten_path != request.path {
-                debug!("Rewriting path from {} to {}", request.path, rewritten_path);
+            if rewritten_path != original_path {
+                log::debug!("Rewriting path from {} to {}", original_path, rewritten_path);
                 request.path = rewritten_path;
+            } else {
+                log::trace!("Path rewrite pattern matched but did not change path: {}", original_path);
             }
         }
 
@@ -480,9 +487,12 @@ impl Filter for PathRewriteFilter {
     }
 
     async fn post_filter(&self, _request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
-        // For now, we don't implement response path rewriting 
-        // as it would require parsing and modifying the response body
-        // which is complex and content-type dependent
+        if self.config.rewrite_response {
+            log::debug!("Response path rewriting is configured but not implemented yet");
+            // TODO: Implement response path rewriting when needed
+            // This would require parsing and modifying the response body
+            // which is complex and content-type dependent
+        }
 
         Ok(response)
     }
@@ -495,28 +505,57 @@ pub struct FilterFactory;
 impl FilterFactory {
     /// Create a filter based on the filter type and configuration.
     pub fn create_filter(filter_type: &str, config: serde_json::Value) -> Result<Arc<dyn Filter>, ProxyError> {
+        log::debug!("Creating filter of type '{}' with config: {}", filter_type, config);
+        
         match filter_type {
             "logging" => {
                 let config: LoggingFilterConfig = serde_json::from_value(config)
-                    .map_err(|e| ProxyError::FilterError(format!("Invalid logging filter config: {}", e)))?;
+                    .map_err(|e| {
+                        let err = ProxyError::FilterError(format!("Invalid logging filter config: {}", e));
+                        log::error!("{}", err);
+                        err
+                    })?;
                 Ok(Arc::new(LoggingFilter::new(config)))
             },
             "header" => {
                 let config: HeaderFilterConfig = serde_json::from_value(config)
-                    .map_err(|e| ProxyError::FilterError(format!("Invalid header filter config: {}", e)))?;
+                    .map_err(|e| {
+                        let err = ProxyError::FilterError(format!("Invalid header filter config: {}", e));
+                        log::error!("{}", err);
+                        err
+                    })?;
                 Ok(Arc::new(HeaderFilter::new(config)))
             },
             "timeout" => {
                 let config: TimeoutFilterConfig = serde_json::from_value(config)
-                    .map_err(|e| ProxyError::FilterError(format!("Invalid timeout filter config: {}", e)))?;
+                    .map_err(|e| {
+                        let err = ProxyError::FilterError(format!("Invalid timeout filter config: {}", e));
+                        log::error!("{}", err);
+                        err
+                    })?;
                 Ok(Arc::new(TimeoutFilter::new(config)))
             },
             "path_rewrite" => {
                 let config: PathRewriteFilterConfig = serde_json::from_value(config)
-                    .map_err(|e| ProxyError::FilterError(format!("Invalid path rewrite filter config: {}", e)))?;
-                Ok(Arc::new(PathRewriteFilter::new(config)))
+                    .map_err(|e| {
+                        let err = ProxyError::FilterError(format!("Invalid path rewrite filter config: {}", e));
+                        log::error!("{}", err);
+                        err
+                    })?;
+                
+                match PathRewriteFilter::new(config) {
+                    Ok(filter) => Ok(Arc::new(filter)),
+                    Err(e) => {
+                        log::error!("Failed to create path rewrite filter: {}", e);
+                        Err(e)
+                    }
+                }
             },
-            _ => Err(ProxyError::FilterError(format!("Unknown filter type: {}", filter_type))),
+            _ => {
+                let err = ProxyError::FilterError(format!("Unknown filter type: {}", filter_type));
+                log::error!("{}", err);
+                Err(err)
+            },
         }
     }
 }

@@ -252,29 +252,68 @@ impl ProxyCore {
     /// Process a request through the proxy.
     pub async fn process_request(
         &self,
-        mut request: ProxyRequest,
+        request: ProxyRequest,
     ) -> Result<ProxyResponse, ProxyError> {
         let overall_start = Instant::now();
+        let method = request.method.to_string();
+        let path = request.path.clone();
+
+        log::trace!("Processing request: {} {}", method, path);
 
         /* ---------- Security chain pre auth ---------- */
-        let mut request = self.security_chain.read().await.apply_pre(request).await?;
+        let mut request = match self.security_chain.read().await.apply_pre(request).await {
+            Ok(req) => {
+                log::trace!("Security pre-auth passed for {} {}", method, path);
+                req
+            },
+            Err(e) => {
+                log::warn!("Security pre-auth failed for {} {}: {}", method, path, e);
+                return Err(e);
+            }
+        };
 
         /* ---------- PRE-filters ---------- */
         for f in self.global_filters.read().await.iter() {
             if f.filter_type().is_pre() || f.filter_type().is_both() {
-                request = f.pre_filter(request).await?;
+                log::trace!("Applying global pre-filter: {}", f.name());
+                match f.pre_filter(request).await {
+                    Ok(req) => request = req,
+                    Err(e) => {
+                        log::error!("Global pre-filter '{}' failed: {}", f.name(), e);
+                        return Err(e);
+                    }
+                }
             }
         }
-        let route          = self.router.route(&request).await?;
-        let route_filters  = route.filters.clone().unwrap_or_default();
+        
+        let route = match self.router.route(&request).await {
+            Ok(r) => {
+                log::debug!("Request {} {} matched route: {}", method, path, r.id);
+                r
+            },
+            Err(e) => {
+                log::warn!("No route found for {} {}: {}", method, path, e);
+                return Err(e);
+            }
+        };
+        
+        let route_filters = route.filters.clone().unwrap_or_default();
         for f in &route_filters {
             if f.filter_type().is_pre() || f.filter_type().is_both() {
-                request = f.pre_filter(request).await?;
+                log::trace!("Applying route pre-filter: {}", f.name());
+                match f.pre_filter(request).await {
+                    Ok(req) => request = req,
+                    Err(e) => {
+                        log::error!("Route pre-filter '{}' failed: {}", f.name(), e);
+                        return Err(e);
+                    }
+                }
             }
         }
 
         /* ---------- build outbound req ---------- */
         let url = format!("{}{}", route.target_base_url, request.path);
+        log::debug!("Forwarding to target: {}", url);
         let outbound_body = mem::replace(&mut request.body, reqwest::Body::from(""));
 
         let mut builder = self
@@ -289,19 +328,35 @@ impl ProxyCore {
 
         /* ---------- send with timeout ---------- */
         let timeout_dur =
-            Duration::from_secs(self.config.get_or_default("proxy.timeout", 30)?);
+            Duration::from_secs(self.config.get_or_default("proxy.timeout", 30).unwrap_or_else(|e| {
+                log::error!("Failed to get timeout config: {}", e);
+                30 // Default to 30 seconds on error
+            }));
 
         let upstream_start = Instant::now();
-        let resp = timeout(timeout_dur, builder.send())
-            .await
-            .map_err(|_| ProxyError::Timeout(timeout_dur))?
-            .map_err(ProxyError::ClientError)?;
+        log::trace!("Sending request to upstream with timeout: {:?}", timeout_dur);
+        
+        let resp = match timeout(timeout_dur, builder.send()).await {
+            Ok(result) => match result {
+                Ok(response) => response,
+                Err(e) => {
+                    log::error!("Upstream request failed: {}", e);
+                    return Err(ProxyError::ClientError(e));
+                }
+            },
+            Err(_) => {
+                log::warn!("Request to {} timed out after {:?}", url, timeout_dur);
+                return Err(ProxyError::Timeout(timeout_dur));
+            }
+        };
+        
         let upstream_elapsed = upstream_start.elapsed();
+        log::trace!("Received response from upstream in {:?}", upstream_elapsed);
 
         /* ---------- wrap streaming response ---------- */
-        let status   = resp.status().as_u16();
-        let headers  = resp.headers().clone();
-        let body     = reqwest::Body::wrap_stream(resp.bytes_stream());
+        let status = resp.status().as_u16();
+        let headers = resp.headers().clone();
+        let body = reqwest::Body::wrap_stream(resp.bytes_stream());
 
         let mut proxy_resp = ProxyResponse {
             status,
@@ -311,20 +366,46 @@ impl ProxyCore {
         };
         proxy_resp.context.write().await.receive_time = Some(Instant::now());
 
+        log::debug!("Upstream responded with status: {}", status);
+
         /* ---------- POST-filters ---------- */
         for f in &route_filters {
             if f.filter_type().is_post() || f.filter_type().is_both() {
-                proxy_resp = f.post_filter(request.clone(), proxy_resp).await?;
+                log::trace!("Applying route post-filter: {}", f.name());
+                match f.post_filter(request.clone(), proxy_resp).await {
+                    Ok(resp) => proxy_resp = resp,
+                    Err(e) => {
+                        log::error!("Route post-filter '{}' failed: {}", f.name(), e);
+                        return Err(e);
+                    }
+                }
             }
         }
+        
         for f in self.global_filters.read().await.iter() {
             if f.filter_type().is_post() || f.filter_type().is_both() {
-                proxy_resp = f.post_filter(request.clone(), proxy_resp).await?;
+                log::trace!("Applying global post-filter: {}", f.name());
+                match f.post_filter(request.clone(), proxy_resp).await {
+                    Ok(resp) => proxy_resp = resp,
+                    Err(e) => {
+                        log::error!("Global post-filter '{}' failed: {}", f.name(), e);
+                        return Err(e);
+                    }
+                }
             }
         }
 
         /* ---------- Security chain post auth ---------- */
-        proxy_resp = self.security_chain.read().await.apply_post(request.clone(), proxy_resp).await?;
+        proxy_resp = match self.security_chain.read().await.apply_post(request.clone(), proxy_resp).await {
+            Ok(resp) => {
+                log::trace!("Security post-auth passed for {} {}", method, path);
+                resp
+            },
+            Err(e) => {
+                log::warn!("Security post-auth failed for {} {}: {}", method, path, e);
+                return Err(e);
+            }
+        };
         
         /* ---------- timing log ---------- */
         let overall_elapsed = overall_start.elapsed();

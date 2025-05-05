@@ -50,6 +50,7 @@ pub mod router;
 pub mod filters;
 pub mod server;
 pub mod security;
+pub mod logging;
 
 // Re-export key types at the crate root for convenience
 pub use config::{ConfigProvider, ConfigProviderExt, ConfigError};
@@ -74,3 +75,4 @@ pub use security::{
     oidc::{OidcProvider, OidcConfig},
 };
 pub use server::{ProxyServer, ServerConfig};
+pub use logging::{init as init_logging, log_error, log_warning, log_debug, log_trace, log_info};

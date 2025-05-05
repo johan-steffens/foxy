@@ -145,7 +145,7 @@ mod tests {
             rewrite_request: true,
             rewrite_response: false,
         };
-        let filter = PathRewriteFilter::new(config);
+        let filter = PathRewriteFilter::new(config).expect("Failed to create filter");
 
         // Apply the filter
         let filtered_request = filter.pre_filter(request).await.unwrap();
@@ -171,7 +171,7 @@ mod tests {
             rewrite_request: true,
             rewrite_response: false,
         };
-        let filter = PathRewriteFilter::new(config);
+        let filter = PathRewriteFilter::new(config).expect("Failed to create filter");
 
         // Apply the filter
         let filtered_request = filter.pre_filter(request).await.unwrap();

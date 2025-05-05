@@ -265,6 +265,9 @@ async fn convert_hyper_request(
     let query = uri.query().map(|q| q.to_owned());
     let headers = req.headers().clone();
 
+    log::trace!("Converting request: {} {} with {} headers", 
+        method, path, headers.len());
+
     // Incoming → Stream → reqwest::Body
     let hyper_stream = req.into_body().into_data_stream();
     let byte_stream = hyper_stream.map_ok(Bytes::from);
@@ -286,21 +289,38 @@ async fn convert_hyper_request(
 
 /// Convert a proxy response to a hyper response.
 fn convert_proxy_response(resp: ProxyResponse) -> Result<Response<Body>, ProxyError> {
+    log::trace!("Converting response with status {} and {} headers", 
+        resp.status, resp.headers.len());
+        
     let stream = resp
         .body
         .into_data_stream()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+        .map_err(|e| {
+            log::error!("Error streaming response body: {}", e);
+            std::io::Error::new(std::io::ErrorKind::Other, e)
+        });
 
     let body = Body::wrap_stream(stream);
 
     let mut builder = Response::builder().status(resp.status);
-    *builder
-        .headers_mut()
-        .ok_or_else(|| ProxyError::Other("unable to set headers".into()))? = resp.headers;
+    match builder.headers_mut() {
+        Some(headers) => {
+            *headers = resp.headers;
+            Ok(())
+        },
+        None => {
+            log::error!("Failed to get mutable headers from response builder");
+            Err(ProxyError::Other("unable to set headers".into()))
+        }
+    }?;
 
-    Ok(builder
+    builder
         .body(body)
-        .map_err(|e| ProxyError::Other(e.to_string()))?)
+        .map_err(|e| {
+            let err = ProxyError::Other(e.to_string());
+            log::error!("Failed to build response: {}", err);
+            err
+        })
 }
 
 /// Handle an incoming HTTP request.
@@ -310,10 +330,15 @@ async fn handle_request(
     client_ip: String,
 ) -> Result<Response<Body>, Infallible> {
     /* ---- convert Hyper → ProxyRequest ---- */
-    let proxy_req = match convert_hyper_request(req, client_ip).await {
+    let method = req.method().clone();
+    let path = req.uri().path().to_owned();
+    
+    log::debug!("Received request: {} {}", method, path);
+    
+    let proxy_req = match convert_hyper_request(req, client_ip.clone()).await {
         Ok(r) => r,
         Err(e) => {
-            error!("convert request: {e}");
+            log::error!("Failed to convert request {} {}: {}", method, path, e);
             return Ok(Response::builder()
                 .status(500)
                 .body(Body::from("Internal Server Error"))
@@ -323,23 +348,43 @@ async fn handle_request(
 
     /* ---- core processing ---- */
     match core.process_request(proxy_req).await {
-        Ok(proxy_resp) => match convert_proxy_response(proxy_resp) {
-            Ok(resp) => Ok(resp),
-            Err(e) => {
-                error!("convert response: {e}");
-                Ok(Response::builder()
-                    .status(500)
-                    .body(Body::from("Internal Server Error"))
-                    .unwrap())
+        Ok(proxy_resp) => {
+            log::debug!("Successfully processed request {} {} -> {}", method, path, proxy_resp.status);
+            match convert_proxy_response(proxy_resp) {
+                Ok(resp) => Ok(resp),
+                Err(e) => {
+                    log::error!("Failed to convert response for {} {}: {}", method, path, e);
+                    Ok(Response::builder()
+                        .status(500)
+                        .body(Body::from("Internal Server Error"))
+                        .unwrap())
+                }
             }
         },
         Err(e) => {
-            error!("proxy error: {e}");
-            let (status, msg) = match e {
-                ProxyError::Timeout(d)     => (504, format!("Gateway Timeout after {d:?}")),
-                ProxyError::RoutingError(_) => (404, "Route not found".into()),
-                _                           => (500, "Internal Server Error".into()),
+            let (status, msg) = match &e {
+                ProxyError::Timeout(d) => {
+                    log::warn!("Request {} {} timed out after {:?}", method, path, d);
+                    (504, format!("Gateway Timeout after {d:?}"))
+                },
+                ProxyError::RoutingError(msg) => {
+                    log::warn!("Routing error for {} {}: {}", method, path, msg);
+                    (404, "Route not found".into())
+                },
+                ProxyError::SecurityError(msg) => {
+                    log::warn!("Security error for {} {}: {}", method, path, msg);
+                    (403, "Forbidden".into())
+                },
+                ProxyError::ClientError(err) => {
+                    log::error!("Client error for {} {}: {}", method, path, err);
+                    (502, "Bad Gateway".into())
+                },
+                _ => {
+                    log::error!("Internal error processing {} {}: {}", method, path, e);
+                    (500, "Internal Server Error".into())
+                },
             };
+            
             Ok(Response::builder()
                 .status(status)
                 .body(Body::from(msg))
