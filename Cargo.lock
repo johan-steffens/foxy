@@ -297,7 +297,7 @@ dependencies = [
 
 [[package]]
 name = "foxy-io"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "async-trait",
  "bytes",
@@ -309,6 +309,7 @@ dependencies = [
  "hyper-util",
  "jsonwebtoken",
  "log",
+ "once_cell",
  "openssl",
  "regex",
  "reqwest",

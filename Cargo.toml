@@ -1,6 +1,6 @@
 [package]
 name = "foxy-io"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2024"
 authors = ["Johan Steffens <johan@steff.co.za>"]
 description = "A configuration-driven and hyper-extensible HTTP proxy library"
@@ -46,6 +46,7 @@ jsonwebtoken = "9"
 
 # Testing utilities
 tempfile = "3.6"
+once_cell = "1.21.3"
 
 [features]
 default = []

@@ -21,10 +21,63 @@ use http_body_util::BodyExt;
 use log::{trace, debug, info, warn, error, Level};
 use regex::Regex;
 use serde::{Serialize, Deserialize};
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
+use std::sync::RwLock;
 
 use crate::core::{
     Filter, FilterType, ProxyRequest, ProxyResponse, ProxyError
 };
+
+/// Constructor signature every dynamic filter must implement
+pub type FilterConstructor =
+fn(serde_json::Value) -> Result<Arc<dyn Filter>, ProxyError>;
+
+
+/// Global registry – `register_filter()` writes to it,
+/// `FilterFactory::create_filter()` reads from it.
+static FILTER_REGISTRY: Lazy<RwLock<HashMap<String, FilterConstructor>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
+/// Register a filter under a unique name.
+/// Call this **before** you build Foxy:
+///
+/// ```rust
+/// use log::Level::Debug;
+/// use foxy::{filters::register_filter, Filter};
+///
+/// #[derive(Debug)]
+/// struct MyFilter;
+/// impl MyFilter {
+///     fn new(_cfg: serde_json::Value) -> Self { Self }
+/// }
+///
+/// #[async_trait::async_trait]
+/// impl foxy::Filter for MyFilter {
+///     fn filter_type(&self) -> foxy::FilterType { foxy::FilterType::Pre }
+///     fn name(&self) -> &str { "my_filter" }
+/// }
+///
+/// register_filter("my_filter", |cfg| {
+///     // turn `cfg` → your filter instance
+///     Ok(std::sync::Arc::new(MyFilter::new(cfg)))
+/// });
+/// ```
+pub fn register_filter(name: &str, ctor: FilterConstructor) {
+    FILTER_REGISTRY
+        .write()
+        .expect("FILTER_REGISTRY poisoned")
+        .insert(name.to_string(), ctor);
+}
+
+/// Internal helper – fetch a constructor if somebody registered one.
+fn get_registered_filter(name: &str) -> Option<FilterConstructor> {
+    FILTER_REGISTRY
+        .read()
+        .expect("FILTER_REGISTRY poisoned")
+        .get(name)
+        .copied()
+}
 
 /// Configuration for a logging filter.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -506,6 +559,11 @@ impl FilterFactory {
     /// Create a filter based on the filter type and configuration.
     pub fn create_filter(filter_type: &str, config: serde_json::Value) -> Result<Arc<dyn Filter>, ProxyError> {
         log::debug!("Creating filter of type '{}' with config: {}", filter_type, config);
+
+        // See if we've got an external filter registered of that name
+        if let Some(ctor) = get_registered_filter(filter_type) {
+            return ctor(config);
+        }
         
         match filter_type {
             "logging" => {
