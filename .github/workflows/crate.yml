@@ -43,6 +43,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Install Protobuf compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y protobuf-compiler
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: taiki-e/install-action@nextest
@@ -58,6 +62,9 @@ jobs:
         run: git config --global core.symlinks true
 
       - uses: actions/checkout@v4
+      - name: Install Protobuf compiler
+        run: choco install protoc --no-progress -y
+        shell: powershell
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: taiki-e/install-action@nextest
@@ -75,6 +82,10 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - name: Install Protobuf compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y protobuf-compiler
       - uses: dtolnay/rust-toolchain@stable
 
       - name: cargo-release cache restore
