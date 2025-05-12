@@ -3,6 +3,10 @@ on:
     tags:
       - "*-crate"
 
+permissions:
+  contents: read
+  checks: write
+
 name: Publish Crate
 
 jobs:
