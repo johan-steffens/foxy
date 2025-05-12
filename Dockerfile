@@ -9,7 +9,7 @@ WORKDIR /app
 ENV PKG_CONFIG_ALLOW_CROSS=1 \
     PKGCONFIG_SYSROOTDIR=/ \
     OPENSSL_STATIC=1
-RUN apk add --no-cache musl-dev zig perl make pkgconf
+RUN apk add --no-cache musl-dev zig perl make pkgconf protobuf-dev
 RUN cargo install --locked cargo-zigbuild cargo-chef
 RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
