@@ -1,6 +1,6 @@
 [package]
 name = "foxy-io"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2024"
 authors = ["Johan Steffens <johan@steff.co.za>"]
 description = "A configuration-driven and hyper-extensible HTTP proxy library"
@@ -48,8 +48,24 @@ jsonwebtoken = "9"
 tempfile = "3.6"
 once_cell = "1.21.3"
 
+# OpenTelemetry (optional)
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", optional = true }
+tracing-opentelemetry = { version = "0.18", optional = true }
+opentelemetry = { version = "0.18", features = ["rt-tokio"], optional = true }
+opentelemetry-otlp = { version = "0.11", optional = true }
+opentelemetry-semantic-conventions = { version = "0.10", optional = true }
+
 [features]
 default = []
+opentelemetry = [
+    "dep:tracing", 
+    "dep:tracing-subscriber", 
+    "dep:tracing-opentelemetry", 
+    "dep:opentelemetry", 
+    "dep:opentelemetry-otlp",
+    "dep:opentelemetry-semantic-conventions"
+]
 
 [lib]
 name = "foxy"

@@ -18,6 +18,7 @@ A minimal, configuration-driven, hyper-extensible Rust HTTP proxy library.
 - ⚙️ **Configuration Superpowers**: Layered configuration from files and environment variables
 - 🌐 **Fine-grained Control**: Route-specific filter chains for precise request handling
 - 🔒 **Pluggable Security**: Configurable authentication with built-in OIDC support
+- 📊 **Observability**: OpenTelemetry integration for distributed tracing
 - 🚀 **Modern Async Architecture**: Built on Tokio and Hyper for high performance
 - 📦 **Lightweight Dependencies**: Minimal external dependencies for core functionality
 - 🧩 **Highly Extensible**: Custom predicates, filters, and security providers via simple traits
@@ -194,6 +195,31 @@ Add JWT validation with the OIDC security provider:
 
 This configuration validates all requests against the identity provider, while allowing public access to `/health`.
 
+### OpenTelemetry Integration
+
+Enable distributed tracing with OpenTelemetry:
+
+```toml
+# In your Cargo.toml
+[dependencies]
+foxy-io = { version = "...", features = ["opentelemetry"] }
+```
+
+Configure the OpenTelemetry collector in your configuration:
+
+```json
+{
+  "proxy": {
+    "opentelemetry": {
+      "endpoint": "http://otel-collector:4317",
+      "service_name": "my-proxy-service",
+      "include_headers": true
+    }
+  }
+}
+```
+
+
 ## Performance Features
 
 ### Streaming Architecture
@@ -245,6 +271,7 @@ Foxy is designed to be extended through traits:
 - [x] Security Chain
   - [x] OIDC provider
   - [ ] Basic auth provider
+- [x] OpenTelemetry Integration
 
 ## License
 

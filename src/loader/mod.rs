@@ -116,17 +116,6 @@ impl FoxyLoader {
 
     /// Build and initialize Foxy.
     pub async fn build(self) -> Result<Foxy, LoaderError> {
-        // Only initialize the logger if it hasn't been initialized yet
-        // This helps prevent issues in tests that run multiple builds
-        if env_logger::try_init().is_ok() {
-            env_logger::Builder::new()
-                .filter_level(LevelFilter::Trace)  // Set this to Debug or Trace for more detailed logs
-                .try_init()
-                .ok(); // Ignore errors if logger is already initialized
-        }
-
-        log::info!("Foxy starting up");
-
         // Build the configuration
         let config = if let Some(config) = self.config_builder {
             config
@@ -159,11 +148,50 @@ impl FoxyLoader {
 
         let config_arc = Arc::new(config);
 
+        // Initialize OpenTelemetry first, before any other logging
+        #[cfg(feature = "opentelemetry")]
+        {
+            if let Ok(Some(otel_config)) = config_arc.get::<crate::opentelemetry::OpenTelemetryConfig>("proxy.opentelemetry") {
+                if let Err(e) = crate::opentelemetry::init_opentelemetry(&otel_config) {
+                    return Err(LoaderError::Other(format!("OpenTelemetry initialization failed: {}", e)));
+                }
+                // Don't log here as the logger might not be initialized yet
+            }
+        }
+
+        // Then initialize the standard logger
+        if env_logger::try_init().is_ok() {
+            env_logger::Builder::new()
+                .filter_level(LevelFilter::Trace)
+                .try_init()
+                .ok();
+        }
+
+        log::info!("Foxy starting up");
+        
+        #[cfg(feature = "opentelemetry")]
+        {
+            if let Ok(Some(otel_config)) = config_arc.get::<crate::opentelemetry::OpenTelemetryConfig>("proxy.opentelemetry") {
+                log::info!("OpenTelemetry initialized with endpoint: {} and service name: {}", 
+                          otel_config.endpoint, otel_config.service_name);
+            }
+        }
+
         // Create the router
         let router = PredicateRouter::new(config_arc.clone()).await?;
 
         // Create the proxy core
         let proxy_core = ProxyCore::new(config_arc.clone(), Arc::new(router)).await?;
+        
+        // Register OpenTelemetry filter if configured
+        #[cfg(feature = "opentelemetry")]
+        {
+            if let Ok(Some(otel_config)) = config_arc.get::<crate::opentelemetry::OpenTelemetryConfig>("proxy.opentelemetry") {
+                crate::opentelemetry::register_filter(&proxy_core, &otel_config).await
+                    .map_err(|e| LoaderError::Other(format!("Failed to register OpenTelemetry filter: {}", e)))?;
+                log::info!("Registered OpenTelemetry filter with service name: {}", otel_config.service_name);
+            }
+        }
 
         // Load global filters from configuration
         let global_filters_config: Option<Vec<FilterConfig>> = config_arc.get("proxy.global_filters")?;

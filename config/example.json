@@ -5,6 +5,10 @@
   },
   "proxy": {
     "timeout": 30,
+    "opentelemetry": {
+      "endpoint": "http://192.168.68.111:4317",
+      "service_name": "my-proxy-service"
+    },
     "global_filters": [
       {
         "type": "logging",

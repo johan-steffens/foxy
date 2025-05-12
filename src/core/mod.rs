@@ -244,6 +244,14 @@ impl ProxyCore {
         filters.push(filter);
     }
 
+    /// Add a global OpenTelemetry filter if configured
+    #[cfg(feature = "opentelemetry")]
+    pub async fn add_opentelemetry_filter(&self, config: &crate::opentelemetry::OpenTelemetryConfig) -> Result<(), ProxyError> {
+        let filter = Arc::new(crate::opentelemetry::OpenTelemetryFilter::new(config.clone()));
+        self.add_global_filter(filter).await;
+        Ok(())
+    }
+
     /// Add a security filter to the chain.
     pub async fn add_security_provider(&self, p: Arc<dyn SecurityProvider>) {
         self.security_chain.write().await.add(p);

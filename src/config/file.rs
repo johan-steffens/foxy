@@ -92,17 +92,25 @@ impl FileConfigProvider {
                 }
             },
             FileFormat::Yaml => {
-                let yaml_value: serde_yaml::Value = serde_yaml::from_str(&content)
-                    .map_err(|e| ConfigError::provider_error("file", format!("invalid YAML: {}", e)))?;
+                #[cfg(feature = "yaml")]
+                {
+                    let yaml_value: serde_yaml::Value = serde_yaml::from_str(&content)
+                        .map_err(|e| ConfigError::provider_error("file", format!("invalid YAML: {}", e)))?;
 
-                let json_value = serde_json::to_value(yaml_value)
-                    .map_err(|e| ConfigError::provider_error("file", format!("failed to convert YAML: {}", e)))?;
+                    let json_value = serde_json::to_value(yaml_value)
+                        .map_err(|e| ConfigError::provider_error("file", format!("failed to convert YAML: {}", e)))?;
 
-                match json_value {
-                    serde_json::Value::Object(map) => {
-                        Ok(map.into_iter().collect())
-                    },
-                    _ => Err(ConfigError::provider_error("file", "root configuration must be an object")),
+                    match json_value {
+                        serde_json::Value::Object(map) => {
+                            Ok(map.into_iter().collect())
+                        },
+                        _ => Err(ConfigError::provider_error("file", "root configuration must be an object")),
+                    }
+                }
+                
+                #[cfg(not(feature = "yaml"))]
+                {
+                    Err(ConfigError::provider_error("file", "YAML support is not enabled. Enable the 'yaml' feature to use YAML configuration files."))
                 }
             },
         }

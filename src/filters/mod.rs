@@ -29,6 +29,9 @@ use crate::core::{
     Filter, FilterType, ProxyRequest, ProxyResponse, ProxyError
 };
 
+#[cfg(feature = "opentelemetry")]
+use crate::opentelemetry::OpenTelemetryFilterFactory;
+
 /// Constructor signature every dynamic filter must implement
 pub type FilterConstructor =
 fn(serde_json::Value) -> Result<Arc<dyn Filter>, ProxyError>;
@@ -608,6 +611,16 @@ impl FilterFactory {
                         Err(e)
                     }
                 }
+            },
+            #[cfg(feature = "opentelemetry")]
+            "opentelemetry" => {
+                let config: crate::opentelemetry::OpenTelemetryConfig = serde_json::from_value(config)
+                    .map_err(|e| {
+                        let err = ProxyError::FilterError(format!("Invalid OpenTelemetry filter config: {}", e));
+                        log::error!("{}", err);
+                        err
+                    })?;
+                Ok(Arc::new(crate::opentelemetry::OpenTelemetryFilter::new(config)))
             },
             _ => {
                 let err = ProxyError::FilterError(format!("Unknown filter type: {}", filter_type));
