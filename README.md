@@ -213,7 +213,13 @@ Configure the OpenTelemetry collector in your configuration:
     "opentelemetry": {
       "endpoint": "http://otel-collector:4317",
       "service_name": "my-proxy-service",
-      "include_headers": true
+      "include_headers": true,
+      "resource_attributes": {
+        "host.name": "proxy-pod-abc123"
+      },
+      "collector_headers": {
+        "X-API-Key": "d41000b6-6191-47c5-99f1-7b88b1b97409"
+      }
     }
   }
 }

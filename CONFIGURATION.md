@@ -595,3 +595,33 @@ In this example:
 2. The `/` path with GET requests is rewritten to `/get` and forwarded to `https://api.example.com/get`
 3. The `/` path with POST requests is rewritten to `/post` and forwarded to `https://api.example.com/post`
 4. Paths starting with `/resources/` are forwarded to `https://resources.example.com/resources/...`
+
+## OpenTelemetry Configuration
+
+When enabled as a feature, you can configure OpenTelemetry details as part of the proxy configuration to trace and
+exports spans of requests and responses that flow through Foxy.
+
+### Configuration
+
+```json
+{
+  "proxy": {
+    "opentelemetry": {
+      "endpoint": "http://otel-collector:4317",
+      "service_name": "my-proxy-service",
+      "include_headers": true,
+      "resource_attributes": {
+        "deployment.environment": "production",
+        "service.version": "1.2.3",
+        "service.instance.id": "i-1234567890abcdef0",
+        "cloud.provider": "aws",
+        "cloud.region": "us-west-2",
+        "host.name": "proxy-pod-abc123"
+      },
+      "collector_headers": {
+        "X-API-Key": "d41000b6-6191-47c5-99f1-7b88b1b97409"
+      }
+    }
+  }
+}
+```

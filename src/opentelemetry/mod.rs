@@ -72,6 +72,13 @@ pub struct OpenTelemetryConfig {
     /// These are key-value pairs that will be added as headers to all collector requests.
     #[serde(default)]
     pub collector_headers: std::collections::HashMap<String, String>,
+    
+    /// Custom resource attributes to add to the OpenTelemetry resource.
+    /// These are key-value pairs that will be added as resource attributes to all spans.
+    /// Resource attributes are different from span annotations as they are applied at the tracer level
+    /// and appear on all spans created by the tracer.
+    #[serde(default)]
+    pub resource_attributes: std::collections::HashMap<String, String>,
 }
 
 fn default_endpoint() -> String {
@@ -104,6 +111,7 @@ impl Default for OpenTelemetryConfig {
             max_body_size: default_max_body_size(),
             span_annotations: std::collections::HashMap::new(),
             collector_headers: std::collections::HashMap::new(),
+            resource_attributes: std::collections::HashMap::new(),
         }
     }
 }
@@ -113,10 +121,19 @@ pub fn init_opentelemetry(config: &OpenTelemetryConfig) -> Result<(), OpenTeleme
     use opentelemetry::sdk::trace::Config;
     use opentelemetry_otlp::WithExportConfig;
     
-    // Set up a global resource with the service name
-    let resource = Resource::new(vec![
-        KeyValue::new(SERVICE_NAME, config.service_name.clone()),
-    ]);
+    // Build resource attributes
+    let mut resource_attributes = Vec::with_capacity(config.resource_attributes.len() + 1);
+    
+    // Always add the service name as a resource attribute
+    resource_attributes.push(KeyValue::new(SERVICE_NAME, config.service_name.clone()));
+    
+    // Add all custom resource attributes
+    for (key, value) in &config.resource_attributes {
+        resource_attributes.push(KeyValue::new(key.clone(), value.clone()));
+    }
+    
+    // Set up a global resource with all attributes
+    let resource = Resource::new(resource_attributes);
     
     // Configure the OpenTelemetry exporter with explicit resource
     let mut exporter = opentelemetry_otlp::new_exporter()
@@ -160,6 +177,11 @@ pub fn init_opentelemetry(config: &OpenTelemetryConfig) -> Result<(), OpenTeleme
         Ok(_) => {
             log::info!("OpenTelemetry initialized with collector endpoint: {} and service name: {}", 
                       config.endpoint, config.service_name);
+            
+            if !config.resource_attributes.is_empty() {
+                log::info!("Added {} custom resource attributes to OpenTelemetry tracer", 
+                          config.resource_attributes.len());
+            }
         },
         Err(e) => {
             log::warn!("Could not set OpenTelemetry as global subscriber (this is normal if logging was already initialized): {}", e);
