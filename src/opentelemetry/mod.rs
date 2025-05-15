@@ -62,6 +62,16 @@ pub struct OpenTelemetryConfig {
     /// Maximum body size to include in spans (in bytes).
     #[serde(default = "default_max_body_size")]
     pub max_body_size: usize,
+    
+    /// Custom span annotations to add to all spans.
+    /// These are key-value pairs that will be added as attributes to all spans.
+    #[serde(default)]
+    pub span_annotations: std::collections::HashMap<String, String>,
+    
+    /// Custom headers to add to the OpenTelemetry collector requests.
+    /// These are key-value pairs that will be added as headers to all collector requests.
+    #[serde(default)]
+    pub collector_headers: std::collections::HashMap<String, String>,
 }
 
 fn default_endpoint() -> String {
@@ -92,6 +102,8 @@ impl Default for OpenTelemetryConfig {
             include_headers: default_include_headers(),
             include_bodies: default_include_bodies(),
             max_body_size: default_max_body_size(),
+            span_annotations: std::collections::HashMap::new(),
+            collector_headers: std::collections::HashMap::new(),
         }
     }
 }
@@ -107,13 +119,24 @@ pub fn init_opentelemetry(config: &OpenTelemetryConfig) -> Result<(), OpenTeleme
     ]);
     
     // Configure the OpenTelemetry exporter with explicit resource
+    let mut exporter = opentelemetry_otlp::new_exporter()
+        .tonic()
+        .with_endpoint(&config.endpoint);
+    
+    // Add custom headers to the collector if configured
+    if !config.collector_headers.is_empty() {
+        let mut headers = tonic::metadata::MetadataMap::new();
+        for (key, value) in &config.collector_headers {
+            if let Ok(key_str) = tonic::metadata::MetadataKey::from_bytes(key.as_bytes()) {
+                headers.insert(key_str, value.parse().unwrap_or_default());
+            }
+        }
+        exporter = exporter.with_metadata(headers);
+    }
+    
     let tracer = opentelemetry_otlp::new_pipeline()
         .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(&config.endpoint)
-        )
+        .with_exporter(exporter)
         .with_trace_config(
             Config::default()
                 .with_resource(resource)
@@ -193,6 +216,11 @@ impl Filter for OpenTelemetryFilter {
         span.record("http.url", &tracing::field::display(&path));
         span.record("http.target", &tracing::field::display(&path));
         
+        // Add custom span annotations if configured
+        for (key, value) in &self.config.span_annotations {
+            span.record(key, &tracing::field::display(value));
+        }
+        
         // Store the start time in the request context
         let start_time = Instant::now();
         {
@@ -252,6 +280,11 @@ impl Filter for OpenTelemetryFilter {
             span.record("otel.status_code", &tracing::field::display("ERROR"));
         } else {
             span.record("otel.status_code", &tracing::field::display("OK"));
+        }
+        
+        // Add custom span annotations if configured
+        for (key, value) in &self.config.span_annotations {
+            span.record(key, &tracing::field::display(value));
         }
         
         // Get the start time and service name from the request context
