@@ -22,6 +22,7 @@
 mod tests;
 mod health;
 
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::net::SocketAddr;
 use std::convert::Infallible;
@@ -54,8 +55,11 @@ use opentelemetry::{
     global,
     trace::{TraceContextExt, Tracer},
     KeyValue,
+    Context,
+    context::FutureExt,
+    global::ObjectSafeSpan,
+    trace::{Span, SpanBuilder, SpanKind}
 };
-use opentelemetry::trace::Span;
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_http::HeaderExtractor;
 
@@ -342,19 +346,19 @@ async fn handle_request(
 ) -> Result<Response<Body>, Infallible> {
     // ---------- OpenTelemetry SERVER span ----------
     #[cfg(feature = "opentelemetry")]
-    let mut server_span = {
+    let server_span = {
         let method = req.method().clone();
         let path   = req.uri().path().to_owned();
 
-        let parent_cx = global::get_text_map_propagator(|prop| {
-            prop.extract(&HeaderExtractor(req.headers()))
-        });
-
         let mut span = global::tracer("foxy::proxy")
-            .start_with_context(format!("HTTP {method} {path}"), &parent_cx);
+            .build(SpanBuilder {
+                name: Cow::from(format!("Incoming: {method} {path}")),
+                span_kind: Some(SpanKind::Server),
+                ..Default::default()
+            });
 
-        span.set_attribute(KeyValue::new("http.method", method.to_string()));
-        span.set_attribute(KeyValue::new("http.target", path.clone()));
+        opentelemetry::trace::Span::set_attribute(&mut span, KeyValue::new("http.method", method.to_string()));
+        opentelemetry::trace::Span::set_attribute(&mut span, KeyValue::new("http.target", path.clone()));
 
         span
     };
@@ -377,6 +381,13 @@ async fn handle_request(
     };
 
     // ---------- core processing ----------
+    #[cfg(feature = "opentelemetry")]
+    let server_context = Some(opentelemetry::Context::current_with_span(server_span));
+
+    #[cfg(feature = "opentelemetry")]
+    let result = core.process_request(proxy_req, server_context).await;
+
+    #[cfg(not(feature = "opentelemetry"))]
     let result = core.process_request(proxy_req).await;
 
     /* ---------- map response ---------- */
@@ -443,11 +454,15 @@ async fn handle_request(
             .as_ref()
             .map(|r| r.status().as_u16())
             .unwrap_or(500);
-        server_span.set_attribute(KeyValue::new(
+
+        let context = Context::current();
+        let span = context.span();
+
+        span.set_attribute(KeyValue::new(
             "http.status_code",
             status_code as i64,
         ));
-        server_span.end();
+        span.end();
     }
 
     response

@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, mem};
+use std::borrow::Cow;
 use thiserror::Error;
 use crate::security::{ProviderConfig, SecurityChain, SecurityProvider, SecurityStage};
 use tokio::sync::RwLock;
@@ -28,7 +29,9 @@ use opentelemetry::{
     global,
     trace::Tracer,
     KeyValue,
-    global::ObjectSafeSpan
+    Context,
+    context::FutureExt,
+    trace::{Span, SpanBuilder, SpanKind, TraceContextExt}
 };
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_http::HeaderInjector;
@@ -263,21 +266,12 @@ impl ProxyCore {
     pub async fn process_request(
         &self,
         request: ProxyRequest,
+        #[cfg(feature = "opentelemetry")]
+        parent_context: Option<Context>,
     ) -> Result<ProxyResponse, ProxyError> {
         let overall_start = Instant::now();
         let method = request.method.to_string();
         let path = request.path.clone();
-
-        #[cfg(feature = "opentelemetry")]
-        let mut client_span = {
-            let method = request.method.to_string();
-
-            let tracer = global::tracer("foxy::proxy");
-            let parent = opentelemetry::Context::current();      // now contains server span
-            let span = tracer.start_with_context(format!("OUTBOUND {method} {}", request.path), &parent);
-            
-            span
-        };
 
         log::trace!("Processing request: {} {}", method, path);
 
@@ -339,14 +333,27 @@ impl ProxyCore {
 
         let mut outbound_headers = request.headers.clone();
         #[cfg(feature = "opentelemetry")]
-        {
+        let mut client_span = {
+            let parent  = parent_context
+                .as_ref()
+                .cloned()
+                .unwrap_or_else(Context::current);
+
+            let mut span = global::tracer("foxy::proxy")
+                .build_with_context(SpanBuilder {
+                    name: Cow::from(format!("Outgoing: {method} {path}")),
+                    span_kind: Some(SpanKind::Client),
+                    ..Default::default()
+                }, &parent);
+
+            opentelemetry::trace::Span::set_attribute(&mut span, KeyValue::new("target", url.clone()));
+
             global::get_text_map_propagator(|prop| {
-                prop.inject_context(
-                    &opentelemetry::Context::current(),
-                    &mut HeaderInjector(&mut outbound_headers),
-                )
+                prop.inject_context(&Context::current(), &mut HeaderInjector(&mut outbound_headers));
             });
-        }
+
+            span
+        };
 
         let mut builder = self
             .client
@@ -384,11 +391,11 @@ impl ProxyCore {
 
         #[cfg(feature = "opentelemetry")]
         {
-            client_span.set_attribute(KeyValue::new(
+            opentelemetry::trace::Span::set_attribute(&mut client_span, KeyValue::new(
                 "http.status_code",
                 resp.status().as_u16() as i64,
             ));
-            client_span.end();
+            opentelemetry::trace::Span::end(&mut client_span);
         }
         
         let upstream_elapsed = upstream_start.elapsed();

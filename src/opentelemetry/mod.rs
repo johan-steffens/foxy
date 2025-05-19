@@ -5,13 +5,7 @@
 //! OpenTelemetry bootstrap for Foxy
 //!
 //! This module centralises **all** tracing/OpenTelemetry initialisation so the
-//! rest of the code base only needs a single call:
-//!
-//! ```rust
-//! use foxy::opentelemetry::OpenTelemetryConfig;
-//! let config = OpenTelemetryConfig::default();
-//! foxy::opentelemetry::init(Option::from(config))?;
-//! ```
+//! rest of the code base only needs a single call.
 //!
 //! * Feature‑gated behind `opentelemetry` – compiling without the feature
 //!   turns every public item into a no‑op.
@@ -25,19 +19,18 @@
 
 use std::collections::HashMap;
 use std::fmt::Display;
-use opentelemetry_otlp::{WithHttpConfig, WithTonicConfig};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tonic::metadata::{MetadataMap, MetadataValue};
-use tracing_subscriber::{EnvFilter, Layer};
-use tracing_subscriber::filter::LevelFilter;
-use tracing_subscriber::util::SubscriberInitExt;
 #[cfg(feature = "opentelemetry")]
 use {
+    opentelemetry_otlp::{WithTonicConfig},
     opentelemetry::{global, KeyValue},
     opentelemetry_sdk::{trace::SdkTracerProvider, Resource},
     opentelemetry_otlp::{SpanExporter, WithExportConfig},
     tracing_subscriber::{layer::SubscriberExt, Registry},
+    tonic::metadata::{MetadataMap, MetadataValue},
+    tracing_subscriber::{EnvFilter, Layer},
+    tracing_subscriber::util::SubscriberInitExt
 };
 use crate::log_info;
 
@@ -138,7 +131,7 @@ impl Display for OpenTelemetryConfig {
 /// Initialise tracing + OpenTelemetry. Safe to call once.
 #[cfg(feature = "opentelemetry")]
 pub fn init(config: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if config.is_some() {
+    if config.is_some() && ! config.as_ref().unwrap().endpoint.is_empty() {
         let config_ref = config.as_ref().unwrap();
 
         log_info("opentelemetry", format!("Got config! {}", config_ref).as_str());
@@ -160,7 +153,7 @@ pub fn init(config: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::erro
             }
             exporter_builder = exporter_builder.with_metadata(meta);
         }
-        let exporter = exporter_builder.build()?;
+        let exporter = exporter_builder.build().expect("An error occurred building the OpenTelemetry exporter");
 
         // ── resource ───────────────────────────────────────────────
         let mut res_builder = Resource::builder().with_service_name(config_ref.service_name.clone());

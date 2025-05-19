@@ -52,7 +52,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     // Initialise OpenTelemetry
-    foxy::opentelemetry::init(proxy.config().get("proxy.opentelemetry").unwrap());
+    #[cfg(feature = "opentelemetry")]
+    foxy::opentelemetry::init(proxy.config().get("proxy.opentelemetry").unwrap()).expect("Failed to initialise OpenTelemetry");
     
     match proxy.start().await {
         Ok(_) => {
