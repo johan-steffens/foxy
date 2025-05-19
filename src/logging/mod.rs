@@ -9,6 +9,7 @@
 
 use log::{debug, error, info, trace, warn, LevelFilter};
 use std::sync::Once;
+use tracing_subscriber::EnvFilter;
 
 static INIT: Once = Once::new();
 

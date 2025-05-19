@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         loader = loader.with_config_file("/etc/foxy/config.toml");
     }
 
-    // Build & run
+    // Build
     let proxy = match loader.build().await {
         Ok(p) => p,
         Err(e) => {
@@ -50,6 +50,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             return Err(e.into());
         }
     };
+
+    // Initialise OpenTelemetry
+    foxy::opentelemetry::init(proxy.config().get("proxy.opentelemetry").unwrap());
     
     match proxy.start().await {
         Ok(_) => {

@@ -52,8 +52,6 @@ pub mod filters;
 pub mod server;
 pub mod security;
 pub mod logging;
-
-#[cfg(feature = "opentelemetry")]
 pub mod opentelemetry;
 
 // Re-export key types at the crate root for convenience
@@ -80,9 +78,4 @@ pub use security::{
 };
 pub use server::{ProxyServer, ServerConfig};
 pub use logging::{init as init_logging, log_error, log_warning, log_debug, log_trace, log_info};
-
-#[cfg(feature = "opentelemetry")]
-pub use opentelemetry::{
-    OpenTelemetryFilter, OpenTelemetryConfig, OpenTelemetryFilterFactory,
-    init_opentelemetry, OpenTelemetryError
-};
+pub use crate::opentelemetry::init;

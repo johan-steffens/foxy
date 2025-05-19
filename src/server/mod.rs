@@ -42,11 +42,22 @@ use tokio::signal;
 use tokio::task::{Id, JoinSet};
 use crate::core::{ProxyCore, ProxyRequest, ProxyResponse, ProxyError, HttpMethod, RequestContext};
 use std::collections::HashMap;
+use hyper::http::response;
 use tokio::sync::oneshot;
 use health::HealthServer;
 
 #[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};
+
+#[cfg(feature = "opentelemetry")]
+use opentelemetry::{
+    global,
+    trace::{TraceContextExt, Tracer},
+    KeyValue,
+};
+use opentelemetry::trace::Span;
+#[cfg(feature = "opentelemetry")]
+use opentelemetry_http::HeaderExtractor;
 
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -329,6 +340,25 @@ async fn handle_request(
     core: Arc<ProxyCore>,
     client_ip: String,
 ) -> Result<Response<Body>, Infallible> {
+    // ---------- OpenTelemetry SERVER span ----------
+    #[cfg(feature = "opentelemetry")]
+    let mut server_span = {
+        let method = req.method().clone();
+        let path   = req.uri().path().to_owned();
+
+        let parent_cx = global::get_text_map_propagator(|prop| {
+            prop.extract(&HeaderExtractor(req.headers()))
+        });
+
+        let mut span = global::tracer("foxy::proxy")
+            .start_with_context(format!("HTTP {method} {path}"), &parent_cx);
+
+        span.set_attribute(KeyValue::new("http.method", method.to_string()));
+        span.set_attribute(KeyValue::new("http.target", path.clone()));
+
+        span
+    };
+
     /* ---- convert Hyper → ProxyRequest ---- */
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
@@ -346,49 +376,79 @@ async fn handle_request(
         }
     };
 
-    /* ---- core processing ---- */
-    match core.process_request(proxy_req).await {
+    // ---------- core processing ----------
+    let result = core.process_request(proxy_req).await;
+
+    /* ---------- map response ---------- */
+    let response: Result<Response<Body>, Infallible> = match result {
         Ok(proxy_resp) => {
-            log::debug!("Successfully processed request {} {} -> {}", method, path, proxy_resp.status);
+            log::debug!(
+                "Successfully processed request {} {} -> {}",
+                method,
+                path,
+                proxy_resp.status
+            );
             match convert_proxy_response(proxy_resp) {
                 Ok(resp) => Ok(resp),
                 Err(e) => {
-                    log::error!("Failed to convert response for {} {}: {}", method, path, e);
+                    log::error!(
+                        "Failed to convert response for {} {}: {}",
+                        method,
+                        path,
+                        e
+                    );
                     Ok(Response::builder()
                         .status(500)
                         .body(Body::from("Internal Server Error"))
                         .unwrap())
                 }
             }
-        },
+        }
         Err(e) => {
             let (status, msg) = match &e {
                 ProxyError::Timeout(d) => {
                     log::warn!("Request {} {} timed out after {:?}", method, path, d);
                     (504, format!("Gateway Timeout after {d:?}"))
-                },
+                }
                 ProxyError::RoutingError(msg) => {
                     log::warn!("Routing error for {} {}: {}", method, path, msg);
                     (404, "Route not found".into())
-                },
+                }
                 ProxyError::SecurityError(msg) => {
                     log::warn!("Security error for {} {}: {}", method, path, msg);
                     (403, "Forbidden".into())
-                },
+                }
                 ProxyError::ClientError(err) => {
                     log::error!("Client error for {} {}: {}", method, path, err);
                     (502, "Bad Gateway".into())
-                },
+                }
                 _ => {
                     log::error!("Internal error processing {} {}: {}", method, path, e);
                     (500, "Internal Server Error".into())
-                },
+                }
             };
-            
+
             Ok(Response::builder()
                 .status(status)
                 .body(Body::from(msg))
                 .unwrap())
         }
+    };
+
+
+    // ---------- finalise span ----------
+    #[cfg(feature = "opentelemetry")]
+    {
+        let status_code = response
+            .as_ref()
+            .map(|r| r.status().as_u16())
+            .unwrap_or(500);
+        server_span.set_attribute(KeyValue::new(
+            "http.status_code",
+            status_code as i64,
+        ));
+        server_span.end();
     }
+
+    response
 }

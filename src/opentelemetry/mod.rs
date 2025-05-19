@@ -2,31 +2,44 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! OpenTelemetry integration for Foxy
+//! OpenTelemetry bootstrap for Foxy
 //!
-//! This module provides OpenTelemetry tracing support for Foxy, allowing
-//! users to configure an OpenTelemetry collector endpoint that will create
-//! traces for all calls going through the proxy.
+//! This module centralises **all** tracing/OpenTelemetry initialisation so the
+//! rest of the code base only needs a single call:
 //!
-//! The module is only included when the "opentelemetry" feature is enabled.
+//! ```rust
+//! use foxy::opentelemetry::OpenTelemetryConfig;
+//! let config = OpenTelemetryConfig::default();
+//! foxy::opentelemetry::init(Option::from(config))?;
+//! ```
+//!
+//! * Feature‑gated behind `opentelemetry` – compiling without the feature
+//!   turns every public item into a no‑op.
+//! * Reads `endpoint`, `service_name`, **optional custom request headers** and
+//!   **static resource attributes** from the proxy configuration block.
+//! * Uses the **new 0.29 API** (no `new_exporter`, no `pipeline` helpers).
+//! * Builds a **batch** tracing provider and installs `tracing_subscriber`
+//!   with `EnvFilter` so runtime `RUST_LOG` works as before.
 
-#[cfg(test)]
-mod tests;
+#![allow(clippy::single_match)]
 
-use std::sync::Arc;
-use std::time::Instant;
+use std::collections::HashMap;
+use std::fmt::Display;
+use opentelemetry_otlp::{WithHttpConfig, WithTonicConfig};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use async_trait::async_trait;
-use tracing::{info, debug, error, Span, instrument};
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::Layer;
-use opentelemetry::sdk::Resource;
-use opentelemetry::KeyValue;
-use opentelemetry::runtime::Tokio;
-use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
-
-use crate::core::{Filter, FilterType, ProxyRequest, ProxyResponse, ProxyError, ProxyCore};
+use tonic::metadata::{MetadataMap, MetadataValue};
+use tracing_subscriber::{EnvFilter, Layer};
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::util::SubscriberInitExt;
+#[cfg(feature = "opentelemetry")]
+use {
+    opentelemetry::{global, KeyValue},
+    opentelemetry_sdk::{trace::SdkTracerProvider, Resource},
+    opentelemetry_otlp::{SpanExporter, WithExportConfig},
+    tracing_subscriber::{layer::SubscriberExt, Registry},
+};
+use crate::log_info;
 
 /// Errors that can occur during OpenTelemetry operations.
 #[derive(Error, Debug)]
@@ -46,39 +59,39 @@ pub struct OpenTelemetryConfig {
     /// The endpoint URL for the OpenTelemetry collector.
     #[serde(default = "default_endpoint")]
     pub endpoint: String,
-    
+
     /// The service name to use for traces.
     #[serde(default = "default_service_name")]
     pub service_name: String,
-    
+
     /// Whether to include request and response headers in spans.
     #[serde(default = "default_include_headers")]
     pub include_headers: bool,
-    
+
     /// Whether to include request and response bodies in spans.
     #[serde(default = "default_include_bodies")]
     pub include_bodies: bool,
-    
+
     /// Maximum body size to include in spans (in bytes).
     #[serde(default = "default_max_body_size")]
     pub max_body_size: usize,
-    
+
     /// Custom span annotations to add to all spans.
     /// These are key-value pairs that will be added as attributes to all spans.
     #[serde(default)]
-    pub span_annotations: std::collections::HashMap<String, String>,
-    
+    pub span_annotations: HashMap<String, String>,
+
     /// Custom headers to add to the OpenTelemetry collector requests.
     /// These are key-value pairs that will be added as headers to all collector requests.
     #[serde(default)]
-    pub collector_headers: std::collections::HashMap<String, String>,
-    
+    pub collector_headers: HashMap<String, String>,
+
     /// Custom resource attributes to add to the OpenTelemetry resource.
     /// These are key-value pairs that will be added as resource attributes to all spans.
     /// Resource attributes are different from span annotations as they are applied at the tracer level
     /// and appear on all spans created by the tracer.
     #[serde(default)]
-    pub resource_attributes: std::collections::HashMap<String, String>,
+    pub resource_attributes: HashMap<String, String>,
 }
 
 fn default_endpoint() -> String {
@@ -109,251 +122,85 @@ impl Default for OpenTelemetryConfig {
             include_headers: default_include_headers(),
             include_bodies: default_include_bodies(),
             max_body_size: default_max_body_size(),
-            span_annotations: std::collections::HashMap::new(),
-            collector_headers: std::collections::HashMap::new(),
-            resource_attributes: std::collections::HashMap::new(),
+            span_annotations: HashMap::new(),
+            collector_headers: HashMap::new(),
+            resource_attributes: HashMap::new(),
         }
     }
 }
 
-/// Initialize OpenTelemetry with the given configuration.
-pub fn init_opentelemetry(config: &OpenTelemetryConfig) -> Result<(), OpenTelemetryError> {
-    use opentelemetry::sdk::trace::Config;
-    use opentelemetry_otlp::WithExportConfig;
-    
-    // Build resource attributes
-    let mut resource_attributes = Vec::with_capacity(config.resource_attributes.len() + 1);
-    
-    // Always add the service name as a resource attribute
-    resource_attributes.push(KeyValue::new(SERVICE_NAME, config.service_name.clone()));
-    
-    // Add all custom resource attributes
-    for (key, value) in &config.resource_attributes {
-        resource_attributes.push(KeyValue::new(key.clone(), value.clone()));
+impl Display for OpenTelemetryConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "OpenTelemetryConfig {{ endpoint: {}, service_name: {}, include_headers: {}, include_bodies: {}, max_body_size: {}, span_annotations: {:?}, collector_headers: {:?}, resource_attributes: {:?} }}", self.endpoint, self.service_name, self.include_headers, self.include_bodies, self.max_body_size, self.span_annotations, self.collector_headers, self.resource_attributes)
     }
-    
-    // Set up a global resource with all attributes
-    let resource = Resource::new(resource_attributes);
-    
-    // Configure the OpenTelemetry exporter with explicit resource
-    let exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
-        .with_endpoint(&config.endpoint);
-    
-    // We'll handle custom headers in a different way that doesn't rely on tonic directly
-    
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(exporter)
-        .with_trace_config(
-            Config::default()
-                .with_resource(resource)
-                .with_sampler(opentelemetry::sdk::trace::Sampler::AlwaysOn)
-        )
-        .install_batch(Tokio)
-        .map_err(|e| OpenTelemetryError::InitError(e.to_string()))?;
+}
 
-    // Create a tracing layer with the configured tracer
-    let telemetry = tracing_opentelemetry::layer()
-        .with_tracer(tracer);
+/// Initialise tracing + OpenTelemetry. Safe to call once.
+#[cfg(feature = "opentelemetry")]
+pub fn init(config: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if config.is_some() {
+        let config_ref = config.as_ref().unwrap();
 
-    // Create a subscriber with the OpenTelemetry layer
-    let subscriber = tracing_subscriber::registry()
-        .with(telemetry)
-        .with(tracing_subscriber::fmt::layer()
-            .with_filter(tracing_subscriber::filter::LevelFilter::INFO));
+        log_info("opentelemetry", format!("Got config! {}", config_ref).as_str());
 
-    // Set the subscriber as the global default
-    match tracing::subscriber::set_global_default(subscriber) {
-        Ok(_) => {
-            log::info!("OpenTelemetry initialized with collector endpoint: {} and service name: {}", 
-                      config.endpoint, config.service_name);
-            
-            if !config.resource_attributes.is_empty() {
-                log::info!("Added {} custom resource attributes to OpenTelemetry tracer", 
-                          config.resource_attributes.len());
+        // ── exporter ───────────────────────────────────────────────
+        let mut exporter_builder = SpanExporter::builder()
+            .with_tonic()
+            .with_endpoint(config_ref.endpoint.clone());
+
+        if !config_ref.collector_headers.is_empty() {
+            let mut meta = MetadataMap::with_capacity(config_ref.collector_headers.len());
+            for (k, v) in &config_ref.collector_headers {
+                if let (Ok(key), Ok(val)) = (
+                    k.parse::<tonic::metadata::MetadataKey<_>>(),
+                    MetadataValue::try_from(v.as_str()),
+                ) {
+                    meta.insert(key, val);
+                }
             }
-        },
-        Err(e) => {
-            log::warn!("Could not set OpenTelemetry as global subscriber (this is normal if logging was already initialized): {}", e);
-            log::info!("OpenTelemetry initialized with collector endpoint: {}", config.endpoint);
+            exporter_builder = exporter_builder.with_metadata(meta);
         }
+        let exporter = exporter_builder.build()?;
+
+        // ── resource ───────────────────────────────────────────────
+        let mut res_builder = Resource::builder().with_service_name(config_ref.service_name.clone());
+        if !config_ref.resource_attributes.is_empty() {
+            let attrs = config_ref.resource_attributes.iter().map(|(k, v)| KeyValue::new(k.clone(), v.clone()));
+            res_builder = res_builder.with_attributes(attrs);
+        }
+        let resource = res_builder.build();
+
+        // ── tracer provider ────────────────────────────────────────
+        let provider = SdkTracerProvider::builder()
+            .with_batch_exporter(exporter)
+            .with_resource(resource)
+            .build();
+        global::set_tracer_provider(provider);
+
+        // ── tracing layers ─────────────────────────────────────────
+        let base_filter = EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| EnvFilter::new("info"));
+
+        // add_directive returns the filter back so you can chain
+        let filter = base_filter.add_directive("opentelemetry_sdk=warn".parse()?);
+
+        // 2) attach that filter to the fmt layer
+        let fmt_layer  = tracing_subscriber::fmt::layer().with_filter(filter);
+        let otel_layer = tracing_opentelemetry::layer();
+        let env_filter = EnvFilter::from_default_env();
+
+        Registry::default()
+            .with(fmt_layer)
+            .with(env_filter)
+            .with(otel_layer)
+            .try_init()
+            .map_err(|e| OpenTelemetryError::InitError(format!("Failed to initialize tracing: {}", e)))?;
     }
-    
+
     Ok(())
 }
 
-/// A filter that creates OpenTelemetry spans for requests and responses.
-#[derive(Debug)]
-pub struct OpenTelemetryFilter {
-    config: OpenTelemetryConfig,
-}
+/// No‑op version when the feature is disabled.
+#[cfg(not(feature = "opentelemetry"))]
+pub fn init(_cfg: Option<&serde_json::Value>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> { Ok(()) }
 
-impl OpenTelemetryFilter {
-    /// Create a new OpenTelemetry filter with the given configuration.
-    pub fn new(config: OpenTelemetryConfig) -> Self {
-        Self { config }
-    }
-}
-
-#[async_trait]
-impl Filter for OpenTelemetryFilter {
-    fn filter_type(&self) -> FilterType {
-        FilterType::Both
-    }
-
-    fn name(&self) -> &str {
-        "opentelemetry"
-    }
-
-    #[instrument(name = "http.request", skip(self, request), fields(
-        service.name = %self.config.service_name,
-        http.method = request.method.to_string(),
-        http.url = request.path,
-        http.target = tracing::field::Empty,
-        http.flavor = "1.1",
-        http.user_agent = tracing::field::Empty,
-        http.status_code = tracing::field::Empty,
-        otel.kind = "server",
-        otel.status_code = tracing::field::Empty
-    ))]
-    async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
-        // Extract request information
-        let method = request.method.to_string();
-        let path = request.path.clone();
-        let service_name = self.config.service_name.clone();
-        
-        // Record span attributes
-        let span = Span::current();
-        span.record("http.method", &tracing::field::display(&method));
-        span.record("http.url", &tracing::field::display(&path));
-        span.record("http.target", &tracing::field::display(&path));
-        
-        // Add custom span annotations if configured
-        for (key, value) in &self.config.span_annotations {
-            span.record(key.as_str(), &tracing::field::display(value));
-        }
-        
-        // Store the start time in the request context
-        let start_time = Instant::now();
-        {
-            let mut ctx = request.context.write().await;
-            ctx.attributes.insert(
-                "otel_start_time".to_string(),
-                serde_json::Value::Number(serde_json::Number::from(start_time.elapsed().as_millis() as u64))
-            );
-            
-            // Also store the service name
-            ctx.attributes.insert(
-                "otel_service_name".to_string(),
-                serde_json::Value::String(service_name.clone())
-            );
-            
-            // Store the span context for propagation
-            ctx.attributes.insert(
-                "otel_span_id".to_string(),
-                serde_json::Value::String(format!("{:?}", span.id()))
-            );
-        }
-        
-        // Log headers if configured
-        if self.config.include_headers {
-            for (name, value) in request.headers.iter() {
-                if let Ok(value_str) = value.to_str() {
-                    if name == "user-agent" {
-                        span.record("http.user_agent", &tracing::field::display(value_str));
-                    }
-                    debug!("Request header: {} = {}", name, value_str);
-                }
-            }
-        }
-        
-        info!(
-            "Starting request {} {} for service {}",
-            method,
-            path,
-            service_name
-        );
-        
-        Ok(request)
-    }
-
-    #[instrument(name = "http.response", skip(self, request, response))]
-    async fn post_filter(
-        &self,
-        request: ProxyRequest,
-        response: ProxyResponse,
-    ) -> Result<ProxyResponse, ProxyError> {
-        // Record response information in the current span
-        let span = Span::current();
-        span.record("http.status_code", &tracing::field::display(response.status));
-        
-        // Set the status based on the HTTP status code
-        if response.status >= 400 {
-            span.record("otel.status_code", &tracing::field::display("ERROR"));
-        } else {
-            span.record("otel.status_code", &tracing::field::display("OK"));
-        }
-        
-        // Add custom span annotations if configured
-        for (key, value) in &self.config.span_annotations {
-            span.record(key.as_str(), &tracing::field::display(value));
-        }
-        
-        // Get the start time and service name from the request context
-        let mut duration_ms = 0;
-        let mut service_name = self.config.service_name.clone();
-        {
-            let ctx = request.context.read().await;
-            if let Some(start_time_value) = ctx.attributes.get("otel_start_time") {
-                if let Some(start_ms) = start_time_value.as_u64() {
-                    duration_ms = Instant::now().elapsed().as_millis() as u64 - start_ms;
-                }
-            }
-            
-            if let Some(svc_name) = ctx.attributes.get("otel_service_name") {
-                if let Some(name) = svc_name.as_str() {
-                    service_name = name.to_string();
-                }
-            }
-        }
-        
-        // Log headers if configured
-        if self.config.include_headers {
-            for (name, value) in response.headers.iter() {
-                if let Ok(value_str) = value.to_str() {
-                    debug!("Response header: {} = {}", name, value_str);
-                }
-            }
-        }
-        
-        info!(
-            "Completed request with status {} in {}ms for service {}",
-            response.status,
-            duration_ms,
-            service_name
-        );
-        
-        Ok(response)
-    }
-}
-
-/// Factory for creating OpenTelemetry filters from configuration.
-pub struct OpenTelemetryFilterFactory;
-
-impl OpenTelemetryFilterFactory {
-    /// Create a new OpenTelemetry filter from the given configuration.
-    pub fn create(config: serde_json::Value) -> Result<Arc<dyn Filter>, ProxyError> {
-        let config: OpenTelemetryConfig = serde_json::from_value(config)
-            .map_err(|e| ProxyError::FilterError(format!("Invalid OpenTelemetry configuration: {}", e)))?;
-        
-        Ok(Arc::new(OpenTelemetryFilter::new(config)))
-    }
-}
-
-/// Register the OpenTelemetry filter with the proxy core.
-pub async fn register_filter(proxy_core: &ProxyCore, config: &OpenTelemetryConfig) -> Result<(), ProxyError> {
-    let filter = Arc::new(OpenTelemetryFilter::new(config.clone()));
-    proxy_core.add_global_filter(filter).await;
-    Ok(())
-}

@@ -23,6 +23,16 @@ use serde::{Serialize, Deserialize};
 
 use crate::config::Config;
 
+#[cfg(feature = "opentelemetry")]
+use opentelemetry::{
+    global,
+    trace::Tracer,
+    KeyValue,
+    global::ObjectSafeSpan
+};
+#[cfg(feature = "opentelemetry")]
+use opentelemetry_http::HeaderInjector;
+
 /// Errors that can occur during proxy operations.
 #[derive(Error, Debug)]
 pub enum ProxyError {
@@ -244,14 +254,6 @@ impl ProxyCore {
         filters.push(filter);
     }
 
-    /// Add a global OpenTelemetry filter if configured
-    #[cfg(feature = "opentelemetry")]
-    pub async fn add_opentelemetry_filter(&self, config: &crate::opentelemetry::OpenTelemetryConfig) -> Result<(), ProxyError> {
-        let filter = Arc::new(crate::opentelemetry::OpenTelemetryFilter::new(config.clone()));
-        self.add_global_filter(filter).await;
-        Ok(())
-    }
-
     /// Add a security filter to the chain.
     pub async fn add_security_provider(&self, p: Arc<dyn SecurityProvider>) {
         self.security_chain.write().await.add(p);
@@ -265,6 +267,17 @@ impl ProxyCore {
         let overall_start = Instant::now();
         let method = request.method.to_string();
         let path = request.path.clone();
+
+        #[cfg(feature = "opentelemetry")]
+        let mut client_span = {
+            let method = request.method.to_string();
+
+            let tracer = global::tracer("foxy::proxy");
+            let parent = opentelemetry::Context::current();      // now contains server span
+            let span = tracer.start_with_context(format!("OUTBOUND {method} {}", request.path), &parent);
+            
+            span
+        };
 
         log::trace!("Processing request: {} {}", method, path);
 
@@ -324,10 +337,21 @@ impl ProxyCore {
         log::debug!("Forwarding to target: {}", url);
         let outbound_body = mem::replace(&mut request.body, reqwest::Body::from(""));
 
+        let mut outbound_headers = request.headers.clone();
+        #[cfg(feature = "opentelemetry")]
+        {
+            global::get_text_map_propagator(|prop| {
+                prop.inject_context(
+                    &opentelemetry::Context::current(),
+                    &mut HeaderInjector(&mut outbound_headers),
+                )
+            });
+        }
+
         let mut builder = self
             .client
             .request(request.method.into(), &url)
-            .headers(request.headers.clone())
+            .headers(outbound_headers)
             .body(outbound_body);
 
         if let Some(q) = &request.query {
@@ -357,6 +381,15 @@ impl ProxyCore {
                 return Err(ProxyError::Timeout(timeout_dur));
             }
         };
+
+        #[cfg(feature = "opentelemetry")]
+        {
+            client_span.set_attribute(KeyValue::new(
+                "http.status_code",
+                resp.status().as_u16() as i64,
+            ));
+            client_span.end();
+        }
         
         let upstream_elapsed = upstream_start.elapsed();
         log::trace!("Received response from upstream in {:?}", upstream_elapsed);
