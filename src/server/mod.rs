@@ -58,7 +58,7 @@ use opentelemetry::{
     Context,
     context::FutureExt,
     global::ObjectSafeSpan,
-    trace::{Span, SpanBuilder, SpanKind}
+    trace::{Span, SpanBuilder, SpanKind, Status}
 };
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_http::HeaderExtractor;
@@ -347,8 +347,15 @@ async fn handle_request(
     // ---------- OpenTelemetry SERVER span ----------
     #[cfg(feature = "opentelemetry")]
     let server_span = {
-        let method = req.method().clone();
+        let method = req.method().as_str().to_owned();
         let path   = req.uri().path().to_owned();
+        let full_url = req.uri().clone().to_string();
+        let scheme = req.uri().scheme_str().unwrap_or("http").to_owned();
+        let host = req.headers().get("host").and_then(|v| v.to_str().ok()).unwrap_or("-").to_owned();
+        let http_version = match req.version() { hyper::Version::HTTP_10 => "1.0", hyper::Version::HTTP_11 => "1.1", hyper::Version::HTTP_2 => "2", hyper::Version::HTTP_3 => "3", _ => "unknown" };
+        let req_content_len = req.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
+        let user_agent = req.headers().get("user-agent").and_then(|v| v.to_str().ok()).unwrap_or("-").to_owned();
+        let peer_ip = client_ip.as_str().to_owned();
 
         let context = extract_context_from_request(&req);
         let mut span = global::tracer("foxy::proxy")
@@ -358,8 +365,16 @@ async fn handle_request(
                 ..Default::default()
             }, &context);
 
-        opentelemetry::trace::Span::set_attribute(&mut span, KeyValue::new("http.method", method.to_string()));
-        opentelemetry::trace::Span::set_attribute(&mut span, KeyValue::new("http.target", path.clone()));
+        span.set_attributes([
+            KeyValue::new("http.method", method),
+            KeyValue::new("http.url", full_url.clone()),
+            KeyValue::new("http.scheme", scheme),
+            KeyValue::new("http.host", host),
+            KeyValue::new("http.flavor", http_version),
+            KeyValue::new("http.request_content_length", req_content_len),
+            KeyValue::new("http.user_agent", user_agent),
+            KeyValue::new("net.peer.ip", peer_ip),
+        ]);
 
         span
     };
@@ -390,6 +405,23 @@ async fn handle_request(
 
     #[cfg(not(feature = "opentelemetry"))]
     let result = core.process_request(proxy_req).await;
+
+    // ---------- finalise span ----------
+    #[cfg(feature = "opentelemetry")]
+    {
+        let context = Context::current();
+        let span = context.span();
+
+        match result.as_ref() {
+            Ok(r) => {
+                span.set_status(Status::Ok)
+            },
+            Err(e) => {
+                span.record_error(e);
+                span.set_status(Status::Error { description: Cow::from(e.to_string()) })
+            }
+        }
+    }
 
     /* ---------- map response ---------- */
     let response: Result<Response<Body>, Infallible> = match result {
@@ -447,17 +479,11 @@ async fn handle_request(
         }
     };
 
-
-    // ---------- finalise span ----------
     #[cfg(feature = "opentelemetry")]
     {
-        let status_code = response
-            .as_ref()
-            .map(|r| r.status().as_u16())
-            .unwrap_or(500);
-
         let context = Context::current();
         let span = context.span();
+        let status_code = response.as_ref().unwrap().status().as_u16();
 
         span.set_attribute(KeyValue::new(
             "http.status_code",

@@ -28,7 +28,10 @@ use {
     opentelemetry_sdk::{trace::SdkTracerProvider, Resource},
     opentelemetry_otlp::{SpanExporter, WithExportConfig},
     tonic::metadata::{MetadataMap, MetadataValue},
-    opentelemetry_sdk::propagation::TraceContextPropagator
+    opentelemetry_sdk::propagation::TraceContextPropagator,
+    opentelemetry_semantic_conventions::attribute::{
+        SERVICE_VERSION, SERVICE_INSTANCE_ID, DEPLOYMENT_ENVIRONMENT
+    }
 };
 
 /// Errors that can occur during OpenTelemetry operations.
@@ -128,6 +131,7 @@ impl Display for OpenTelemetryConfig {
 /// Initialise tracing + OpenTelemetry. Safe to call once.
 #[cfg(feature = "opentelemetry")]
 pub fn init(config: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    
     if config.is_some() && ! config.as_ref().unwrap().endpoint.is_empty() {
         let config_ref = config.as_ref().unwrap();
 
@@ -153,11 +157,23 @@ pub fn init(config: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::erro
         let exporter = exporter_builder.build().expect("An error occurred building the OpenTelemetry exporter");
 
         // ── resource ───────────────────────────────────────────────
-        let mut res_builder = Resource::builder().with_service_name(config_ref.service_name.clone());
+        let svc_version   = env!("CARGO_PKG_VERSION");
+        let deploy_env    = std::env::var("FOXY_DEPLOY_ENV").unwrap_or_else(|_| "local".into());
+        let instance_id   = hostname::get()
+            .ok()
+            .and_then(|h| h.into_string().ok())
+            .unwrap_or_else(|| "unknown-host".into());
+        
+        let mut res_builder = Resource::builder().with_service_name(config_ref.service_name.clone())
+            .with_attribute(KeyValue::new(SERVICE_VERSION, svc_version))
+            .with_attribute(KeyValue::new(DEPLOYMENT_ENVIRONMENT, deploy_env))
+            .with_attribute(KeyValue::new(SERVICE_INSTANCE_ID, instance_id));
+        
         if !config_ref.resource_attributes.is_empty() {
             let attrs = config_ref.resource_attributes.iter().map(|(k, v)| KeyValue::new(k.clone(), v.clone()));
             res_builder = res_builder.with_attributes(attrs);
-        }
+        };
+        
         let resource = res_builder.build();
 
         // ── tracer provider ────────────────────────────────────────

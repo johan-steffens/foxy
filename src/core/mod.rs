@@ -31,7 +31,7 @@ use opentelemetry::{
     KeyValue,
     Context,
     context::FutureExt,
-    trace::{Span, SpanBuilder, SpanKind, TraceContextExt}
+    trace::{Span, SpanBuilder, SpanKind, TraceContextExt, Status}
 };
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_http::HeaderInjector;
@@ -276,6 +276,24 @@ impl ProxyCore {
 
         log::trace!("Processing request: {} {}", method, path);
 
+        #[cfg(feature = "opentelemetry")]
+        let span_context = {
+            let parent  = parent_context
+                .as_ref()
+                .cloned()
+                .unwrap_or_else(Context::current);
+
+            let mut span = global::tracer("foxy::proxy")
+                .build_with_context(SpanBuilder {
+                    name: Cow::from(format!("Outgoing: {method} {path}")),
+                    span_kind: Some(SpanKind::Client),
+                    ..Default::default()
+                }, &parent);
+
+            let span_context = &Context::current_with_span(span);
+            span_context.clone()
+        };
+
         /* ---------- Security chain pre auth ---------- */
         let mut request = match self.security_chain.read().await.apply_pre(request).await {
             Ok(req) => {
@@ -284,6 +302,13 @@ impl ProxyCore {
             },
             Err(e) => {
                 log::warn!("Security pre-auth failed for {} {}: {}", method, path, e);
+
+                #[cfg(feature = "opentelemetry")]
+                {
+                    span_context.span().set_status(Status::Error {description: Cow::from(e.to_string()) });
+                    span_context.span().end();
+                }
+                
                 return Err(e);
             }
         };
@@ -296,6 +321,13 @@ impl ProxyCore {
                     Ok(req) => request = req,
                     Err(e) => {
                         log::error!("Global pre-filter '{}' failed: {}", f.name(), e);
+
+                        #[cfg(feature = "opentelemetry")]
+                        {
+                            span_context.span().set_status(Status::Error {description: Cow::from(e.to_string()) });
+                            span_context.span().end();
+                        }
+                        
                         return Err(e);
                     }
                 }
@@ -309,6 +341,13 @@ impl ProxyCore {
             },
             Err(e) => {
                 log::warn!("No route found for {} {}: {}", method, path, e);
+
+                #[cfg(feature = "opentelemetry")]
+                {
+                    span_context.span().set_status(Status::Error {description: Cow::from(e.to_string()) });
+                    span_context.span().end();
+                }
+                
                 return Err(e);
             }
         };
@@ -334,28 +373,13 @@ impl ProxyCore {
 
         let mut outbound_headers = request.headers.clone();
         #[cfg(feature = "opentelemetry")]
-        let span_context = {
-            let parent  = parent_context
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(Context::current);
-
-            let mut span = global::tracer("foxy::proxy")
-                .build_with_context(SpanBuilder {
-                    name: Cow::from(format!("Outgoing: {method} {path}")),
-                    span_kind: Some(SpanKind::Client),
-                    ..Default::default()
-                }, &parent);
-
-            opentelemetry::trace::Span::set_attribute(&mut span, KeyValue::new("target", url.clone()));
-
-            let span_context = &Context::current_with_span(span);
+        {
+            span_context.span().set_attribute(KeyValue::new("target", url.clone()));
+            
             global::get_text_map_propagator(|prop| {
                 prop.inject_context(&span_context, &mut HeaderInjector(&mut outbound_headers));
             });
-            
-            span_context.clone()
-        };
+        }
         
         log_info("Core", format!("Outbound headers are: {:?}", outbound_headers));
 
@@ -384,11 +408,25 @@ impl ProxyCore {
                 Ok(response) => response,
                 Err(e) => {
                     log::error!("Upstream request failed: {}", e);
+
+                    #[cfg(feature = "opentelemetry")]
+                    {
+                        span_context.span().set_status(Status::Error {description: Cow::from(e.to_string()) });
+                        span_context.span().end();
+                    }
+                    
                     return Err(ProxyError::ClientError(e));
                 }
             },
             Err(_) => {
                 log::warn!("Request to {} timed out after {:?}", url, timeout_dur);
+
+                #[cfg(feature = "opentelemetry")]
+                {
+                    span_context.span().set_status(Status::Error {description: Cow::from("Request timed out") });
+                    span_context.span().end();
+                }
+                
                 return Err(ProxyError::Timeout(timeout_dur));
             }
         };

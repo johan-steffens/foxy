@@ -378,13 +378,14 @@ dependencies = [
 
 [[package]]
 name = "foxy-io"
-version = "0.2.11"
+version = "0.2.12"
 dependencies = [
  "async-trait",
  "bytes",
  "env_logger",
  "futures-util",
  "globset",
+ "hostname",
  "http-body-util",
  "hyper",
  "hyper-util",
@@ -568,6 +569,17 @@ name = "hashbrown"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
+
+[[package]]
+name = "hostname"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a56f203cd1c76362b69e3863fd987520ac36cf70a8c92627449b2f64a8cf7d65"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-link",
+]
 
 [[package]]
 name = "http"
