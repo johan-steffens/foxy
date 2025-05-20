@@ -35,6 +35,7 @@ use opentelemetry::{
 };
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_http::HeaderInjector;
+use crate::log_info;
 
 /// Errors that can occur during proxy operations.
 #[derive(Error, Debug)]
@@ -333,7 +334,7 @@ impl ProxyCore {
 
         let mut outbound_headers = request.headers.clone();
         #[cfg(feature = "opentelemetry")]
-        let mut client_span = {
+        let span_context = {
             let parent  = parent_context
                 .as_ref()
                 .cloned()
@@ -348,12 +349,15 @@ impl ProxyCore {
 
             opentelemetry::trace::Span::set_attribute(&mut span, KeyValue::new("target", url.clone()));
 
+            let span_context = &Context::current_with_span(span);
             global::get_text_map_propagator(|prop| {
-                prop.inject_context(&Context::current(), &mut HeaderInjector(&mut outbound_headers));
+                prop.inject_context(&span_context, &mut HeaderInjector(&mut outbound_headers));
             });
-
-            span
+            
+            span_context.clone()
         };
+        
+        log_info("Core", format!("Outbound headers are: {:?}", outbound_headers));
 
         let mut builder = self
             .client
@@ -391,11 +395,13 @@ impl ProxyCore {
 
         #[cfg(feature = "opentelemetry")]
         {
-            opentelemetry::trace::Span::set_attribute(&mut client_span, KeyValue::new(
+            let client_span = span_context.span();
+            
+            client_span.set_attribute(KeyValue::new(
                 "http.status_code",
                 resp.status().as_u16() as i64,
             ));
-            opentelemetry::trace::Span::end(&mut client_span);
+            client_span.end();
         }
         
         let upstream_elapsed = upstream_start.elapsed();

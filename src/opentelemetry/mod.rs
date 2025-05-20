@@ -27,12 +27,9 @@ use {
     opentelemetry::{global, KeyValue},
     opentelemetry_sdk::{trace::SdkTracerProvider, Resource},
     opentelemetry_otlp::{SpanExporter, WithExportConfig},
-    tracing_subscriber::{layer::SubscriberExt, Registry},
     tonic::metadata::{MetadataMap, MetadataValue},
-    tracing_subscriber::{EnvFilter, Layer},
-    tracing_subscriber::util::SubscriberInitExt
+    opentelemetry_sdk::propagation::TraceContextPropagator
 };
-use crate::log_info;
 
 /// Errors that can occur during OpenTelemetry operations.
 #[derive(Error, Debug)]
@@ -134,7 +131,7 @@ pub fn init(config: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::erro
     if config.is_some() && ! config.as_ref().unwrap().endpoint.is_empty() {
         let config_ref = config.as_ref().unwrap();
 
-        log_info("opentelemetry", format!("Got config! {}", config_ref).as_str());
+        global::set_text_map_propagator(TraceContextPropagator::new());
 
         // ── exporter ───────────────────────────────────────────────
         let mut exporter_builder = SpanExporter::builder()
@@ -169,25 +166,6 @@ pub fn init(config: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::erro
             .with_resource(resource)
             .build();
         global::set_tracer_provider(provider);
-
-        // ── tracing layers ─────────────────────────────────────────
-        let base_filter = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("info"));
-
-        // add_directive returns the filter back so you can chain
-        let filter = base_filter.add_directive("opentelemetry_sdk=warn".parse()?);
-
-        // 2) attach that filter to the fmt layer
-        let fmt_layer  = tracing_subscriber::fmt::layer().with_filter(filter);
-        let otel_layer = tracing_opentelemetry::layer();
-        let env_filter = EnvFilter::from_default_env();
-
-        Registry::default()
-            .with(fmt_layer)
-            .with(env_filter)
-            .with(otel_layer)
-            .try_init()
-            .map_err(|e| OpenTelemetryError::InitError(format!("Failed to initialize tracing: {}", e)))?;
     }
 
     Ok(())

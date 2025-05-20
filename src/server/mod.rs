@@ -350,12 +350,13 @@ async fn handle_request(
         let method = req.method().clone();
         let path   = req.uri().path().to_owned();
 
+        let context = extract_context_from_request(&req);
         let mut span = global::tracer("foxy::proxy")
-            .build(SpanBuilder {
+            .build_with_context(SpanBuilder {
                 name: Cow::from(format!("Incoming: {method} {path}")),
                 span_kind: Some(SpanKind::Server),
                 ..Default::default()
-            });
+            }, &context);
 
         opentelemetry::trace::Span::set_attribute(&mut span, KeyValue::new("http.method", method.to_string()));
         opentelemetry::trace::Span::set_attribute(&mut span, KeyValue::new("http.target", path.clone()));
@@ -466,4 +467,12 @@ async fn handle_request(
     }
 
     response
+}
+
+// Utility function to extract the context from the incoming request headers
+#[cfg(feature = "opentelemetry")]
+fn extract_context_from_request(req: &Request<Incoming>) -> Context {
+    global::get_text_map_propagator(|propagator| {
+        propagator.extract(&HeaderExtractor(req.headers()))
+    })
 }
