@@ -169,6 +169,7 @@ pub fn init(config: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::erro
             .with_attribute(KeyValue::new(DEPLOYMENT_ENVIRONMENT, deploy_env))
             .with_attribute(KeyValue::new(SERVICE_INSTANCE_ID, instance_id));
         
+        
         if !config_ref.resource_attributes.is_empty() {
             let attrs = config_ref.resource_attributes.iter().map(|(k, v)| KeyValue::new(k.clone(), v.clone()));
             res_builder = res_builder.with_attributes(attrs);

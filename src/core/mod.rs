@@ -285,7 +285,7 @@ impl ProxyCore {
 
             let mut span = global::tracer("foxy::proxy")
                 .build_with_context(SpanBuilder {
-                    name: Cow::from(format!("Outgoing: {method} {path}")),
+                    name: Cow::from(format!("{method} {path}")),
                     span_kind: Some(SpanKind::Client),
                     ..Default::default()
                 }, &parent);
@@ -308,7 +308,7 @@ impl ProxyCore {
                     span_context.span().set_status(Status::Error {description: Cow::from(e.to_string()) });
                     span_context.span().end();
                 }
-                
+
                 return Err(e);
             }
         };
@@ -327,7 +327,7 @@ impl ProxyCore {
                             span_context.span().set_status(Status::Error {description: Cow::from(e.to_string()) });
                             span_context.span().end();
                         }
-                        
+
                         return Err(e);
                     }
                 }
@@ -347,7 +347,7 @@ impl ProxyCore {
                     span_context.span().set_status(Status::Error {description: Cow::from(e.to_string()) });
                     span_context.span().end();
                 }
-                
+
                 return Err(e);
             }
         };
@@ -375,12 +375,12 @@ impl ProxyCore {
         #[cfg(feature = "opentelemetry")]
         {
             span_context.span().set_attribute(KeyValue::new("target", url.clone()));
-            
+
             global::get_text_map_propagator(|prop| {
                 prop.inject_context(&span_context, &mut HeaderInjector(&mut outbound_headers));
             });
         }
-        
+
         log_info("Core", format!("Outbound headers are: {:?}", outbound_headers));
 
         let mut builder = self
@@ -414,7 +414,7 @@ impl ProxyCore {
                         span_context.span().set_status(Status::Error {description: Cow::from(e.to_string()) });
                         span_context.span().end();
                     }
-                    
+
                     return Err(ProxyError::ClientError(e));
                 }
             },
@@ -426,7 +426,7 @@ impl ProxyCore {
                     span_context.span().set_status(Status::Error {description: Cow::from("Request timed out") });
                     span_context.span().end();
                 }
-                
+
                 return Err(ProxyError::Timeout(timeout_dur));
             }
         };
@@ -434,9 +434,9 @@ impl ProxyCore {
         #[cfg(feature = "opentelemetry")]
         {
             let client_span = span_context.span();
-            
+
             client_span.set_attribute(KeyValue::new(
-                "http.status_code",
+                "call.http.status_code",
                 resp.status().as_u16() as i64,
             ));
             client_span.end();

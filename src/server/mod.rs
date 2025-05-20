@@ -56,9 +56,7 @@ use opentelemetry::{
     trace::{TraceContextExt, Tracer},
     KeyValue,
     Context,
-    context::FutureExt,
-    global::ObjectSafeSpan,
-    trace::{Span, SpanBuilder, SpanKind, Status}
+    trace::{Span, SpanBuilder, SpanKind, Status, SpanRef}
 };
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_http::HeaderExtractor;
@@ -346,7 +344,7 @@ async fn handle_request(
 ) -> Result<Response<Body>, Infallible> {
     // ---------- OpenTelemetry SERVER span ----------
     #[cfg(feature = "opentelemetry")]
-    let server_span = {
+    let span_context = {
         let method = req.method().as_str().to_owned();
         let path   = req.uri().path().to_owned();
         let full_url = req.uri().clone().to_string();
@@ -360,23 +358,23 @@ async fn handle_request(
         let context = extract_context_from_request(&req);
         let mut span = global::tracer("foxy::proxy")
             .build_with_context(SpanBuilder {
-                name: Cow::from(format!("Incoming: {method} {path}")),
+                name: Cow::from(format!("{method} {path}")),
                 span_kind: Some(SpanKind::Server),
                 ..Default::default()
             }, &context);
 
         span.set_attributes([
-            KeyValue::new("http.method", method),
-            KeyValue::new("http.url", full_url.clone()),
-            KeyValue::new("http.scheme", scheme),
-            KeyValue::new("http.host", host),
-            KeyValue::new("http.flavor", http_version),
-            KeyValue::new("http.request_content_length", req_content_len),
-            KeyValue::new("http.user_agent", user_agent),
+            KeyValue::new("call.http.method", method),
+            KeyValue::new("call.http.url", full_url.clone()),
+            KeyValue::new("call.http.scheme", scheme),
+            KeyValue::new("call.http.host", host),
+            KeyValue::new("call.http.flavor", http_version),
+            KeyValue::new("call.http.request_content_length", req_content_len),
+            KeyValue::new("call.http.user_agent", user_agent),
             KeyValue::new("net.peer.ip", peer_ip),
         ]);
 
-        span
+        context.with_span(span)
     };
 
     /* ---- convert Hyper → ProxyRequest ---- */
@@ -398,10 +396,13 @@ async fn handle_request(
 
     // ---------- core processing ----------
     #[cfg(feature = "opentelemetry")]
-    let server_context = Some(opentelemetry::Context::current_with_span(server_span));
+    let span_clone = span_context.clone();
 
     #[cfg(feature = "opentelemetry")]
-    let result = core.process_request(proxy_req, server_context).await;
+    let span_ref = span_context.span();
+
+    #[cfg(feature = "opentelemetry")]
+    let result = core.process_request(proxy_req, Some(span_clone)).await;
 
     #[cfg(not(feature = "opentelemetry"))]
     let result = core.process_request(proxy_req).await;
@@ -409,16 +410,13 @@ async fn handle_request(
     // ---------- finalise span ----------
     #[cfg(feature = "opentelemetry")]
     {
-        let context = Context::current();
-        let span = context.span();
-
         match result.as_ref() {
             Ok(r) => {
-                span.set_status(Status::Ok)
+                span_ref.set_status(Status::Ok)
             },
             Err(e) => {
-                span.record_error(e);
-                span.set_status(Status::Error { description: Cow::from(e.to_string()) })
+                span_ref.record_error(e);
+                span_ref.set_status(Status::Error { description: Cow::from(e.to_string()) })
             }
         }
     }
@@ -481,15 +479,13 @@ async fn handle_request(
 
     #[cfg(feature = "opentelemetry")]
     {
-        let context = Context::current();
-        let span = context.span();
         let status_code = response.as_ref().unwrap().status().as_u16();
 
-        span.set_attribute(KeyValue::new(
-            "http.status_code",
+        span_ref.set_attribute(KeyValue::new(
+            "call.http.status_code",
             status_code as i64,
         ));
-        span.end();
+        span_ref.end();
     }
 
     response
