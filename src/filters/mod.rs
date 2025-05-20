@@ -24,10 +24,13 @@ use serde::{Serialize, Deserialize};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::RwLock;
+use futures_util::stream::iter;
+use serde_json::Value;
 
 use crate::core::{
     Filter, FilterType, ProxyRequest, ProxyResponse, ProxyError
 };
+use crate::{HttpMethod, RequestContext};
 
 /// Constructor signature every dynamic filter must implement
 pub type FilterConstructor =
@@ -551,6 +554,209 @@ impl Filter for PathRewriteFilter {
     }
 }
 
+/// Configuration for an alter body filter.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlterBodyFilterConfig {
+    pub target_field: String,
+    pub target_value: String,
+}
+
+impl Default for AlterBodyFilterConfig {
+    fn default() -> Self {
+        Self {
+            target_field: "".to_string(),
+            target_value: "".to_string(),
+        }
+    }
+}
+
+/// A filter that allows you to alter a given field in a request body..
+#[derive(Debug)]
+pub struct AlterBodyFilter {
+    config: AlterBodyFilterConfig,
+}
+
+impl AlterBodyFilter {
+    /// Create a new  alter body filter with the given configuration.
+    pub fn new(config: AlterBodyFilterConfig) -> Self {
+        Self { config }
+    }
+
+    /// Create a new alter body filter with default configuration.
+    pub fn default() -> Self {
+        Self::new(AlterBodyFilterConfig::default())
+    }
+}
+
+#[async_trait]
+impl Filter for AlterBodyFilter {
+    fn filter_type(&self) -> FilterType {
+        FilterType::Pre
+    }
+
+    fn name(&self) -> &str {
+        "alter_body"
+    }
+
+    async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+        let method = request.method;
+        let path = request.path;
+        let query = request.query;
+        let headers = request.headers;
+        let context = request.context;
+
+        // Read the stream into a Vec<u8>
+        let mut body_stream = request.body.into_data_stream();
+        let mut full_body = Vec::new();
+
+        while let Some(chunk_result) = body_stream.next().await {
+            match chunk_result {
+                Ok(chunk) => full_body.extend_from_slice(&chunk),
+                Err(e) => {
+                    log::error!("Error reading body chunk: {}", e);
+                    break;
+                }
+            }
+        }
+
+        // let mut updated_body = IncommingBody {key1: String::from(""), key2: String::from("")};
+        let mut updated_body = "".to_string();
+
+        // Handle the body as a JSON string
+        // match String::from_utf8(full_body.clone()) {
+        //     Ok(body_str) => {
+        //         info!("Request body: {}", body_str);
+        //         match serde_json::from_str::<IncommingBody>(&body_str) {
+        //             Ok(mut data) => {
+        //                 info!("[AFTER PARSE] Request body: {:?}", data);
+        //                 data.key1 = self.config.target_value.clone();
+        //                 info!("[AFTER ALTER] Request body: {:?}", data);
+        //                 updated_body = data;
+        //             }
+        //             Err(e) => log::error!("Request body is not valid JSON: {}", e),
+        //         }
+        //     },
+        //     Err(e) => log::error!("Request body is not valid UTF-8: {}", e),
+        // }
+
+        // Log the body as UTF-8 string
+        match String::from_utf8(full_body.clone()) {
+            Ok(body_str) => {
+                info!("Response body: {}", body_str);
+                let mut value: Value = serde_json::from_str(&body_str).unwrap();
+                trace!("Response body: {}", value[self.config.target_field.clone()]);
+                value[self.config.target_field.clone()] = Value::String(self.config.target_value.clone());
+                updated_body = serde_json::to_string(&value).unwrap();
+            },
+            Err(e) => log::error!("Request body is not valid UTF-8: {}", e),
+        }
+        
+        // let serialized_body =  serde_json::to_string(&updated_body).unwrap();
+        // log::info!("[SERIALIZED] Request body: {}", serialized_body);
+
+        // Reconstruct the body so it can still be used
+        // let body = reqwest::Body::from(serialized_body);
+        let body = reqwest::Body::from(updated_body);
+
+        Ok(ProxyRequest {
+            method,
+            path,
+            query,
+            headers,
+            body,
+            context,
+        })
+    }
+}
+
+/// Configuration for an alter body filter.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InspectBodyFilterConfig {
+    pub target_field: String,
+}
+
+impl Default for InspectBodyFilterConfig {
+    fn default() -> Self {
+        Self {
+            target_field: "".to_string(),
+        }
+    }
+}
+
+/// A filter that logs out specific values in request bodies.
+#[derive(Debug)]
+pub struct InspectBodyFilter {
+    config: InspectBodyFilterConfig,
+}
+
+impl InspectBodyFilter {
+    /// Create a new inspect body filter with the given configuration.
+    pub fn new(config: InspectBodyFilterConfig) -> Self {
+        Self { config }
+    }
+
+    /// Create a new inspect body filter with default configuration.
+    pub fn default() -> Self {
+        Self::new(InspectBodyFilterConfig::default())
+    }
+}
+
+#[async_trait]
+impl Filter for InspectBodyFilter {
+    fn filter_type(&self) -> FilterType {
+        FilterType::Pre
+    }
+
+    fn name(&self) -> &str {
+        "inspect_body"
+    }
+
+    async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+        let method = request.method;
+        let path = request.path;
+        let query = request.query;
+        let headers = request.headers;
+        let context = request.context;
+
+        // Read the stream into a Vec<u8>
+        let mut body_stream = request.body.into_data_stream();
+        let mut full_body = Vec::new();
+
+        while let Some(chunk_result) = body_stream.next().await {
+            match chunk_result {
+                Ok(chunk) => full_body.extend_from_slice(&chunk),
+                Err(e) => {
+                    log::error!("Error reading body chunk: {}", e);
+                    break;
+                }
+            }
+        }
+
+        // Log the body as UTF-8 string
+        match String::from_utf8(full_body.clone()) {
+            Ok(body_str) => {
+                info!("Response body: {}", body_str);
+                let value: Value = serde_json::from_str(&body_str).unwrap();
+                info!("[Field Inspect] Request body: {:?}", value[self.config.target_field.clone()].as_str().unwrap());
+
+            },
+            Err(e) => log::error!("Response body is not valid UTF-8: {}", e),
+        }
+
+        // Reconstruct the body so it can still be used
+        let body = reqwest::Body::from(full_body);
+
+        Ok(ProxyRequest {
+            method,
+            path,
+            query,
+            headers,
+            body,
+            context,
+        })
+    }
+}
+
 /// Factory for creating filters based on configuration.
 #[derive(Debug)]
 pub struct FilterFactory;
@@ -608,6 +814,24 @@ impl FilterFactory {
                         Err(e)
                     }
                 }
+            },
+            "alter_body" => {
+                let config: AlterBodyFilterConfig = serde_json::from_value(config)
+                    .map_err(|e| {
+                        let err = ProxyError::FilterError(format!("Invalid alter body filter config: {}", e));
+                        log::error!("{}", err);
+                        err
+                    })?;
+                Ok(Arc::new(AlterBodyFilter::new(config)))
+            },
+            "inspect_body" => {
+                let config: InspectBodyFilterConfig = serde_json::from_value(config)
+                    .map_err(|e| {
+                        let err = ProxyError::FilterError(format!("Invalid inspect body filter config: {}", e));
+                        log::error!("{}", err);
+                        err
+                    })?;
+                Ok(Arc::new(InspectBodyFilter::new(config)))
             },
             _ => {
                 let err = ProxyError::FilterError(format!("Unknown filter type: {}", filter_type));
