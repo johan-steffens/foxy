@@ -293,8 +293,21 @@ impl Filter for RouteToServerFilter {
     }
 
     async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
-        todo!()
+        let username = get_username(request);
+        todo!("determine server")
     }
+}
+
+fn get_username(request:ProxyRequest) -> Result<String, ProxyError> {
+    let mut username : String = String::from("");
+
+    if let Some(value) = request.clone().headers.get("x-capitec-username"){
+        username = String::from(value.to_str().unwrap());
+    } else {
+        todo!("check body for username")
+    }
+
+    Ok((username))
 }
 
 async fn tee_body(
