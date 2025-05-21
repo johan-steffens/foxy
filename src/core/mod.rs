@@ -79,6 +79,7 @@ impl From<crate::config::error::ConfigError> for ProxyError {
     }
 }
 
+
 impl From<globset::Error> for ProxyError {
     fn from(e: globset::Error) -> Self {
         ProxyError::SecurityError(e.to_string())
