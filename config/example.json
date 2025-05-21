@@ -22,7 +22,7 @@
         }
       },
       {
-        "type": "api_gateway_servers",
+        "type": "route_to_server",
         "config": {
           "server_list": [
             "server-1",

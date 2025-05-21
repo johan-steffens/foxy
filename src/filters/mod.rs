@@ -260,6 +260,43 @@ impl Filter for LoggingFilter {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouteToServerConfig {
+    pub server_list: Vec<String>
+}
+
+#[derive(Debug)]
+pub struct RouteToServerFilter {
+    config:  RouteToServerConfig,
+}
+
+impl RouteToServerFilter {
+    pub fn new(config: RouteToServerConfig) -> Self {
+        Self { config }
+    }
+
+    pub fn get_server_list(&self) -> Vec<String> {
+        self.config.server_list.clone()
+    }
+
+    pub fn get_number_of_servers(&self) -> usize {
+        self.config.server_list.len()
+    }
+}
+
+#[async_trait]
+impl Filter for RouteToServerFilter {
+    fn filter_type(&self) -> FilterType { FilterType::Pre }
+
+    fn name(&self) -> &str {
+        "route_to_server"
+    }
+
+    async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+        todo!()
+    }
+}
+
 async fn tee_body(
     body: reqwest::Body,
     limit: usize,
@@ -833,6 +870,15 @@ impl FilterFactory {
                     })?;
                 Ok(Arc::new(InspectBodyFilter::new(config)))
             },
+            "route_to_server" => {
+                let config: RouteToServerConfig = serde_json::from_value(config)
+                    .map_err(|e| {
+                        let err = ProxyError::FilterError(format!("Invalid route_to_server filter config: {}", e));
+                        log::error!("{}", err);
+                        err
+                    })?;
+                Ok(Arc::new(RouteToServerFilter::new(config)))
+            }
             _ => {
                 let err = ProxyError::FilterError(format!("Unknown filter type: {}", filter_type));
                 log::error!("{}", err);
