@@ -35,6 +35,8 @@ use opentelemetry::{
 };
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_http::HeaderInjector;
+#[cfg(feature = "opentelemetry")]
+use opentelemetry_semantic_conventions::attribute::HTTP_RESPONSE_STATUS_CODE;
 use crate::log_info;
 
 /// Errors that can occur during proxy operations.
@@ -436,7 +438,7 @@ impl ProxyCore {
             let client_span = span_context.span();
 
             client_span.set_attribute(KeyValue::new(
-                "call.http.status_code",
+                HTTP_RESPONSE_STATUS_CODE,
                 resp.status().as_u16() as i64,
             ));
             client_span.end();
