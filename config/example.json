@@ -20,6 +20,16 @@
           "log_level": "debug",
           "max_body_size": 1024
         }
+      },
+      {
+        "type": "api_gateway_servers",
+        "config": {
+          "server_list": [
+            "server-1",
+            "server-2",
+            "server-3"
+          ]
+        }
       }
     ]
   },
