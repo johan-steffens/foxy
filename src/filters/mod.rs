@@ -25,6 +25,7 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::RwLock;
 use futures_util::stream::iter;
+use hyper::http::HeaderValue;
 use serde_json::Value;
 
 use crate::core::{
@@ -557,20 +558,18 @@ impl Filter for PathRewriteFilter {
 /// Configuration for an alter body filter.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlterBodyFilterConfig {
-    pub target_field: String,
-    pub target_value: String,
+    alter_fields: HashMap<String, String>
 }
 
 impl Default for AlterBodyFilterConfig {
     fn default() -> Self {
         Self {
-            target_field: "".to_string(),
-            target_value: "".to_string(),
+            alter_fields: HashMap::new(),
         }
     }
 }
 
-/// A filter that allows you to alter a given field in a request body..
+/// A filter that allows you to alter a given field in a request body.
 #[derive(Debug)]
 pub struct AlterBodyFilter {
     config: AlterBodyFilterConfig,
@@ -602,7 +601,7 @@ impl Filter for AlterBodyFilter {
         let method = request.method;
         let path = request.path;
         let query = request.query;
-        let headers = request.headers;
+        let mut headers = request.headers;
         let context = request.context;
 
         // Read the stream into a Vec<u8>
@@ -618,44 +617,36 @@ impl Filter for AlterBodyFilter {
                 }
             }
         }
-
-        // let mut updated_body = IncommingBody {key1: String::from(""), key2: String::from("")};
+        
         let mut updated_body = "".to_string();
 
         // Handle the body as a JSON string
-        // match String::from_utf8(full_body.clone()) {
-        //     Ok(body_str) => {
-        //         info!("Request body: {}", body_str);
-        //         match serde_json::from_str::<IncommingBody>(&body_str) {
-        //             Ok(mut data) => {
-        //                 info!("[AFTER PARSE] Request body: {:?}", data);
-        //                 data.key1 = self.config.target_value.clone();
-        //                 info!("[AFTER ALTER] Request body: {:?}", data);
-        //                 updated_body = data;
-        //             }
-        //             Err(e) => log::error!("Request body is not valid JSON: {}", e),
-        //         }
-        //     },
-        //     Err(e) => log::error!("Request body is not valid UTF-8: {}", e),
-        // }
-
-        // Log the body as UTF-8 string
         match String::from_utf8(full_body.clone()) {
             Ok(body_str) => {
                 info!("Response body: {}", body_str);
-                let mut value: Value = serde_json::from_str(&body_str).unwrap();
-                trace!("Response body: {}", value[self.config.target_field.clone()]);
-                value[self.config.target_field.clone()] = Value::String(self.config.target_value.clone());
-                updated_body = serde_json::to_string(&value).unwrap();
+                match serde_json::from_str::<Value>(&body_str) {
+                    Ok(mut json_body) => {
+                        for (key, value) in self.config.alter_fields.iter() {
+                            debug!("Altering key: {},  {}", key, json_body[key]);
+                            json_body[key] = Value::String(value.to_string());
+                        }
+
+                        updated_body = serde_json::to_string(&json_body).unwrap();
+                    },
+                    Err(e) => {
+                        log::error!("Error deserializing body: {}", e)
+                    }
+                }
             },
             Err(e) => log::error!("Request body is not valid UTF-8: {}", e),
         }
-        
-        // let serialized_body =  serde_json::to_string(&updated_body).unwrap();
-        // log::info!("[SERIALIZED] Request body: {}", serialized_body);
+
+        let updated_body_bytes = updated_body.as_bytes();
+        let content_length = updated_body_bytes.len().to_string();
+
+        headers.insert("Content-Length", content_length.parse().unwrap());
 
         // Reconstruct the body so it can still be used
-        // let body = reqwest::Body::from(serialized_body);
         let body = reqwest::Body::from(updated_body);
 
         Ok(ProxyRequest {
@@ -669,7 +660,7 @@ impl Filter for AlterBodyFilter {
     }
 }
 
-/// Configuration for an alter body filter.
+/// Configuration for an inspect body filter.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InspectBodyFilterConfig {
     pub target_field: String,
@@ -757,6 +748,58 @@ impl Filter for InspectBodyFilter {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InjectHeadedFilterConfig {
+    pub custom_headers: HashMap<String,String>,
+}
+
+#[derive(Debug)]
+pub struct InjectHeaderFilter {
+    config: InjectHeadedFilterConfig
+}
+
+impl InjectHeaderFilter {
+    pub fn new(config: InjectHeadedFilterConfig) -> Result<Self, ProxyError> {
+        Ok(Self { config })
+    }
+
+    fn add_custom_header(&self, headers: &mut reqwest::header::HeaderMap,
+                         header_name: &str,
+                         header_value: &str) {
+
+        if let (Ok(header_name), Ok(header_value)) = (
+            reqwest::header::HeaderName::from_bytes(header_name.as_bytes()),
+            reqwest::header::HeaderValue::from_str(header_value)
+        ) {
+            headers.insert(header_name, header_value);
+            
+            debug!("[AFTER INJECTING HEADERS]");
+            for (name, val) in headers.iter() {
+                debug!("[Header Filter] {} to {:?}", name, val);
+            }
+        }
+
+    }
+}
+
+#[async_trait]
+impl Filter for InjectHeaderFilter {
+    fn filter_type(&self) -> FilterType {
+        FilterType::Both
+    }
+
+    fn name(&self) -> &str {
+        "inject_header"
+    }
+
+    async fn pre_filter(&self, mut request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+        for (key, value) in &self.config.custom_headers {
+            self.add_custom_header(&mut request.headers, key, value);
+        }
+        Ok(request)
+    }
+}
+
 /// Factory for creating filters based on configuration.
 #[derive(Debug)]
 pub struct FilterFactory;
@@ -832,6 +875,22 @@ impl FilterFactory {
                         err
                     })?;
                 Ok(Arc::new(InspectBodyFilter::new(config)))
+            },
+            "inject_header" => {
+                let config: InjectHeadedFilterConfig = serde_json::from_value(config)
+                    .map_err(|e| {
+                        let err = ProxyError::FilterError(format!("Invalid custom header filter config: {}", e));
+                        log::error!("{}", err);
+                        err
+                    })?;
+
+                match InjectHeaderFilter::new(config) {
+                    Ok(filter) => Ok(Arc::new(filter)),
+                    Err(e) => {
+                        log::error!("Failed to create inject header filter: {}", e);
+                        Err(e)
+                    }
+                }
             },
             _ => {
                 let err = ProxyError::FilterError(format!("Unknown filter type: {}", filter_type));
