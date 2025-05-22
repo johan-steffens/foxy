@@ -299,16 +299,51 @@ impl Filter for RouteToServerFilter {
     }
 }
 
-fn get_username(request:ProxyRequest) -> Result<String, ProxyError> {
+async fn get_username(request:ProxyRequest) -> Result<String, ProxyError> {
     let mut username : String = String::from("");
 
     if let Some(value) = request.clone().headers.get("x-capitec-username"){
         username = String::from(value.to_str().unwrap());
     } else {
-        todo!("check body for username")
+        let jsonBody = serialize_proxy_request_body(request).await;
     }
 
     Ok((username))
+}
+    
+async fn serialize_proxy_request_body(request: ProxyRequest) -> Result<Value, ProxyError>
+{
+    // Read the stream into a Vec<u8>
+    let mut body_stream = request.clone().body.into_data_stream();
+    let mut full_body = Vec::new();
+
+    while let Some(chunk_result) = body_stream.next().await {
+        match chunk_result {
+            Ok(chunk) => full_body.extend_from_slice(&chunk),
+            Err(e) => {
+                log::error!("Error reading body chunk: {}", e);
+                break;
+            }
+        }
+    }
+
+    // Handle the body as a JSON string
+    match String::from_utf8(full_body.clone()) {
+        Ok(body_str) => {
+            info!("Request body: {}", body_str);
+            Ok(serde_json::from_str::<Value>(&body_str).map_err(|e| {
+                let err = ProxyError::FilterError(format!("Failed to serialize proxy request body: {}", e));
+                log::error!("{}", err);
+                err
+            })?)
+        },
+        Err(e) => {
+            log::error!("Request body is not valid UTF-8: {}", e);
+            let err = ProxyError::FilterError(format!("Invalid logging filter config: {}", e));
+            log::error!("{}", err);
+            Err(err)
+        },
+    }
 }
 
 async fn tee_body(
@@ -709,6 +744,54 @@ impl Filter for AlterBodyFilter {
         })
     }
 }
+
+// async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+// 
+//     let req = request.clone();
+// 
+//     let method = request.method;
+//     let path = request.path;
+//     let query = request.query;
+//     let mut headers = request.headers;
+//     let context = request.context;
+//     let body = request.body;
+// 
+//     // Read the stream into a Vec<u8>
+// 
+//     let mut full_body = Vec::new();
+//     let mut updated_body = "".to_string();
+// 
+//     match serialize_proxy_request(req).await {
+//         Ok(mut json_request_body) => {
+//             for (key, value) in self.config.alter_fields.iter() {
+//                 debug!("Altering key: {},  {}", key, json_request_body[key]);
+//                 json_request_body[key] = Value::String(value.to_string());
+//             }
+// 
+//             updated_body = serde_json::to_string(&json_request_body).unwrap()
+//         }
+//         Err(e) => {
+//             log::error!("Failed to alter proxy request body {}", e);
+//         }
+//     };
+// 
+//     let updated_body_bytes = updated_body.as_bytes();
+//     let content_length = updated_body_bytes.len().to_string();
+// 
+//     headers.insert("Content-Length", content_length.parse().unwrap());
+// 
+//     // Reconstruct the body so it can still be used
+//     let body = reqwest::Body::from(updated_body);
+// 
+//     Ok(ProxyRequest {
+//         method,
+//         path,
+//         query,
+//         headers,
+//         body,
+//         context,
+//     })
+// }
 
 /// Configuration for an inspect body filter.
 #[derive(Debug, Clone, Serialize, Deserialize)]
