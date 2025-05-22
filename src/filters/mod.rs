@@ -294,8 +294,8 @@ impl Filter for RouteToServerFilter {
     }
 
     async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
-        let username = get_username(request);
-        todo!("determine server")
+        let username = get_username(request).await;
+        //TODO: determine server index, by hashing username and doing a mod on the hash with number of available servers
     }
 }
 
@@ -306,6 +306,7 @@ async fn get_username(request:ProxyRequest) -> Result<String, ProxyError> {
         username = String::from(value.to_str().unwrap());
     } else {
         let jsonBody = serialize_proxy_request_body(request).await;
+        //TODO: get username from body
     }
 
     Ok((username))
