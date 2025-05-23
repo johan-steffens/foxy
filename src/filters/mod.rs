@@ -23,10 +23,14 @@ use regex::Regex;
 use serde::{Serialize, Deserialize};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::ptr::null;
 use std::sync::RwLock;
 use futures_util::stream::iter;
 use hyper::http::HeaderValue;
+use openssl::sha::Sha256;
 use serde_json::Value;
+use num_bigint::BigUint;
+use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::core::{
     Filter, FilterType, ProxyRequest, ProxyResponse, ProxyError
@@ -259,6 +263,115 @@ impl Filter for LoggingFilter {
         }
         Ok(response)
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouteToServerConfig {
+    pub server_list: Vec<String>
+}
+
+#[derive(Debug)]
+pub struct RouteToServerFilter {
+    config:  RouteToServerConfig,
+}
+
+impl RouteToServerFilter {
+    pub fn new(config: RouteToServerConfig) -> Self {
+        Self { config }
+    }
+
+    pub fn get_server_list(&self) -> Vec<String> {
+        self.config.server_list.clone()
+    }
+
+    pub fn get_number_of_servers(&self) -> usize {
+        self.config.server_list.len()
+    }
+}
+
+#[async_trait]
+impl Filter for RouteToServerFilter {
+    fn filter_type(&self) -> FilterType { FilterType::Pre }
+
+    fn name(&self) -> &str {
+        "route_to_server"
+    }
+
+    async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+        let username = get_username(request).await;
+        let server_route = determine_server_route(username?, &self.config.server_list);
+    }
+}
+
+async fn get_username(request:ProxyRequest) -> Result<String, ProxyError> {
+    let mut username : String = String::from("");
+
+    if let Some(value) = request.clone().headers.get("x-capitec-username"){
+        username = String::from(value.to_str().unwrap());
+    } else {
+        let jsonBody = serialize_proxy_request_body(request).await;
+        //TODO: get username from body
+    }
+
+    Ok((username))
+}
+
+async fn serialize_proxy_request_body(request: ProxyRequest) -> Result<Value, ProxyError>
+{
+    // Read the stream into a Vec<u8>
+    let mut body_stream = request.clone().body.into_data_stream();
+    let mut full_body = Vec::new();
+
+    while let Some(chunk_result) = body_stream.next().await {
+        match chunk_result {
+            Ok(chunk) => full_body.extend_from_slice(&chunk),
+            Err(e) => {
+                log::error!("Error reading body chunk: {}", e);
+                break;
+            }
+        }
+    }
+
+    // Handle the body as a JSON string
+    match String::from_utf8(full_body.clone()) {
+        Ok(body_str) => {
+            info!("Request body: {}", body_str);
+            Ok(serde_json::from_str::<Value>(&body_str).map_err(|e| {
+                let err = ProxyError::FilterError(format!("Failed to serialize proxy request body: {}", e));
+                log::error!("{}", err);
+                err
+            })?)
+        },
+        Err(e) => {
+            log::error!("Request body is not valid UTF-8: {}", e);
+            let err = ProxyError::FilterError(format!("Invalid logging filter config: {}", e));
+            log::error!("{}", err);
+            Err(err)
+        },
+    }
+}
+
+fn determine_server_route(username : String, server_list : &Vec<String>) -> Result<String, ProxyError> {
+
+    let mut server_index : i32 = 0;
+
+    if (username != null()) {
+
+    }
+}
+
+fn get_hashed_index(user_id: &str, num_servers: i32) -> i32 {
+
+    let mut hasher = Sha256::new();
+
+    hasher.update(user_id.as_bytes());
+    let hash_bytes = hasher.finish();
+
+    let big_int = BigUint::from_bytes_le(&hash_bytes[0..8]);
+
+    let server_index = big_int % BigUint::from_i32(num_servers).unwrap();
+
+    server_index.to_i32().unwrap_or(0)
 }
 
 async fn tee_body(
@@ -617,7 +730,7 @@ impl Filter for AlterBodyFilter {
                 }
             }
         }
-        
+
         let mut updated_body = "".to_string();
 
         // Handle the body as a JSON string
@@ -659,6 +772,54 @@ impl Filter for AlterBodyFilter {
         })
     }
 }
+
+// async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+//
+//     let req = request.clone();
+//
+//     let method = request.method;
+//     let path = request.path;
+//     let query = request.query;
+//     let mut headers = request.headers;
+//     let context = request.context;
+//     let body = request.body;
+//
+//     // Read the stream into a Vec<u8>
+//
+//     let mut full_body = Vec::new();
+//     let mut updated_body = "".to_string();
+//
+//     match serialize_proxy_request(req).await {
+//         Ok(mut json_request_body) => {
+//             for (key, value) in self.config.alter_fields.iter() {
+//                 debug!("Altering key: {},  {}", key, json_request_body[key]);
+//                 json_request_body[key] = Value::String(value.to_string());
+//             }
+//
+//             updated_body = serde_json::to_string(&json_request_body).unwrap()
+//         }
+//         Err(e) => {
+//             log::error!("Failed to alter proxy request body {}", e);
+//         }
+//     };
+//
+//     let updated_body_bytes = updated_body.as_bytes();
+//     let content_length = updated_body_bytes.len().to_string();
+//
+//     headers.insert("Content-Length", content_length.parse().unwrap());
+//
+//     // Reconstruct the body so it can still be used
+//     let body = reqwest::Body::from(updated_body);
+//
+//     Ok(ProxyRequest {
+//         method,
+//         path,
+//         query,
+//         headers,
+//         body,
+//         context,
+//     })
+// }
 
 /// Configuration for an inspect body filter.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -772,7 +933,7 @@ impl InjectHeaderFilter {
             reqwest::header::HeaderValue::from_str(header_value)
         ) {
             headers.insert(header_name, header_value);
-            
+
             debug!("[AFTER INJECTING HEADERS]");
             for (name, val) in headers.iter() {
                 debug!("[Header Filter] {} to {:?}", name, val);
@@ -876,6 +1037,15 @@ impl FilterFactory {
                     })?;
                 Ok(Arc::new(InspectBodyFilter::new(config)))
             },
+            "route_to_server" => {
+                let config: RouteToServerConfig = serde_json::from_value(config)
+                    .map_err(|e| {
+                        let err = ProxyError::FilterError(format!("Invalid route_to_server filter config: {}", e));
+                        log::error!("{}", err);
+                        err
+                    })?;
+                Ok(Arc::new(RouteToServerFilter::new(config)))
+            }
             "inject_header" => {
                 let config: InjectHeadedFilterConfig = serde_json::from_value(config)
                     .map_err(|e| {

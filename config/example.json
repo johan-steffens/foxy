@@ -20,6 +20,16 @@
           "log_level": "debug",
           "max_body_size": 1024
         }
+      },
+      {
+        "type": "route_to_server",
+        "config": {
+          "server_list": [
+            "server-1",
+            "server-2",
+            "server-3"
+          ]
+        }
       }
     ]
   },

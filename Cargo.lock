@@ -391,6 +391,8 @@ dependencies = [
  "hyper-util",
  "jsonwebtoken",
  "log",
+ "num-bigint",
+ "num-traits",
  "once_cell",
  "openssl",
  "opentelemetry 0.29.1",
