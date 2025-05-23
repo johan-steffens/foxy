@@ -20,6 +20,16 @@
           "log_level": "debug",
           "max_body_size": 1024
         }
+      },
+      {
+        "type": "route_to_server",
+        "config": {
+          "server_list": [
+            "server-1",
+            "server-2",
+            "server-3"
+          ]
+        }
       }
     ]
   },
@@ -33,6 +43,14 @@
           "config": {
             "pattern": "^/$",
             "replacement": "/get"
+          }
+        },
+        {
+          "type": "inject_header",
+          "config": {
+            "custom_headers": {
+              "test_header": "123456"
+            }
           }
         }
       ],
@@ -61,6 +79,20 @@
           "config": {
             "pattern": "^/$",
             "replacement": "/post"
+          }
+        },
+        {
+          "type": "alter_body",
+          "config": {
+            "alter_fields": {
+              "key1": "test_update_value"
+            }
+          }
+        },
+        {
+          "type": "inspect_body",
+          "config": {
+            "target_field": "body_value"
           }
         }
       ],
