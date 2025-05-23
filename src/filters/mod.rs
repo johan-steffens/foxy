@@ -295,7 +295,7 @@ impl Filter for RouteToServerFilter {
 
     async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
         let username = get_username(request).await;
-        //TODO: determine server index, by hashing username and doing a mod on the hash with number of available servers
+        let server_route = determine_server_route(username?, &self.config.server_list);
     }
 }
 
@@ -311,7 +311,7 @@ async fn get_username(request:ProxyRequest) -> Result<String, ProxyError> {
 
     Ok((username))
 }
-    
+
 async fn serialize_proxy_request_body(request: ProxyRequest) -> Result<Value, ProxyError>
 {
     // Read the stream into a Vec<u8>
@@ -345,6 +345,11 @@ async fn serialize_proxy_request_body(request: ProxyRequest) -> Result<Value, Pr
             Err(err)
         },
     }
+}
+
+async fn determine_server_route(username : String, server_list : &Vec<String>) -> Result<String, ProxyError> {
+    
+    let mut server_index : i32 = 0;
 }
 
 async fn tee_body(
@@ -703,7 +708,7 @@ impl Filter for AlterBodyFilter {
                 }
             }
         }
-        
+
         let mut updated_body = "".to_string();
 
         // Handle the body as a JSON string
@@ -747,43 +752,43 @@ impl Filter for AlterBodyFilter {
 }
 
 // async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
-// 
+//
 //     let req = request.clone();
-// 
+//
 //     let method = request.method;
 //     let path = request.path;
 //     let query = request.query;
 //     let mut headers = request.headers;
 //     let context = request.context;
 //     let body = request.body;
-// 
+//
 //     // Read the stream into a Vec<u8>
-// 
+//
 //     let mut full_body = Vec::new();
 //     let mut updated_body = "".to_string();
-// 
+//
 //     match serialize_proxy_request(req).await {
 //         Ok(mut json_request_body) => {
 //             for (key, value) in self.config.alter_fields.iter() {
 //                 debug!("Altering key: {},  {}", key, json_request_body[key]);
 //                 json_request_body[key] = Value::String(value.to_string());
 //             }
-// 
+//
 //             updated_body = serde_json::to_string(&json_request_body).unwrap()
 //         }
 //         Err(e) => {
 //             log::error!("Failed to alter proxy request body {}", e);
 //         }
 //     };
-// 
+//
 //     let updated_body_bytes = updated_body.as_bytes();
 //     let content_length = updated_body_bytes.len().to_string();
-// 
+//
 //     headers.insert("Content-Length", content_length.parse().unwrap());
-// 
+//
 //     // Reconstruct the body so it can still be used
 //     let body = reqwest::Body::from(updated_body);
-// 
+//
 //     Ok(ProxyRequest {
 //         method,
 //         path,
@@ -906,7 +911,7 @@ impl InjectHeaderFilter {
             reqwest::header::HeaderValue::from_str(header_value)
         ) {
             headers.insert(header_name, header_value);
-            
+
             debug!("[AFTER INJECTING HEADERS]");
             for (name, val) in headers.iter() {
                 debug!("[Header Filter] {} to {:?}", name, val);
