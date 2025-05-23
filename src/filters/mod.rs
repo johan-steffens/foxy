@@ -23,10 +23,14 @@ use regex::Regex;
 use serde::{Serialize, Deserialize};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::ptr::null;
 use std::sync::RwLock;
 use futures_util::stream::iter;
 use hyper::http::HeaderValue;
+use openssl::sha::Sha256;
 use serde_json::Value;
+use num_bigint::BigUint;
+use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::core::{
     Filter, FilterType, ProxyRequest, ProxyResponse, ProxyError
@@ -347,9 +351,27 @@ async fn serialize_proxy_request_body(request: ProxyRequest) -> Result<Value, Pr
     }
 }
 
-async fn determine_server_route(username : String, server_list : &Vec<String>) -> Result<String, ProxyError> {
-    
+fn determine_server_route(username : String, server_list : &Vec<String>) -> Result<String, ProxyError> {
+
     let mut server_index : i32 = 0;
+
+    if (username != null()) {
+
+    }
+}
+
+fn get_hashed_index(user_id: &str, num_servers: i32) -> i32 {
+
+    let mut hasher = Sha256::new();
+
+    hasher.update(user_id.as_bytes());
+    let hash_bytes = hasher.finish();
+
+    let big_int = BigUint::from_bytes_le(&hash_bytes[0..8]);
+
+    let server_index = big_int % BigUint::from_i32(num_servers).unwrap();
+
+    server_index.to_i32().unwrap_or(0)
 }
 
 async fn tee_body(
