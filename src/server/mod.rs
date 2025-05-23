@@ -60,6 +60,8 @@ use opentelemetry::{
 };
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_http::HeaderExtractor;
+#[cfg(feature = "opentelemetry")]
+use opentelemetry_semantic_conventions::attribute::{HTTP_FLAVOR, HTTP_HOST, HTTP_METHOD, HTTP_REQUEST_CONTENT_LENGTH, HTTP_RESPONSE_STATUS_CODE, HTTP_SCHEME, HTTP_STATUS_CODE, HTTP_URL, HTTP_USER_AGENT, NET_PEER_IP};
 
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -364,14 +366,14 @@ async fn handle_request(
             }, &context);
 
         span.set_attributes([
-            KeyValue::new("call.http.method", method),
-            KeyValue::new("call.http.url", full_url.clone()),
-            KeyValue::new("call.http.scheme", scheme),
-            KeyValue::new("call.http.host", host),
-            KeyValue::new("call.http.flavor", http_version),
-            KeyValue::new("call.http.request_content_length", req_content_len),
-            KeyValue::new("call.http.user_agent", user_agent),
-            KeyValue::new("net.peer.ip", peer_ip),
+            KeyValue::new(HTTP_METHOD, method),
+            KeyValue::new(HTTP_URL, full_url.clone()),
+            KeyValue::new(HTTP_SCHEME, scheme),
+            KeyValue::new(HTTP_HOST, host),
+            KeyValue::new(HTTP_FLAVOR, http_version),
+            KeyValue::new(HTTP_REQUEST_CONTENT_LENGTH, req_content_len),
+            KeyValue::new(HTTP_USER_AGENT, user_agent),
+            KeyValue::new(NET_PEER_IP, peer_ip),
         ]);
 
         context.with_span(span)
@@ -482,7 +484,7 @@ async fn handle_request(
         let status_code = response.as_ref().unwrap().status().as_u16();
 
         span_ref.set_attribute(KeyValue::new(
-            "call.http.status_code",
+            HTTP_RESPONSE_STATUS_CODE,
             status_code as i64,
         ));
         span_ref.end();
