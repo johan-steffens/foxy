@@ -186,47 +186,70 @@ impl ProxyServer {
                                 info!("Rejecting new connection during shutdown");
                                 continue;
                             }
-
+        
                             let core = core.clone();
                             let client_ip = remote_addr.ip().to_string();
                             let (tx, rx) = oneshot::channel();
+                            let shutdown_senders_clone = shutdown_senders.clone();
                             
                             let handle = join_set.spawn(async move {
+                                let task_id = tokio::task::id();
+                                
                                 let service = service_fn(move |req: Request<Incoming>| {
-                                    debug!("Incoming over {:?}", req.version());
+                                    debug!("Incoming over {:?}", &req.version());
                                     handle_request(req, core.clone(), client_ip.clone())
                                 });
                                 let io = TokioIo::new(stream);
-
-                                // Use the shutdown signal to properly close connections
+        
                                 let builder = {
                                     let mut b = AutoBuilder::new(TokioExecutor::new());
                                     b.http1();
                                     b.http2();
                                     b
                                 };
-
-                                // Create a graceful shutdown future
-                                let graceful_shutdown = async {
-                                    // Wait for the shutdown signal
-                                    let _ = rx.await;
-                                    debug!("Connection received shutdown signal");
-                                };
-
-                                // Create the connection future
+        
+                                // Create the connection
                                 let connection = builder.serve_connection(io, service);
-
-                                // Run both futures concurrently
+                                
+                                // Pin the connection and enable graceful shutdown
+                                let mut conn = std::pin::pin!(connection);
+        
+                                // Run the connection with graceful shutdown
                                 tokio::select! {
-                                    res = connection => {
-                                        if let Err(e) = res {
-                                            error!("Connection error: {}", e);
+                                    res = &mut conn => {
+                                        match res {
+                                            Ok(()) => debug!("Connection closed normally"),
+                                            Err(e) => {
+                                                // Check if it's a graceful close by examining the error message
+                                                let err_str = e.to_string();
+                                                if !err_str.contains("connection closed") && 
+                                                   !err_str.contains("connection reset") {
+                                                    error!("Connection error: {}", e);
+                                                }
+                                            }
                                         }
                                     }
-                                    _ = graceful_shutdown => {
-                                        debug!("Connection shutting down gracefully");
+                                    _ = rx => {
+                                        debug!("Connection received shutdown signal, waiting for graceful close");
+                                        conn.as_mut().graceful_shutdown();
+                                        
+                                        // Continue running the connection until it completes
+                                        match conn.await {
+                                            Ok(()) => debug!("Connection closed gracefully after shutdown signal"),
+                                            Err(e) => {
+                                                let err_str = e.to_string();
+                                                if !err_str.contains("connection closed") && 
+                                                   !err_str.contains("connection reset") {
+                                                    error!("Connection error during graceful shutdown: {}", e);
+                                                }
+                                            }
+                                        }
                                     }
                                 }
+                                
+                                // Clean up the shutdown sender for this task
+                                shutdown_senders_clone.write().await.remove(&task_id);
+                                debug!("Connection task {:?} completed", task_id);
                             });
                             
                             // Store the shutdown sender for this task
@@ -240,30 +263,57 @@ impl ProxyServer {
 
         // Stop accepting connections and signal existing ones to shut down
         info!("Shutting down; waiting for {} connection(s)", join_set.len());
-        
+
         // Signal all connections to close gracefully
         {
             let mut senders = shutdown_senders.write().await;
-            for (_, sender) in senders.drain() {
+            info!("Signaling {} connections to shut down", senders.len());
+            for (task_id, sender) in senders.drain() {
+                debug!("Sending shutdown signal to task {:?}", task_id);
                 let _ = sender.send(());
             }
         }
-        
+
         // Wait for connections to complete gracefully with a timeout
         let shutdown_timeout = tokio::time::Duration::from_secs(30);
+        let start_time = tokio::time::Instant::now();
+
         let shutdown_future = async {
+            let mut completed = 0;
+            let total = join_set.len();
+
             while let Some(res) = join_set.join_next().await {
-                if let Err(e) = res {
-                    error!("Connection task failed: {}", e);
+                completed += 1;
+                match res {
+                    Ok(_) => debug!("Connection task completed ({}/{})", completed, total),
+                    Err(e) if e.is_cancelled() => debug!("Connection task cancelled ({}/{})", completed, total),
+                    Err(e) => error!("Connection task failed ({}/{}): {}", completed, total, e),
+                }
+
+                let elapsed = start_time.elapsed();
+                if completed % 10 == 0 || total - completed < 10 {
+                    info!("Shutdown progress: {}/{} connections closed (elapsed: {:.1}s)", 
+                  completed, total, elapsed.as_secs_f32());
                 }
             }
         };
 
         match tokio::time::timeout(shutdown_timeout, shutdown_future).await {
-            Ok(_) => info!("All connections drained gracefully"),
-            Err(_) => warn!("Shutdown timed out after {} seconds", shutdown_timeout.as_secs()),
+            Ok(_) => {
+                let elapsed = start_time.elapsed();
+                info!("All connections drained gracefully in {:.1}s", elapsed.as_secs_f32());
+            }
+            Err(_) => {
+                warn!("Shutdown timed out after {} seconds, some connections may be forcefully closed", 
+              shutdown_timeout.as_secs());
+                // Cancel remaining tasks
+                join_set.shutdown().await;
+            }
         }
-        
+
+        // Ensure health server is also shut down
+        drop(health_server);
+
         info!("Shutdown complete");
         Ok(())
     }
