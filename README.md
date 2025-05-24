@@ -8,6 +8,7 @@
 [![Docker Version](https://img.shields.io/docker/v/johansteffens/foxy?label=docker%20tag)](https://hub.docker.com/r/johansteffens/foxy)
 [![Docker Pulls](https://img.shields.io/docker/pulls/johansteffens/foxy)](https://hub.docker.com/r/johansteffens/foxy)
 [![License](https://img.shields.io/github/license/johan-steffens/foxy)](https://github.com/johan-steffens/foxy/blob/main/LICENSE.md)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/johan-steffens/foxy)
 
 A minimal, configuration-driven, hyper-extensible Rust HTTP proxy library.
 
