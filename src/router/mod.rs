@@ -306,7 +306,11 @@ impl PredicateFactory {
                         log::error!("{}", err);
                         err
                     })?;
-                Ok(Arc::new(PathPredicate::new(path_config)))
+                
+                match PathPredicate::new(path_config) { 
+                    Ok(predicate) => Ok(Arc::new(predicate)),
+                    Err(error) => Err(error),
+                }
             },
             "method" => {
                 let method_config: MethodPredicateConfig = serde_json::from_value(config)

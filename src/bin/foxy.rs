@@ -9,8 +9,11 @@
 
 use std::env;
 use std::error::Error;
-use foxy::{Foxy, init_logging, log_info, log_error};
+use foxy::{Foxy, init_logging, log_info, log_error, log_warning};
 use log::LevelFilter;
+
+#[cfg(feature = "opentelemetry")]
+use foxy::opentelemetry::OpenTelemetryConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -38,8 +41,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         loader = loader.with_config_file(path);
     } else {
         // Conventional default inside the image
-        log_info("Config", "Using default configuration path: /etc/foxy/config.toml");
-        loader = loader.with_config_file("/etc/foxy/config.toml");
+        let fallback_path = "/etc/foxy/config.toml";
+        log_info("Config", format!("No FOXY_CONFIG_FILE env var found. Attempting to use default configuration path: {}", fallback_path));
+
+        if !std::path::Path::new(fallback_path).exists() {
+            log_warning("Config", format!("Default configuration file {} does not exist.", fallback_path));
+            panic!("No configuration file found.")
+        }
+        
+        loader = loader.with_config_file(fallback_path);
     }
 
     // Build
@@ -53,9 +63,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialise OpenTelemetry
     #[cfg(feature = "opentelemetry")]
-    foxy::opentelemetry::init(proxy.config().get("proxy.opentelemetry").unwrap()).unwrap_or_else(|err| {
-        log_error("Startup", format!("Failed to initialise OpenTelemetry: {}", err));
-    });
+    {
+        match proxy.config().get::<OpenTelemetryConfig>("proxy.opentelemetry") {
+            Ok(Some(otel_config)) => {
+                if !otel_config.endpoint.is_empty() {
+                    foxy::opentelemetry::init(Some(otel_config)).unwrap_or_else(|err| {
+                        log_error("Startup", format!("Failed to initialise OpenTelemetry: {}", err));
+                    });
+                } else {
+                    log_info("Startup", "OpenTelemetry endpoint is not configured. Skipping initialization.");
+                }
+            }
+            Ok(None) => {
+                log_info("Startup", "OpenTelemetry configuration not found. Skipping initialization.");
+            }
+            Err(e) => {
+                log_error("Startup", format!("Failed to read OpenTelemetry configuration: {}", e));
+            }
+        }   
+    }
     
     match proxy.start().await {
         Ok(_) => {

@@ -43,7 +43,7 @@ mod tests {
         let config = PathPredicateConfig {
             pattern: "/api/*".to_string(),
         };
-        let predicate = PathPredicate::new(config);
+        let predicate = PathPredicate::new(config).unwrap();
 
         // Test matching paths
         let request = create_test_request(HttpMethod::Get, "/api/users", None, vec![]);

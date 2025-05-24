@@ -125,19 +125,19 @@ impl FileConfigProvider {
 }
 
 impl ConfigProvider for FileConfigProvider {
-    fn get_raw(&self, key: &str) -> Result<Option<serde_json::Value>, ConfigError> {
-        match self.get_nested_value(key) {
-            Some(value) => Ok(Some(value.clone())),
-            None => Ok(None),
-        }
-    }
-
     fn has(&self, key: &str) -> bool {
         self.get_nested_value(key).is_some()
     }
 
     fn provider_name(&self) -> &str {
         "file"
+    }
+
+    fn get_raw(&self, key: &str) -> Result<Option<serde_json::Value>, ConfigError> {
+        match self.get_nested_value(key) {
+            Some(value) => Ok(Some(value.clone())),
+            None => Ok(None),
+        }
     }
 }
 

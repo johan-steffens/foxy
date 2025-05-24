@@ -318,16 +318,11 @@ fn convert_proxy_response(resp: ProxyResponse) -> Result<Response<Body>, ProxyEr
     let body = Body::wrap_stream(stream);
 
     let mut builder = Response::builder().status(resp.status);
-    match builder.headers_mut() {
-        Some(headers) => {
-            *headers = resp.headers;
-            Ok(())
-        },
-        None => {
-            log::error!("Failed to get mutable headers from response builder");
-            Err(ProxyError::Other("unable to set headers".into()))
-        }
-    }?;
+    let mut_headers = builder.headers_mut().ok_or_else(|| {
+        log::error!("Failed to get mutable headers from response builder");
+        ProxyError::Other("Failed to build response: unable to get mutable headers".into())
+    })?;
+    *mut_headers = resp.headers;
 
     builder
         .body(body)

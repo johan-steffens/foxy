@@ -256,7 +256,7 @@ impl OidcProvider {
         Ok(())
     }
 
-    fn jwk_to_decoding_key(&self, jwk: &Jwk, _alg: Algorithm) -> Result<DecodingKey, ProxyError> {
+    fn jwk_to_decoding_key(&self, jwk: &Jwk) -> Result<DecodingKey, ProxyError> {
         match &jwk.algorithm {
             AlgorithmParameters::RSA(params) => {
                 log::trace!("Converting RSA JWK to decoding key");
@@ -343,7 +343,7 @@ impl OidcProvider {
                 match jwks.keys.iter().find(|k| k.common.key_id == Some(kid.clone())) {
                     Some(key) => {
                         log::trace!("Found key with ID {}", kid);
-                        match self.jwk_to_decoding_key(key, header.alg) {
+                        match self.jwk_to_decoding_key(key) {
                             Ok(key) => key,
                             Err(e) => {
                                 log::error!("Failed to convert JWK to decoding key: {}", e);

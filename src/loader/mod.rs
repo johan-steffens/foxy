@@ -19,7 +19,7 @@ use thiserror::Error;
 
 use crate::config::{Config, ConfigError, ConfigProvider, EnvConfigProvider, FileConfigProvider};
 use crate::router::{FilterConfig, PredicateRouter, RouteConfig};
-use crate::{Filter, FilterFactory, ProxyError, ProxyServer, ServerConfig};
+use crate::{logging, Filter, FilterFactory, ProxyError, ProxyServer, ServerConfig};
 use crate::core::ProxyCore;
 
 /// Errors that can occur during Foxy initialization.
@@ -148,13 +148,18 @@ impl FoxyLoader {
 
         let config_arc = Arc::new(config);
 
-        // Then initialize the standard logger
-        if env_logger::try_init().is_ok() {
-            env_logger::Builder::new()
-                .filter_level(LevelFilter::Trace)
-                .try_init()
-                .ok();
-        }
+        // Then initialize the logger
+        let log_level_str: Option<String> = config_arc.get("proxy.log_level").unwrap_or(Some("info".to_string()));
+        let log_level_filter = match log_level_str.as_deref() {
+            Some("trace") => Some(LevelFilter::Trace),
+            Some("debug") => Some(LevelFilter::Debug),
+            Some("info") => Some(LevelFilter::Info),
+            Some("warn") => Some(LevelFilter::Warn),
+            Some("error") => Some(LevelFilter::Error),
+            Some("off") => Some(LevelFilter::Off),
+            _ => Some(LevelFilter::Info),
+        };
+        logging::init(log_level_filter);
 
         log::info!("Foxy starting up");
         

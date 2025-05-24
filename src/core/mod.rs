@@ -230,20 +230,24 @@ impl ProxyCore {
     /// Create a new proxy core with the given configuration and router.
     pub async fn new(config: Arc<Config>, router: Arc<dyn Router>) -> Result<Self, ProxyError> {
         // Configure the HTTP client based on the configuration
-        let timeout_secs: u64 = config.get_or_default("proxy.timeout", 30)?;
+        let timeout_secs: u64 = config.get_or_default("proxy.timeout", 30_u64)?;
 
-        let client = reqwest::Client::builder()
+        let client_builder = reqwest::Client::builder();
+        let client = client_builder
             .timeout(Duration::from_secs(timeout_secs))
             .build()
             .map_err(ProxyError::ClientError)?;
 
-        let security_config = config
-            .get::<Vec<ProviderConfig>>("proxy.security_chain")
-            .unwrap_or_default();
+        let actual_security_config: Vec<ProviderConfig> = match config.get("proxy.security_chain") {
+            Ok(Some(sc)) => sc,
+            Ok(None) => Vec::new(), // No security chain configured
+            Err(e) => {
+                log::warn!("Could not parse 'proxy.security_chain', defaulting to empty: {}", e);
+                Vec::new() // Default to empty on error
+            }
+        };
 
-        let security_chain = SecurityChain::from_configs(
-            security_config.unwrap_or_default()
-        ).await?;
+        let security_chain = SecurityChain::from_configs(actual_security_config).await?;
 
         Ok(Self {
             config,
@@ -396,16 +400,30 @@ impl ProxyCore {
         }
 
         /* ---------- send with timeout ---------- */
-        let timeout_dur =
-            Duration::from_secs(self.config.get_or_default("proxy.timeout", 30).unwrap_or_else(|e| {
-                log::error!("Failed to get timeout config: {}", e);
-                30 // Default to 30 seconds on error
-            }));
+        // The client already has a timeout configured.
+        // If a per-request timeout from a TimeoutFilter is present in context, it should override.
+        // For now, let's rely on the client's global timeout.
+        // A more advanced implementation could check request.context for a specific timeout.
+        let request_specific_timeout_ms: Option<u64> = request.context.read().await
+            .attributes
+            .get("timeout_ms")
+            .and_then(|v| v.as_u64());
+
+        let timeout_duration = if let Some(ms) = request_specific_timeout_ms {
+            Duration::from_millis(ms)
+        } else {
+            // Fallback to the client's configured timeout, or a default if not available.
+            // However, the client *is* configured with a timeout in ProxyCore::new.
+            // For consistency, we could fetch it from config again or store it in ProxyCore.
+            // For now, let's assume the client's timeout is sufficient.
+            // If we want to re-fetch:
+            self.config.get_or_default("proxy.timeout", 30_u64).map(Duration::from_secs)?
+        };
 
         let upstream_start = Instant::now();
-        log::trace!("Sending request to upstream with timeout: {:?}", timeout_dur);
+        log::trace!("Sending request to upstream with timeout: {:?}", timeout_duration);
         
-        let resp = match timeout(timeout_dur, builder.send()).await {
+        let resp = match timeout(timeout_duration, builder.send()).await {
             Ok(result) => match result {
                 Ok(response) => response,
                 Err(e) => {
@@ -421,7 +439,7 @@ impl ProxyCore {
                 }
             },
             Err(_) => {
-                log::warn!("Request to {} timed out after {:?}", url, timeout_dur);
+                log::warn!("Request to {} timed out after {:?}", url, timeout_duration);
 
                 #[cfg(feature = "opentelemetry")]
                 {
@@ -429,7 +447,7 @@ impl ProxyCore {
                     span_context.span().end();
                 }
 
-                return Err(ProxyError::Timeout(timeout_dur));
+                return Err(ProxyError::Timeout(timeout_duration));
             }
         };
 

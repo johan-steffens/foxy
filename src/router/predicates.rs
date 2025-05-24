@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use regex::Regex;
 use serde::{Serialize, Deserialize};
 
-use crate::core::{ProxyRequest, HttpMethod};
+use crate::core::{ProxyRequest, HttpMethod, ProxyError};
 use super::Predicate;
 
 /// Configuration for a path predicate.
@@ -32,15 +32,15 @@ pub struct PathPredicate {
 
 impl PathPredicate {
     /// Create a new path predicate with the given configuration.
-    pub fn new(config: PathPredicateConfig) -> Self {
+    pub fn new(config: PathPredicateConfig) -> Result<Self, ProxyError> {
         // Convert the path pattern to a regex
         let regex_pattern = Self::pattern_to_regex(&config.pattern);
 
         // Compile the regex
         let regex = Regex::new(&regex_pattern)
-            .expect("Failed to compile path predicate regex");
+            .map_err(|e| ProxyError::RoutingError(format!("Invalid path predicate regex pattern '{}': {}", config.pattern, e)))?;
 
-        Self { config, regex }
+        Ok(Self { config, regex })
     }
 
     /// Convert a path pattern to a regex pattern.
