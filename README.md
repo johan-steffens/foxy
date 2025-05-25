@@ -197,10 +197,6 @@ Add JWT validation with the OIDC security provider:
 
 This configuration validates all requests against the identity provider, while allowing public access to `/health`.
 
-### Structured Logging
-
-Foxy supports structured JSON logging for better observability in production environments:
-
 ### OpenTelemetry Integration
 
 Enable distributed tracing with OpenTelemetry:
@@ -229,7 +225,13 @@ Configure the OpenTelemetry collector in your configuration:
     }
   }
 }
-``````json
+```
+
+### Structured Logging
+
+Foxy supports structured JSON logging for better observability in production environments:
+        
+```json
 {
   "proxy": {
     "logging": {

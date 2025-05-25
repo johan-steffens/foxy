@@ -624,7 +624,9 @@ exports spans of requests and responses that flow through Foxy.
     }
   }
 }
-```## Structured Logging
+```
+
+## Structured Logging
 
 Foxy supports structured logging with JSON output for better integration with log aggregation systems. Configure it in the `proxy.logging` section:
 
