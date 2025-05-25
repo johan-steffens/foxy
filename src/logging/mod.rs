@@ -14,6 +14,7 @@
 pub mod structured;
 pub mod config;
 pub mod wrapper;
+pub mod middleware;
 
 use log::{debug, error, info, trace, warn, LevelFilter};
 use std::sync::Once;

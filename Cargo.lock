@@ -449,6 +449,7 @@ dependencies = [
  "slog-async",
  "slog-json",
  "slog-scope",
+ "slog-stdlog",
  "slog-term",
  "tempfile",
  "thiserror 1.0.69",
@@ -2034,6 +2035,17 @@ dependencies = [
  "arc-swap",
  "lazy_static",
  "slog",
+]
+
+[[package]]
+name = "slog-stdlog"
+version = "4.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6706b2ace5bbae7291d3f8d2473e2bfab073ccd7d03670946197aec98471fa3e"
+dependencies = [
+ "log",
+ "slog",
+ "slog-scope",
 ]
 
 [[package]]

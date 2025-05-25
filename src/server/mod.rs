@@ -40,7 +40,9 @@ use reqwest::Body;
 use serde::{Serialize, Deserialize};
 use crate::{trace, debug, info, warn, error};
 use tokio::signal;
-use tokio::task::{Id, JoinSet};
+use crate::logging::middleware::LoggingMiddleware;
+use crate::logging::config::LoggingConfig;
+use std::time::Instant;use tokio::task::{Id, JoinSet};
 use crate::core::{ProxyCore, ProxyRequest, ProxyResponse, ProxyError, HttpMethod, RequestContext};
 use std::collections::HashMap;
 use hyper::http::response;
@@ -110,15 +112,27 @@ pub struct ProxyServer {
     core: Arc<ProxyCore>,
     /// Shutdown senders for each connection task
     shutdown_senders: Arc<RwLock<HashMap<Id, oneshot::Sender<()>>>>,
+    /// Logging middleware for request/response logging
+    logging_middleware: LoggingMiddleware,
 }
 
 impl ProxyServer {
     /// Create a new proxy server with the given configuration and proxy core.
     pub fn new(config: ServerConfig, core: Arc<ProxyCore>) -> Self {
+        // Get logging configuration or use defaults
+        let logging_config = match core.config.get::<LoggingConfig>("proxy.logging") {
+            Ok(Some(config)) => config,
+            _ => LoggingConfig::default(),
+        };
+        
+        // Create logging middleware
+        let logging_middleware = LoggingMiddleware::new(logging_config);
+        
         Self { 
             config, 
             core,
             shutdown_senders: Arc::new(RwLock::new(HashMap::new())),
+            logging_middleware,
         }
     }
 
@@ -189,6 +203,7 @@ impl ProxyServer {
         
                             let core = core.clone();
                             let client_ip = remote_addr.ip().to_string();
+                            let logging_middleware = self.logging_middleware.clone();
                             let (tx, rx) = oneshot::channel();
                             let shutdown_senders_clone = shutdown_senders.clone();
                             
@@ -197,7 +212,7 @@ impl ProxyServer {
                                 
                                 let service = service_fn(move |req: Request<Incoming>| {
                                     debug!("Incoming over {:?}", &req.version());
-                                    handle_request(req, core.clone(), client_ip.clone())
+                                    handle_request(req, core.clone(), client_ip.clone(), logging_middleware.clone())
                                 });
                                 let io = TokioIo::new(stream);
         
@@ -388,7 +403,14 @@ async fn handle_request(
     req: Request<Incoming>,
     core: Arc<ProxyCore>,
     client_ip: String,
+    logging_middleware: LoggingMiddleware,
 ) -> Result<Response<Body>, Infallible> {
+    // Process the request through the logging middleware
+    let remote_addr = req.extensions().get::<SocketAddr>().cloned();
+    let (req, request_info) = logging_middleware.process(req, remote_addr).await;
+    
+    // Start timing for upstream request
+    let upstream_start = Instant::now();
     // ---------- OpenTelemetry SERVER span ----------
     #[cfg(feature = "opentelemetry")]
     let span_context = {
@@ -478,7 +500,15 @@ async fn handle_request(
                 proxy_resp.status
             );
             match convert_proxy_response(proxy_resp) {
-                Ok(resp) => Ok(resp),
+                Ok(resp) => {
+                    // Calculate upstream duration
+                    let upstream_duration = upstream_start.elapsed();
+                    
+                    // Log the response with timing information
+                    logging_middleware.log_response(&resp, &request_info, Some(upstream_duration));
+                    
+                    Ok(resp)
+                },
                 Err(e) => {
                     crate::error!(
                         "Failed to convert response for {} {}: {}",
@@ -523,6 +553,13 @@ async fn handle_request(
                 .unwrap())
         }
     };
+    
+    // Log error responses too
+    if let Ok(resp) = &response {
+        if resp.status().is_client_error() || resp.status().is_server_error() {
+            logging_middleware.log_response(resp, &request_info, None);
+        }
+    }
 
     #[cfg(feature = "opentelemetry")]
     {

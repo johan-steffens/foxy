@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::net::SocketAddr;
 
 /// Middleware for request/response logging with trace context
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct LoggingMiddleware {
     config: Arc<LoggingConfig>,
 }
@@ -75,7 +75,7 @@ impl LoggingMiddleware {
         // Log the incoming request with trace context
         if self.config.structured {
             let logger = slog_scope::logger();
-            scrate::info!(logger, "Request received";
+            slog::info!(logger, "Request received";
                 "trace_id" => &request_info.trace_id,
                 "method" => &request_info.method,
                 "path" => &request_info.path,
@@ -83,7 +83,7 @@ impl LoggingMiddleware {
                 "user_agent" => &request_info.user_agent
             );
         } else {
-            crate::info!(
+            log::info!(
                 "Request received: {} {} from {} (trace_id: {})",
                 request_info.method,
                 request_info.path,
@@ -111,7 +111,7 @@ impl LoggingMiddleware {
         
         if self.config.structured {
             let logger = slog_scope::logger();
-            scrate::info!(logger, "Response completed";
+            slog::info!(logger, "Response completed";
                 "trace_id" => &request_info.trace_id,
                 "method" => &request_info.method,
                 "path" => &request_info.path,
@@ -121,7 +121,7 @@ impl LoggingMiddleware {
                 "internal_ms" => internal_ms
             );
         } else {
-            crate::info!(
+            log::info!(
                 "[timing] {} {} -> {} | total={}ms upstream={}ms internal={}ms (trace_id: {})",
                 request_info.method,
                 request_info.path,
@@ -156,72 +156,13 @@ where
             Ok(mut response) => {
                 // Add trace ID header to response if enabled
                 if self.include_trace_id {
+                    let header_name = hyper::header::HeaderName::from_bytes(self.trace_header.as_bytes())
+                        .unwrap_or_else(|_| hyper::header::HeaderName::from_static("x-trace-id"));
+                    
                     response.headers_mut().insert(
-                        self.trace_header.parse().unwrap(),
-                        self.trace_id.parse().unwrap(),
-                    );
-                }
-                Ok(response)
-            }
-            Err(e) => Err(e),
-        })
-    }
-}
-
-/// Extension trait for response futures to add trace context
-pub trait ResponseFutureExt: Sized {
-    /// Add trace ID header to the response
-    fn with_trace_id(
-        self,
-        trace_id: String,
-        trace_header: String,
-        include_trace_id: bool,
-    ) -> TracedResponseFuture<Self>;
-}
-
-impl<F, B, E> ResponseFutureExt for F
-where
-    F: Future<Output = Result<Response<B>, E>> + Unpin,
-{
-    fn with_trace_id(
-        self,
-        trace_id: String,
-        trace_header: String,
-        include_trace_id: bool,
-    ) -> TracedResponseFuture<Self> {
-        TracedResponseFuture {
-            inner: self,
-            trace_id,
-            trace_header,
-            include_trace_id,
-        }
-    }
-}
-
-/// Future that wraps a response future and adds trace ID header
-pub struct TracedResponseFuture<F> {
-    inner: F,
-    trace_id: String,
-    trace_header: String,
-    include_trace_id: bool,
-}
-
-impl<F, B, E> Future for TracedResponseFuture<F>
-where
-    F: Future<Output = Result<Response<B>, E>> + Unpin,
-{
-    type Output = Result<Response<B>, E>;
-    
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let result = ready!(Pin::new(&mut self.inner).poll(cx));
-        
-        Poll::Ready(match result {
-            Ok(mut response) => {
-                // Add trace ID header to response if enabled
-                if self.include_trace_id {
-                    response.headers_mut().insert(
-                        self.trace_header.parse().unwrap(),
-                        self.trace_id.parse().unwrap(),
+                        header_name,
+                        hyper::header::HeaderValue::from_str(&self.trace_id)
+                            .unwrap_or_else(|_| hyper::header::HeaderValue::from_static("invalid-trace-id")),
                     );
                 }
                 Ok(response)

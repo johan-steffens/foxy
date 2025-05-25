@@ -2,11 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Logging configuration for Foxy.
+//! Configuration for logging.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::logging::structured::{LogFormat, LoggerConfig};
+use crate::logging::structured::{LoggerConfig, LogFormat};
 
 /// Logging configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,7 +15,7 @@ pub struct LoggingConfig {
     #[serde(default = "default_false")]
     pub structured: bool,
     
-    /// Output format for structured logging (terminal or json)
+    /// Log format (terminal or json)
     #[serde(default = "default_format")]
     pub format: String,
     
@@ -23,27 +23,27 @@ pub struct LoggingConfig {
     #[serde(default = "default_level")]
     pub level: String,
     
-    /// Whether to include source code location in logs
+    /// Include source code location
     #[serde(default = "default_true")]
     pub include_location: bool,
     
-    /// Whether to include thread ID in logs
+    /// Include thread ID
     #[serde(default = "default_true")]
     pub include_thread_id: bool,
     
-    /// Whether to include trace IDs in logs
+    /// Include trace ID in logs
     #[serde(default = "default_true")]
     pub include_trace_id: bool,
     
-    /// Whether to propagate trace IDs from incoming requests
+    /// Propagate trace ID from request headers
     #[serde(default = "default_true")]
     pub propagate_trace_id: bool,
     
-    /// Name of the trace ID header to look for in incoming requests
+    /// Header name for trace ID
     #[serde(default = "default_trace_header")]
     pub trace_id_header: String,
     
-    /// Additional static fields to include in all logs
+    /// Static fields to include in all logs
     #[serde(default)]
     pub static_fields: HashMap<String, String>,
 }
@@ -85,34 +85,25 @@ impl Default for LoggingConfig {
 }
 
 impl LoggingConfig {
-    /// Convert to a structured logger config
+    /// Convert to logger config
     pub fn to_logger_config(&self) -> LoggerConfig {
-        let format = match self.format.to_lowercase().as_str() {
-            "json" => LogFormat::Json,
-            _ => LogFormat::Terminal,
-        };
-        
-        let level = match self.level.to_lowercase().as_str() {
-            "trace" => slog::Level::Trace,
-            "debug" => slog::Level::Debug,
-            "info" => slog::Level::Info,
-            "warn" => slog::Level::Warning,
-            "error" => slog::Level::Error,
-            "critical" => slog::Level::Critical,
-            _ => slog::Level::Info,
-        };
-        
-        let static_fields = self.static_fields
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        
         LoggerConfig {
-            format,
-            level,
+            format: match self.format.to_lowercase().as_str() {
+                "json" => LogFormat::Json,
+                _ => LogFormat::Terminal,
+            },
+            level: match self.level.to_lowercase().as_str() {
+                "trace" => slog::Level::Trace,
+                "debug" => slog::Level::Debug,
+                "info" => slog::Level::Info,
+                "warn" => slog::Level::Warning,
+                "error" => slog::Level::Error,
+                "critical" => slog::Level::Critical,
+                _ => slog::Level::Info,
+            },
             include_location: self.include_location,
             include_thread_id: self.include_thread_id,
-            static_fields,
+            static_fields: self.static_fields.clone(),
         }
     }
 }
