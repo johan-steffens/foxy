@@ -20,6 +20,7 @@ A minimal, configuration-driven, hyper-extensible Rust HTTP proxy library.
 - 🌐 **Fine-grained Control**: Route-specific filter chains for precise request handling
 - 🔒 **Pluggable Security**: Configurable authentication with built-in OIDC support
 - 📊 **Observability**: OpenTelemetry integration for distributed tracing
+- 📝 **Structured Logging**: JSON logging with trace IDs for better observability
 - 🚀 **Modern Async Architecture**: Built on Tokio and Hyper for high performance
 - 📦 **Lightweight Dependencies**: Minimal external dependencies for core functionality
 - 🧩 **Highly Extensible**: Custom predicates, filters, and security providers via simple traits
@@ -196,6 +197,10 @@ Add JWT validation with the OIDC security provider:
 
 This configuration validates all requests against the identity provider, while allowing public access to `/health`.
 
+### Structured Logging
+
+Foxy supports structured JSON logging for better observability in production environments:
+
 ### OpenTelemetry Integration
 
 Enable distributed tracing with OpenTelemetry:
@@ -224,7 +229,29 @@ Configure the OpenTelemetry collector in your configuration:
     }
   }
 }
+``````json
+{
+  "proxy": {
+    "logging": {
+      "structured": true,
+      "format": "json",
+      "include_trace_id": true,
+      "static_fields": {
+        "environment": "production",
+        "service": "api-gateway"
+      }
+    }
+  }
+}
 ```
+
+Key benefits:
+- **Trace IDs**: Every request gets a unique ID for end-to-end tracking
+- **JSON Format**: Machine-parseable logs for integration with log aggregation systems
+- **Rich Context**: Detailed request information and timing metrics
+- **Static Fields**: Add environment-specific fields to all logs
+
+For detailed configuration options, see the [Configuration Guide](./CONFIGURATION.md#structured-logging).
 
 
 ## Performance Features

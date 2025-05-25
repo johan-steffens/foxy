@@ -6,17 +6,61 @@
 //!
 //! This module provides centralized logging configuration and helper functions
 //! for consistent logging throughout the application.
+//!
+//! Two logging systems are supported:
+//! 1. Traditional logging via env_logger (default)
+//! 2. Structured logging via slog with JSON output support
+
+pub mod structured;
+pub mod config;
+pub mod wrapper;
 
 use log::{debug, error, info, trace, warn, LevelFilter};
 use std::sync::Once;
+use std::sync::atomic::{AtomicBool, Ordering};
+use crate::logging::config::LoggingConfig;
+use crate::logging::structured::{LoggerGuard, init_global_logger};
 
 static INIT: Once = Once::new();
+static USING_STRUCTURED: AtomicBool = AtomicBool::new(false);
+static mut LOGGER_GUARD: Option<LoggerGuard> = None;
 
 /// Initialize logging with the specified level.
 ///
 /// This function ensures logging is only initialized once.
 pub fn init(level: Option<LevelFilter>) {
+    init_with_config(level, None);
+}
+
+/// Initialize logging with the specified level and configuration.
+///
+/// This function ensures logging is only initialized once.
+pub fn init_with_config(level: Option<LevelFilter>, config: Option<LoggingConfig>) {
     INIT.call_once(|| {
+        if let Some(config) = config {
+            if config.structured {
+                // Initialize structured logging
+                let logger_config = config.to_logger_config();
+                let guard = init_global_logger(&logger_config);
+                
+                // Store the guard to keep the logger alive
+                unsafe {
+                    LOGGER_GUARD = Some(guard);
+                }
+                
+                USING_STRUCTURED.store(true, Ordering::SeqCst);
+                
+                // Log using structured logging
+                slog_scope::info!("Structured logging initialized"; 
+                    "level" => format!("{:?}", logger_config.level),
+                    "format" => format!("{:?}", logger_config.format)
+                );
+                
+                return;
+            }
+        }
+        
+        // Fall back to traditional logging
         let env = env_logger::Env::default()
             .filter_or("RUST_LOG", level.map_or("info", |l| match l {
                 LevelFilter::Trace => "trace",
@@ -36,30 +80,122 @@ pub fn init(level: Option<LevelFilter>) {
     });
 }
 
+/// Check if structured logging is enabled
+pub fn is_structured_logging() -> bool {
+    USING_STRUCTURED.load(Ordering::SeqCst)
+}
+
 /// Log an error with context and return the error.
 ///
 /// This is useful for logging errors in a chain of Results.
 pub fn log_error<E: std::fmt::Display>(context: &str, err: E) -> E {
-    error!("{}: {}", context, err);
+    if is_structured_logging() {
+        slog_scope::error!("{}", err; "context" => context);
+    } else {
+        error!("{}: {}", context, err);
+    }
     err
 }
 
 /// Log a warning with context.
 pub fn log_warning<E: std::fmt::Display>(context: &str, err: E) {
-    warn!("{}: {}", context, err);
+    if is_structured_logging() {
+        slog_scope::warn!("{}", err; "context" => context);
+    } else {
+        warn!("{}: {}", context, err);
+    }
 }
 
 /// Log a debug message with context.
 pub fn log_debug<M: std::fmt::Display>(context: &str, msg: M) {
-    debug!("{}: {}", context, msg);
+    if is_structured_logging() {
+        slog_scope::debug!("{}", msg; "context" => context);
+    } else {
+        debug!("{}: {}", context, msg);
+    }
 }
 
 /// Log a trace message with context.
 pub fn log_trace<M: std::fmt::Display>(context: &str, msg: M) {
-    trace!("{}: {}", context, msg);
+    if is_structured_logging() {
+        slog_scope::trace!("{}", msg; "context" => context);
+    } else {
+        trace!("{}: {}", context, msg);
+    }
 }
 
 /// Log an info message with context.
 pub fn log_info<M: std::fmt::Display>(context: &str, msg: M) {
-    info!("{}: {}", context, msg);
+    if is_structured_logging() {
+        slog_scope::info!("{}", msg; "context" => context);
+    } else {
+        info!("{}: {}", context, msg);
+    }
+}
+
+/// Log a message with additional context fields
+pub fn log_with_context(
+    level: log::Level,
+    message: impl std::fmt::Display,
+    context: &str,
+    fields: &[(&'static str, String)]
+) {
+    if is_structured_logging() {
+        match level {
+            log::Level::Error => {
+                let logger = slog_scope::logger();
+                let context_str = context.to_string(); // Clone to extend lifetime
+                let logger = logger.new(slog::o!("context" => context_str));
+                let logger = add_fields_to_logger(logger, fields);
+                slog::error!(logger, "{}", message);
+            },
+            log::Level::Warn => {
+                let logger = slog_scope::logger();
+                let context_str = context.to_string(); // Clone to extend lifetime
+                let logger = logger.new(slog::o!("context" => context_str));
+                let logger = add_fields_to_logger(logger, fields);
+                slog::warn!(logger, "{}", message);
+            },
+            log::Level::Info => {
+                let logger = slog_scope::logger();
+                let context_str = context.to_string(); // Clone to extend lifetime
+                let logger = logger.new(slog::o!("context" => context_str));
+                let logger = add_fields_to_logger(logger, fields);
+                slog::info!(logger, "{}", message);
+            },
+            log::Level::Debug => {
+                let logger = slog_scope::logger();
+                let context_str = context.to_string(); // Clone to extend lifetime
+                let logger = logger.new(slog::o!("context" => context_str));
+                let logger = add_fields_to_logger(logger, fields);
+                slog::debug!(logger, "{}", message);
+            },
+            log::Level::Trace => {
+                let logger = slog_scope::logger();
+                let context_str = context.to_string(); // Clone to extend lifetime
+                let logger = logger.new(slog::o!("context" => context_str));
+                let logger = add_fields_to_logger(logger, fields);
+                slog::trace!(logger, "{}", message);
+            },
+        }
+    } else {
+        // Fall back to standard logging with context
+        match level {
+            log::Level::Error => crate::error!("{}: {}", context, message),
+            log::Level::Warn => crate::warn!("{}: {}", context, message),
+            log::Level::Info => crate::info!("{}: {}", context, message),
+            log::Level::Debug => crate::debug!("{}: {}", context, message),
+            log::Level::Trace => crate::trace!("{}: {}", context, message),
+        }
+    }
+}
+
+/// Helper function to add fields to a logger
+fn add_fields_to_logger(logger: slog::Logger, fields: &[(&'static str, String)]) -> slog::Logger {
+    let mut result = logger;
+    for (k, v) in fields {
+        let v_clone = v.clone(); // Clone the value to extend its lifetime
+        result = result.new(slog::o!(*k => v_clone));
+    }
+    result
 }

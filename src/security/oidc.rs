@@ -41,7 +41,7 @@ impl RouteRule {
         let method_match = self.methods.iter().any(|m| m == "*" || m == method);
         let path_match = self.paths.is_match(path);
         
-        log::trace!("OIDC bypass rule check: method={} path={} -> method_match={} path_match={}", 
+        crate::trace!("OIDC bypass rule check: method={} path={} -> method_match={} path_match={}", 
             method, path, method_match, path_match);
             
         method_match && path_match
@@ -98,14 +98,14 @@ impl OidcProvider {
     /// Discover OIDC configuration from the issuer URI.
     pub async fn discover(cfg: OidcConfig) -> Result<Self, ProxyError> {
         // --- minimal discovery ---
-        log::debug!("OIDC discovery from {}", cfg.issuer_uri);
+        crate::debug!("OIDC discovery from {}", cfg.issuer_uri);
         
         let client = Client::builder()
             .user_agent("foxy/oidc")
             .build()
             .map_err(|e| {
                 let err = ProxyError::SecurityError(format!("Failed to build HTTP client: {}", e));
-                log::error!("{}", err);
+                crate::error!("{}", err);
                 err
             })?;
             
@@ -122,7 +122,7 @@ impl OidcProvider {
                                 let err = ProxyError::SecurityError(
                                     format!("Failed to parse OIDC discovery response: {}", e)
                                 );
-                                log::error!("{}", err);
+                                crate::error!("{}", err);
                                 return Err(err);
                             }
                         }
@@ -131,7 +131,7 @@ impl OidcProvider {
                         let err = ProxyError::SecurityError(
                             format!("OIDC discovery endpoint returned error: {}", e)
                         );
-                        log::error!("{}", err);
+                        crate::error!("{}", err);
                         return Err(err);
                     }
                 }
@@ -140,12 +140,12 @@ impl OidcProvider {
                 let err = ProxyError::SecurityError(
                     format!("Failed to connect to OIDC discovery endpoint: {}", e)
                 );
-                log::error!("{}", err);
+                crate::error!("{}", err);
                 return Err(err);
             }
         };
 
-        log::debug!("OIDC discovery successful, JWKS URI: {}", meta.jwks_uri);
+        crate::debug!("OIDC discovery successful, JWKS URI: {}", meta.jwks_uri);
 
         // --- compile bypass rules ---
         let mut rules = Vec::with_capacity(cfg.bypass.len());
@@ -162,18 +162,18 @@ impl OidcProvider {
                                 let err = ProxyError::SecurityError(
                                     format!("Failed to build glob set for path {}: {}", raw.path, e)
                                 );
-                                log::error!("{}", err);
+                                crate::error!("{}", err);
                                 return Err(err);
                             }
                         },
                     });
-                    log::debug!("Added OIDC bypass rule: methods={:?}, path={}", raw.methods, raw.path);
+                    crate::debug!("Added OIDC bypass rule: methods={:?}, path={}", raw.methods, raw.path);
                 },
                 Err(e) => {
                     let err = ProxyError::SecurityError(
                         format!("Invalid glob pattern in bypass rule: {}", e)
                     );
-                    log::error!("{}", err);
+                    crate::error!("{}", err);
                     return Err(err);
                 }
             }
@@ -201,11 +201,11 @@ impl OidcProvider {
     async fn refresh_jwks(&self) -> Result<(), ProxyError> {
         let now = tokio::time::Instant::now();
         if now.duration_since(*self.last_refresh.read().await) < JWKS_REFRESH {
-            log::trace!("JWKS cache still fresh, skipping refresh");
+            crate::trace!("JWKS cache still fresh, skipping refresh");
             return Ok(());
         }
         
-        log::debug!("Refreshing JWKS from {}", self.jwks_uri);
+        crate::debug!("Refreshing JWKS from {}", self.jwks_uri);
         
         // Fetch the JWKS
         let jwks = match self.http.get(&self.jwks_uri).send().await {
@@ -218,7 +218,7 @@ impl OidcProvider {
                                 let err = ProxyError::SecurityError(
                                     format!("Failed to parse JWKS response: {}", e)
                                 );
-                                log::error!("{}", err);
+                                crate::error!("{}", err);
                                 return Err(err);
                             }
                         }
@@ -227,7 +227,7 @@ impl OidcProvider {
                         let err = ProxyError::SecurityError(
                             format!("JWKS endpoint returned error: {}", e)
                         );
-                        log::error!("{}", err);
+                        crate::error!("{}", err);
                         return Err(err);
                     }
                 }
@@ -236,12 +236,12 @@ impl OidcProvider {
                 let err = ProxyError::SecurityError(
                     format!("Failed to connect to JWKS endpoint: {}", e)
                 );
-                log::error!("{}", err);
+                crate::error!("{}", err);
                 return Err(err);
             }
         };
         
-        log::debug!("JWKS refresh successful, found {} keys", jwks.keys.len());
+        crate::debug!("JWKS refresh successful, found {} keys", jwks.keys.len());
         
         // Update the cache
         {
@@ -259,33 +259,33 @@ impl OidcProvider {
     fn jwk_to_decoding_key(&self, jwk: &Jwk) -> Result<DecodingKey, ProxyError> {
         match &jwk.algorithm {
             AlgorithmParameters::RSA(params) => {
-                log::trace!("Converting RSA JWK to decoding key");
+                crate::trace!("Converting RSA JWK to decoding key");
                 DecodingKey::from_rsa_components(&params.n, &params.e)
                     .map_err(|e| {
                         let err = ProxyError::SecurityError(format!("Invalid RSA key: {}", e));
-                        log::error!("{}", err);
+                        crate::error!("{}", err);
                         err
                     })
             }
             AlgorithmParameters::EllipticCurve(params) => {
-                log::trace!("Converting EC JWK to decoding key");
+                crate::trace!("Converting EC JWK to decoding key");
                 DecodingKey::from_ec_components(&params.x, &params.y)
                     .map_err(|e| {
                         let err = ProxyError::SecurityError(format!("Invalid EC key: {}", e));
-                        log::error!("{}", err);
+                        crate::error!("{}", err);
                         err
                     })
             }
             AlgorithmParameters::OctetKey(OctetKeyParameters { value, .. }) => {
-                log::trace!("Converting octet JWK to decoding key");
+                crate::trace!("Converting octet JWK to decoding key");
                 Ok(DecodingKey::from_secret(value.as_bytes()))
             }
             AlgorithmParameters::OctetKeyPair(params) => {
-                log::trace!("Converting OKP JWK to decoding key");
+                crate::trace!("Converting OKP JWK to decoding key");
                 DecodingKey::from_ed_components(&params.x)
                     .map_err(|e| {
                         let err = ProxyError::SecurityError(format!("Invalid OKP key: {}", e));
-                        log::error!("{}", err);
+                        crate::error!("{}", err);
                         err
                     })
             }
@@ -298,12 +298,12 @@ impl OidcProvider {
             Ok(h) => h,
             Err(e) => {
                 let err = ProxyError::SecurityError(format!("Invalid JWT header: {}", e));
-                log::warn!("{}", err);
+                crate::warn!("{}", err);
                 return Err(err);
             }
         };
         
-        log::trace!("JWT header: alg={:?}, kid={:?}", header.alg, header.kid);
+        crate::trace!("JWT header: alg={:?}, kid={:?}", header.alg, header.kid);
         
         // Check for allowed algorithms
         let allowed_algs = [
@@ -318,7 +318,7 @@ impl OidcProvider {
             let err = ProxyError::SecurityError(
                 format!("Algorithm not allowed: {:?}", header.alg)
             );
-            log::warn!("{}", err);
+            crate::warn!("{}", err);
             return Err(err);
         }
 
@@ -334,7 +334,7 @@ impl OidcProvider {
                     Some(j) => j,
                     None => {
                         let err = ProxyError::SecurityError("No JWKS available".to_string());
-                        log::error!("{}", err);
+                        crate::error!("{}", err);
                         return Err(err);
                     }
                 };
@@ -342,11 +342,11 @@ impl OidcProvider {
                 // Try to find the key by ID
                 match jwks.keys.iter().find(|k| k.common.key_id == Some(kid.clone())) {
                     Some(key) => {
-                        log::trace!("Found key with ID {}", kid);
+                        crate::trace!("Found key with ID {}", kid);
                         match self.jwk_to_decoding_key(key) {
                             Ok(key) => key,
                             Err(e) => {
-                                log::error!("Failed to convert JWK to decoding key: {}", e);
+                                crate::error!("Failed to convert JWK to decoding key: {}", e);
                                 return Err(e);
                             }
                         }
@@ -355,16 +355,16 @@ impl OidcProvider {
                         // If we have a shared secret, use that for HS* algorithms
                         if let Some(ref secret) = self.shared_secret {
                             if matches!(header.alg, Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512) {
-                                log::trace!("Using shared secret for HS* algorithm");
+                                crate::trace!("Using shared secret for HS* algorithm");
                                 DecodingKey::from_secret(secret.as_bytes())
                             } else {
                                 let err = ProxyError::SecurityError(format!("Key ID {} not found in JWKS", kid));
-                                log::warn!("{}", err);
+                                crate::warn!("{}", err);
                                 return Err(err);
                             }
                         } else {
                             let err = ProxyError::SecurityError(format!("Key ID {} not found in JWKS", kid));
-                            log::warn!("{}", err);
+                            crate::warn!("{}", err);
                             return Err(err);
                         }
                     }
@@ -373,11 +373,11 @@ impl OidcProvider {
             None => {
                 // No key ID, try to use shared secret if available
                 if let Some(ref secret) = self.shared_secret {
-                    log::trace!("No key ID in token, using shared secret");
+                    crate::trace!("No key ID in token, using shared secret");
                     DecodingKey::from_secret(secret.as_bytes())
                 } else {
                     let err = ProxyError::SecurityError("No key ID in token and no shared secret configured".to_string());
-                    log::warn!("{}", err);
+                    crate::warn!("{}", err);
                     return Err(err);
                 }
             }
@@ -391,12 +391,12 @@ impl OidcProvider {
         // Validate the token
         match decode::<serde_json::Value>(token, &key, &validation) {
             Ok(token_data) => {
-                log::debug!("JWT validation successful");
+                crate::debug!("JWT validation successful");
                 Ok(token_data.claims)
             }
             Err(e) => {
                 let err = ProxyError::SecurityError(format!("JWT validation failed: {}", e));
-                log::warn!("{}", err);
+                crate::warn!("{}", err);
                 Err(err)
             }
         }
@@ -409,12 +409,12 @@ impl OidcProvider {
                 let err = ProxyError::SecurityError(
                     format!("Invalid issuer: expected '{}', got '{}'", self.issuer, iss)
                 );
-                log::warn!("{}", err);
+                crate::warn!("{}", err);
                 return Err(err);
             }
         } else {
             let err = ProxyError::SecurityError("Missing issuer claim".to_string());
-            log::warn!("{}", err);
+            crate::warn!("{}", err);
             return Err(err);
         }
         
@@ -432,7 +432,7 @@ impl OidcProvider {
                 let err = ProxyError::SecurityError(
                     format!("Invalid audience: expected '{}'", expected_aud)
                 );
-                log::warn!("{}", err);
+                crate::warn!("{}", err);
                 return Err(err);
             }
         }
@@ -448,12 +448,12 @@ impl OidcProvider {
                 let err = ProxyError::SecurityError(
                     format!("Token expired at {}, current time is {}", exp, now)
                 );
-                log::warn!("{}", err);
+                crate::warn!("{}", err);
                 return Err(err);
             }
         }
         
-        log::debug!("Token claims validation successful");
+        crate::debug!("Token claims validation successful");
         Ok(())
     }
 
@@ -461,7 +461,7 @@ impl OidcProvider {
     fn is_bypassed(&self, method: &str, path: &str) -> bool {
         let bypassed = self.rules.iter().any(|r| r.matches(method, path));
         if bypassed {
-            log::debug!("OIDC bypass for {} {}", method, path);
+            crate::debug!("OIDC bypass for {} {}", method, path);
         }
         bypassed
     }
@@ -476,11 +476,11 @@ impl SecurityProvider for OidcProvider {
     async fn pre(&self, req: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
         // 0) Bypass?
         if self.is_bypassed(&req.method.to_string(), &req.path) {
-            log::debug!("OIDC bypass for {} {}", req.method, req.path);
+            crate::debug!("OIDC bypass for {} {}", req.method, req.path);
             return Ok(req);
         }
 
-        log::debug!("OIDC validating request: {} {}", req.method, req.path);
+        crate::debug!("OIDC validating request: {} {}", req.method, req.path);
 
         // 1) Extract bearer token
         let auth_header = match req.headers.get("authorization") {
@@ -490,13 +490,13 @@ impl SecurityProvider for OidcProvider {
                     let err = ProxyError::SecurityError(
                         format!("Invalid authorization header: {}", e)
                     );
-                    log::warn!("{}", err);
+                    crate::warn!("{}", err);
                     return Err(err);
                 }
             },
             None => {
                 let err = ProxyError::SecurityError("Missing authorization header".to_string());
-                log::warn!("{}", err);
+                crate::warn!("{}", err);
                 return Err(err);
             }
         };
@@ -506,23 +506,23 @@ impl SecurityProvider for OidcProvider {
                 format!("Invalid authorization scheme: expected 'Bearer', got '{}'", 
                     auth_header.split_whitespace().next().unwrap_or(""))
             );
-            log::warn!("{}", err);
+            crate::warn!("{}", err);
             return Err(err);
         }
 
         let token = &auth_header[BEARER.len()..];
         if token.is_empty() {
             let err = ProxyError::SecurityError("Empty bearer token".to_string());
-            log::warn!("{}", err);
+            crate::warn!("{}", err);
             return Err(err);
         }
 
         // 2) Validate the token
-        log::trace!("Validating token: {}", token);
+        crate::trace!("Validating token: {}", token);
         let claims = match self.validate_token(token).await {
             Ok(claims) => claims,
             Err(e) => {
-                log::warn!("Token validation failed: {}", e);
+                crate::warn!("Token validation failed: {}", e);
                 return Err(e);
             }
         };
@@ -533,7 +533,7 @@ impl SecurityProvider for OidcProvider {
             ctx.attributes.insert(CLAIMS_ATTRIBUTE.to_string(), claims);
         }
 
-        log::debug!("OIDC validation successful for {} {}", req.method, req.path);
+        crate::debug!("OIDC validation successful for {} {}", req.method, req.path);
         Ok(req)
     }
 }

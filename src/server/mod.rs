@@ -38,7 +38,7 @@ use futures_util::TryStreamExt;
 use http_body_util::{BodyExt, Full};
 use reqwest::Body;
 use serde::{Serialize, Deserialize};
-use log::{debug, info, warn, error, trace};
+use crate::{trace, debug, info, warn, error};
 use tokio::signal;
 use tokio::task::{Id, JoinSet};
 use crate::core::{ProxyCore, ProxyRequest, ProxyResponse, ProxyError, HttpMethod, RequestContext};
@@ -330,7 +330,7 @@ async fn convert_hyper_request(
     let query = uri.query().map(|q| q.to_owned());
     let headers = req.headers().clone();
 
-    log::trace!("Converting request: {} {} with {} headers", 
+    crate::trace!("Converting request: {} {} with {} headers", 
         method, path, headers.len());
 
     // Incoming → Stream → reqwest::Body
@@ -354,14 +354,14 @@ async fn convert_hyper_request(
 
 /// Convert a proxy response to a hyper response.
 fn convert_proxy_response(resp: ProxyResponse) -> Result<Response<Body>, ProxyError> {
-    log::trace!("Converting response with status {} and {} headers", 
+    crate::trace!("Converting response with status {} and {} headers", 
         resp.status, resp.headers.len());
         
     let stream = resp
         .body
         .into_data_stream()
         .map_err(|e| {
-            log::error!("Error streaming response body: {}", e);
+            crate::error!("Error streaming response body: {}", e);
             std::io::Error::new(std::io::ErrorKind::Other, e)
         });
 
@@ -369,7 +369,7 @@ fn convert_proxy_response(resp: ProxyResponse) -> Result<Response<Body>, ProxyEr
 
     let mut builder = Response::builder().status(resp.status);
     let mut_headers = builder.headers_mut().ok_or_else(|| {
-        log::error!("Failed to get mutable headers from response builder");
+        crate::error!("Failed to get mutable headers from response builder");
         ProxyError::Other("Failed to build response: unable to get mutable headers".into())
     })?;
     *mut_headers = resp.headers;
@@ -378,7 +378,7 @@ fn convert_proxy_response(resp: ProxyResponse) -> Result<Response<Body>, ProxyEr
         .body(body)
         .map_err(|e| {
             let err = ProxyError::Other(e.to_string());
-            log::error!("Failed to build response: {}", err);
+            crate::error!("Failed to build response: {}", err);
             err
         })
 }
@@ -428,12 +428,12 @@ async fn handle_request(
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
     
-    log::debug!("Received request: {} {}", method, path);
+    crate::debug!("Received request: {} {}", method, path);
     
     let proxy_req = match convert_hyper_request(req, client_ip.clone()).await {
         Ok(r) => r,
         Err(e) => {
-            log::error!("Failed to convert request {} {}: {}", method, path, e);
+            crate::error!("Failed to convert request {} {}: {}", method, path, e);
             return Ok(Response::builder()
                 .status(500)
                 .body(Body::from("Internal Server Error"))
@@ -471,7 +471,7 @@ async fn handle_request(
     /* ---------- map response ---------- */
     let response: Result<Response<Body>, Infallible> = match result {
         Ok(proxy_resp) => {
-            log::debug!(
+            crate::debug!(
                 "Successfully processed request {} {} -> {}",
                 method,
                 path,
@@ -480,7 +480,7 @@ async fn handle_request(
             match convert_proxy_response(proxy_resp) {
                 Ok(resp) => Ok(resp),
                 Err(e) => {
-                    log::error!(
+                    crate::error!(
                         "Failed to convert response for {} {}: {}",
                         method,
                         path,
@@ -496,23 +496,23 @@ async fn handle_request(
         Err(e) => {
             let (status, msg) = match &e {
                 ProxyError::Timeout(d) => {
-                    log::warn!("Request {} {} timed out after {:?}", method, path, d);
+                    crate::warn!("Request {} {} timed out after {:?}", method, path, d);
                     (504, format!("Gateway Timeout after {d:?}"))
                 }
                 ProxyError::RoutingError(msg) => {
-                    log::warn!("Routing error for {} {}: {}", method, path, msg);
+                    crate::warn!("Routing error for {} {}: {}", method, path, msg);
                     (404, "Route not found".into())
                 }
                 ProxyError::SecurityError(msg) => {
-                    log::warn!("Security error for {} {}: {}", method, path, msg);
+                    crate::warn!("Security error for {} {}: {}", method, path, msg);
                     (403, "Forbidden".into())
                 }
                 ProxyError::ClientError(err) => {
-                    log::error!("Client error for {} {}: {}", method, path, err);
+                    crate::error!("Client error for {} {}: {}", method, path, err);
                     (502, "Bad Gateway".into())
                 }
                 _ => {
-                    log::error!("Internal error processing {} {}: {}", method, path, e);
+                    crate::error!("Internal error processing {} {}: {}", method, path, e);
                     (500, "Internal Server Error".into())
                 }
             };

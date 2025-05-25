@@ -33,15 +33,12 @@
 //! ## Feature flags
 //! | feature | default | description |
 //! |---------|---------|-------------|
-//! | `yaml`  | ❌      | Enables YAML configuration alongside TOML/JSON |
 //! | `opentelemetry` | ❌ | Enables OpenTelemetry tracing integration |
 //!
 //! ## Extension points
 //! * `ConfigProvider` – plug in an arbitrary configuration backend
 //! * `Filter`         – inject pre/post processing stages
 //! * `Predicate`      – custom routing logic
-//!
-//! See the *examples* directory for a working proxy with logging & path-rewrite.
 
 // Module declarations
 pub mod config;
@@ -77,5 +74,9 @@ pub use security::{
     oidc::{OidcProvider, OidcConfig},
 };
 pub use server::{ProxyServer, ServerConfig};
-pub use logging::{init as init_logging, log_error, log_warning, log_debug, log_trace, log_info};
+pub use logging::{
+    init as init_logging, 
+    log_error, log_warning, log_debug, log_trace, log_info,
+    wrapper::{error, warn, info, debug, trace}
+};
 pub use crate::opentelemetry::init;

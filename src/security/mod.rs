@@ -44,7 +44,7 @@ pub trait SecurityProvider: fmt::Debug + Send + Sync {
         &self,
         request: ProxyRequest,
     ) -> Result<ProxyRequest, ProxyError> {
-        log::trace!("Security provider '{}' skipping pre-auth (default implementation)", self.name());
+        crate::trace!("Security provider '{}' skipping pre-auth (default implementation)", self.name());
         Ok(request)
     }
 
@@ -54,7 +54,7 @@ pub trait SecurityProvider: fmt::Debug + Send + Sync {
         _request: ProxyRequest,
         response: ProxyResponse,
     ) -> Result<ProxyResponse, ProxyError> {
-        log::trace!("Security provider '{}' skipping post-auth (default implementation)", self.name());
+        crate::trace!("Security provider '{}' skipping post-auth (default implementation)", self.name());
         Ok(response)
     }
 }
@@ -75,19 +75,19 @@ impl SecurityChain {
     pub async fn from_configs(cfgs: Vec<ProviderConfig>) -> Result<Self, ProxyError> {
         let mut chain = SecurityChain { providers: Vec::new(), bypass_routes: Vec::new() };
 
-        log::debug!("Building security chain from {} provider configs", cfgs.len());
+        crate::debug!("Building security chain from {} provider configs", cfgs.len());
         
         for c in cfgs {
             match c {
                 ProviderConfig::Oidc { config } => {
-                    log::debug!("Initializing OIDC provider with issuer: {}", config.issuer_uri);
+                    crate::debug!("Initializing OIDC provider with issuer: {}", config.issuer_uri);
                     match OidcProvider::discover(config).await {
                         Ok(p) => {
-                            log::info!("Successfully initialized OIDC provider");
+                            crate::info!("Successfully initialized OIDC provider");
                             chain.add(Arc::new(p));
                         },
                         Err(e) => {
-                            log::error!("Failed to initialize OIDC provider: {}", e);
+                            crate::error!("Failed to initialize OIDC provider: {}", e);
                             return Err(e);
                         }
                     }
@@ -103,7 +103,7 @@ impl SecurityChain {
     fn is_bypassed(&self, path: &str) -> bool {
         let bypassed = self.bypass_routes.iter().any(|p| path.starts_with(p));
         if bypassed {
-            log::debug!("Security bypass for path: {}", path);
+            crate::debug!("Security bypass for path: {}", path);
         }
         bypassed
     }
@@ -116,18 +116,18 @@ impl SecurityChain {
             return Ok(req); 
         }
         
-        log::trace!("Applying security pre-auth chain with {} providers", self.providers.len());
+        crate::trace!("Applying security pre-auth chain with {} providers", self.providers.len());
         
         for p in &self.providers {
             if p.stage().is_pre() {
-                log::trace!("Running pre-auth provider: {}", p.name());
+                crate::trace!("Running pre-auth provider: {}", p.name());
                 match p.pre(req).await {
                     Ok(new_req) => {
                         req = new_req;
                     },
                     Err(e) => {
                         let err = ProxyError::SecurityError(format!("{}: {}", p.name(), e));
-                        log::error!("Security pre-auth failed: {}", err);
+                        crate::error!("Security pre-auth failed: {}", err);
                         return Err(err);
                     }
                 }
@@ -145,18 +145,18 @@ impl SecurityChain {
             return Ok(resp); 
         }
         
-        log::trace!("Applying security post-auth chain with {} providers", self.providers.len());
+        crate::trace!("Applying security post-auth chain with {} providers", self.providers.len());
         
         for p in &self.providers {
             if p.stage().is_post() {
-                log::trace!("Running post-auth provider: {}", p.name());
+                crate::trace!("Running post-auth provider: {}", p.name());
                 match p.post(req.clone(), resp).await {
                     Ok(new_resp) => {
                         resp = new_resp;
                     },
                     Err(e) => {
                         let err = ProxyError::SecurityError(format!("{}: {}", p.name(), e));
-                        log::error!("Security post-auth failed: {}", err);
+                        crate::error!("Security post-auth failed: {}", err);
                         return Err(err);
                     }
                 }

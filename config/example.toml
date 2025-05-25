@@ -5,6 +5,37 @@ port = 8080
 [proxy]
 timeout = 30
 
+#     "logging": {
+#      "structured": true,
+#      "format": "terminal",
+#      "level": "trace",
+#      "include_location": true,
+#      "include_thread_id": true,
+#      "include_trace_id": true,
+#      "propagate_trace_id": true,
+#      "trace_id_header": "X-Trace-ID",
+#      "static_fields": {
+#        "app": "foxy-proxy",
+#        "version": "0.2.16",
+#        "environment": "production"
+#      }
+#    },
+
+[[proxy.logging]]
+structured = true
+format = "terminal"
+level = "trace"
+include_location = true
+include_thread_id = true
+include_trace_id = true
+propagate_trace_id = true
+trace_id_header = "X-Trace-ID"
+
+[proxy.logging.static_fields]
+app = "foxy-proxy"
+version = "0.2.16"
+environment = "production"
+
 [[proxy.global_filters]]
 type = "logging"
 
@@ -15,6 +46,7 @@ log_response_headers = true
 log_response_body = false
 log_level = "debug"
 max_body_size = 1024
+
 [[routes]]
 id = "httpbin-get"
 target = "https://httpbin.org"

@@ -242,7 +242,7 @@ impl ProxyCore {
             Ok(Some(sc)) => sc,
             Ok(None) => Vec::new(), // No security chain configured
             Err(e) => {
-                log::warn!("Could not parse 'proxy.security_chain', defaulting to empty: {}", e);
+                crate::warn!("Could not parse 'proxy.security_chain', defaulting to empty: {}", e);
                 Vec::new() // Default to empty on error
             }
         };
@@ -280,7 +280,7 @@ impl ProxyCore {
         let method = request.method.to_string();
         let path = request.path.clone();
 
-        log::trace!("Processing request: {} {}", method, path);
+        crate::trace!("Processing request: {} {}", method, path);
 
         #[cfg(feature = "opentelemetry")]
         let span_context = {
@@ -303,11 +303,11 @@ impl ProxyCore {
         /* ---------- Security chain pre auth ---------- */
         let mut request = match self.security_chain.read().await.apply_pre(request).await {
             Ok(req) => {
-                log::trace!("Security pre-auth passed for {} {}", method, path);
+                crate::trace!("Security pre-auth passed for {} {}", method, path);
                 req
             },
             Err(e) => {
-                log::warn!("Security pre-auth failed for {} {}: {}", method, path, e);
+                crate::warn!("Security pre-auth failed for {} {}: {}", method, path, e);
 
                 #[cfg(feature = "opentelemetry")]
                 {
@@ -322,11 +322,11 @@ impl ProxyCore {
         /* ---------- PRE-filters ---------- */
         for f in self.global_filters.read().await.iter() {
             if f.filter_type().is_pre() || f.filter_type().is_both() {
-                log::trace!("Applying global pre-filter: {}", f.name());
+                crate::trace!("Applying global pre-filter: {}", f.name());
                 match f.pre_filter(request).await {
                     Ok(req) => request = req,
                     Err(e) => {
-                        log::error!("Global pre-filter '{}' failed: {}", f.name(), e);
+                        crate::error!("Global pre-filter '{}' failed: {}", f.name(), e);
 
                         #[cfg(feature = "opentelemetry")]
                         {
@@ -342,11 +342,11 @@ impl ProxyCore {
         
         let route = match self.router.route(&request).await {
             Ok(r) => {
-                log::debug!("Request {} {} matched route: {}", method, path, r.id);
+                crate::debug!("Request {} {} matched route: {}", method, path, r.id);
                 r
             },
             Err(e) => {
-                log::warn!("No route found for {} {}: {}", method, path, e);
+                crate::warn!("No route found for {} {}: {}", method, path, e);
 
                 #[cfg(feature = "opentelemetry")]
                 {
@@ -361,11 +361,11 @@ impl ProxyCore {
         let route_filters = route.filters.clone().unwrap_or_default();
         for f in &route_filters {
             if f.filter_type().is_pre() || f.filter_type().is_both() {
-                log::trace!("Applying route pre-filter: {}", f.name());
+                crate::trace!("Applying route pre-filter: {}", f.name());
                 match f.pre_filter(request).await {
                     Ok(req) => request = req,
                     Err(e) => {
-                        log::error!("Route pre-filter '{}' failed: {}", f.name(), e);
+                        crate::error!("Route pre-filter '{}' failed: {}", f.name(), e);
                         return Err(e);
                     }
                 }
@@ -374,7 +374,7 @@ impl ProxyCore {
 
         /* ---------- build outbound req ---------- */
         let url = format!("{}{}", route.target_base_url, request.path);
-        log::debug!("Forwarding to target: {}", url);
+        crate::debug!("Forwarding to target: {}", url);
         let outbound_body = mem::replace(&mut request.body, reqwest::Body::from(""));
 
         let mut outbound_headers = request.headers.clone();
@@ -386,8 +386,6 @@ impl ProxyCore {
                 prop.inject_context(&span_context, &mut HeaderInjector(&mut outbound_headers));
             });
         }
-
-        log_info("Core", format!("Outbound headers are: {:?}", outbound_headers));
 
         let mut builder = self
             .client
@@ -421,13 +419,13 @@ impl ProxyCore {
         };
 
         let upstream_start = Instant::now();
-        log::trace!("Sending request to upstream with timeout: {:?}", timeout_duration);
+        crate::trace!("Sending request to upstream with timeout: {:?}", timeout_duration);
         
         let resp = match timeout(timeout_duration, builder.send()).await {
             Ok(result) => match result {
                 Ok(response) => response,
                 Err(e) => {
-                    log::error!("Upstream request failed: {}", e);
+                    crate::error!("Upstream request failed: {}", e);
 
                     #[cfg(feature = "opentelemetry")]
                     {
@@ -439,7 +437,7 @@ impl ProxyCore {
                 }
             },
             Err(_) => {
-                log::warn!("Request to {} timed out after {:?}", url, timeout_duration);
+                crate::warn!("Request to {} timed out after {:?}", url, timeout_duration);
 
                 #[cfg(feature = "opentelemetry")]
                 {
@@ -463,7 +461,7 @@ impl ProxyCore {
         }
         
         let upstream_elapsed = upstream_start.elapsed();
-        log::trace!("Received response from upstream in {:?}", upstream_elapsed);
+        crate::trace!("Received response from upstream in {:?}", upstream_elapsed);
 
         /* ---------- wrap streaming response ---------- */
         let status = resp.status().as_u16();
@@ -478,16 +476,16 @@ impl ProxyCore {
         };
         proxy_resp.context.write().await.receive_time = Some(Instant::now());
 
-        log::debug!("Upstream responded with status: {}", status);
+        crate::debug!("Upstream responded with status: {}", status);
 
         /* ---------- POST-filters ---------- */
         for f in &route_filters {
             if f.filter_type().is_post() || f.filter_type().is_both() {
-                log::trace!("Applying route post-filter: {}", f.name());
+                crate::trace!("Applying route post-filter: {}", f.name());
                 match f.post_filter(request.clone(), proxy_resp).await {
                     Ok(resp) => proxy_resp = resp,
                     Err(e) => {
-                        log::error!("Route post-filter '{}' failed: {}", f.name(), e);
+                        crate::error!("Route post-filter '{}' failed: {}", f.name(), e);
                         return Err(e);
                     }
                 }
@@ -496,11 +494,11 @@ impl ProxyCore {
         
         for f in self.global_filters.read().await.iter() {
             if f.filter_type().is_post() || f.filter_type().is_both() {
-                log::trace!("Applying global post-filter: {}", f.name());
+                crate::trace!("Applying global post-filter: {}", f.name());
                 match f.post_filter(request.clone(), proxy_resp).await {
                     Ok(resp) => proxy_resp = resp,
                     Err(e) => {
-                        log::error!("Global post-filter '{}' failed: {}", f.name(), e);
+                        crate::error!("Global post-filter '{}' failed: {}", f.name(), e);
                         return Err(e);
                     }
                 }
@@ -510,11 +508,11 @@ impl ProxyCore {
         /* ---------- Security chain post auth ---------- */
         proxy_resp = match self.security_chain.read().await.apply_post(request.clone(), proxy_resp).await {
             Ok(resp) => {
-                log::trace!("Security post-auth passed for {} {}", method, path);
+                crate::trace!("Security post-auth passed for {} {}", method, path);
                 resp
             },
             Err(e) => {
-                log::warn!("Security post-auth failed for {} {}: {}", method, path, e);
+                crate::warn!("Security post-auth failed for {} {}: {}", method, path, e);
                 return Err(e);
             }
         };
@@ -523,7 +521,7 @@ impl ProxyCore {
         let overall_elapsed = overall_start.elapsed();
         let internal_elapsed = overall_elapsed.saturating_sub(upstream_elapsed);
 
-        log::debug!(
+        crate::debug!(
             "[timing] {} {} -> {} | total={:?} upstream={:?} internal={:?}",
             request.method,
             request.path,

@@ -28,6 +28,7 @@
 
 mod file;
 mod env;
+mod proxy;
 pub mod error;
 
 #[cfg(test)]

@@ -624,4 +624,84 @@ exports spans of requests and responses that flow through Foxy.
     }
   }
 }
+```## Structured Logging
+
+Foxy supports structured logging with JSON output for better integration with log aggregation systems. Configure it in the `proxy.logging` section:
+
+```json
+{
+  "proxy": {
+    "logging": {
+      "structured": true,
+      "format": "json",
+      "level": "info",
+      "include_location": true,
+      "include_thread_id": true,
+      "include_trace_id": true,
+      "propagate_trace_id": true,
+      "trace_id_header": "X-Trace-ID",
+      "static_fields": {
+        "app": "foxy-proxy",
+        "environment": "production",
+        "version": "0.2.16"
+      }
+    }
+  }
+}
 ```
+
+### Structured Logging Configuration Options
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `structured` | Boolean | `false` | Whether to use structured logging (true) or traditional logging (false) |
+| `format` | String | `"terminal"` | Output format: `"terminal"` for human-readable or `"json"` for machine-parseable |
+| `level` | String | `"info"` | Log level (trace, debug, info, warn, error, critical) |
+| `include_location` | Boolean | `true` | Whether to include source code location (file:line) in logs |
+| `include_thread_id` | Boolean | `true` | Whether to include thread ID in logs |
+| `include_trace_id` | Boolean | `true` | Whether to include trace ID in logs |
+| `propagate_trace_id` | Boolean | `true` | Whether to extract trace IDs from incoming request headers |
+| `trace_id_header` | String | `"X-Trace-ID"` | Header name to look for trace IDs in incoming requests |
+| `static_fields` | Object | `{}` | Additional static fields to include in all log entries |
+
+### Trace ID Propagation
+
+When `propagate_trace_id` is enabled:
+
+1. Foxy looks for a trace ID in the header specified by `trace_id_header`
+2. If found, it uses that trace ID for all logs related to the request
+3. If not found, it generates a new UUID as the trace ID
+4. The trace ID is added to the response headers
+
+This enables end-to-end tracing across multiple services.
+
+### JSON Log Format
+
+When using JSON format, each log entry is a single-line JSON object with fields like:
+
+```json
+{
+  "timestamp": "2025-05-24T21:00:00.123Z",
+  "level": "INFO",
+  "message": "Request received",
+  "trace_id": "550e8400-e29b-41d4-a716-446655440000",
+  "method": "GET",
+  "path": "/api/users",
+  "remote_addr": "192.168.1.1:12345",
+  "user_agent": "curl/7.79.1",
+  "environment": "production",
+  "app": "foxy-proxy"
+}
+```
+
+### Terminal Format
+
+When using terminal format with structured logging, logs are formatted for human readability but still contain the same enriched context:
+
+```
+2025-05-24T21:00:00.123Z INFO Request received trace_id=550e8400-e29b-41d4-a716-446655440000 method=GET path=/api/users remote_addr=192.168.1.1:12345 user_agent=curl/7.79.1 environment=production app=foxy-proxy
+```
+
+### Integration with OpenTelemetry
+
+When both structured logging and OpenTelemetry are enabled, trace IDs are shared between logs and traces, making it easy to correlate logs with distributed traces in observability platforms.

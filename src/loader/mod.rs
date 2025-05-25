@@ -12,6 +12,7 @@
 mod tests;
 
 use std::collections::HashMap;
+use std::env;
 use std::sync::Arc;
 use log::LevelFilter;
 use serde_json::Value;
@@ -19,8 +20,10 @@ use thiserror::Error;
 
 use crate::config::{Config, ConfigError, ConfigProvider, EnvConfigProvider, FileConfigProvider};
 use crate::router::{FilterConfig, PredicateRouter, RouteConfig};
-use crate::{logging, Filter, FilterFactory, ProxyError, ProxyServer, ServerConfig};
+use crate::{init_logging, log_error, log_info, logging, Filter, FilterFactory, ProxyError, ProxyServer, ServerConfig};
 use crate::core::ProxyCore;
+use crate::logging::config::LoggingConfig;
+use crate::logging::init_with_config;
 
 /// Errors that can occur during Foxy initialization.
 #[derive(Error, Debug)]
@@ -149,24 +152,35 @@ impl FoxyLoader {
         let config_arc = Arc::new(config);
 
         // Then initialize the logger
-        let log_level_str: Option<String> = config_arc.get("proxy.log_level").unwrap_or(Some("info".to_string()));
-        let log_level_filter = match log_level_str.as_deref() {
-            Some("trace") => Some(LevelFilter::Trace),
-            Some("debug") => Some(LevelFilter::Debug),
-            Some("info") => Some(LevelFilter::Info),
-            Some("warn") => Some(LevelFilter::Warn),
-            Some("error") => Some(LevelFilter::Error),
-            Some("off") => Some(LevelFilter::Off),
-            _ => Some(LevelFilter::Info),
+        let log_level = match env::var("RUST_LOG_LEVEL").ok().as_deref() {
+            Some("trace") => LevelFilter::Trace,
+            Some("debug") => LevelFilter::Debug,
+            Some("info") => LevelFilter::Info,
+            Some("warn") => LevelFilter::Warn,
+            Some("error") => LevelFilter::Error,
+            _ => LevelFilter::Info,
         };
-        logging::init(log_level_filter);
 
-        log::info!("Foxy starting up");
+        match config_arc.get::<LoggingConfig>("proxy.logging") {
+            Ok(Some(logging_config)) => {
+                init_with_config(Some(log_level), Some(logging_config));
+            }
+            Ok(None) => {
+                log_info("Startup", "Logging configuration not found. Initializing with default settings.");
+
+                init_logging(Some(log_level));
+            }
+            Err(e) => {
+                log_error("Startup", format!("Failed to read Logging configuration: {}", e));
+            }
+        }
+
+        crate::info!("Foxy starting up");
         
         #[cfg(feature = "opentelemetry")]
         {
             if let Ok(Some(otel_config)) = config_arc.get::<crate::opentelemetry::OpenTelemetryConfig>("proxy.opentelemetry") {
-                log::info!("OpenTelemetry initialized with endpoint: {} and service name: {}", 
+                crate::info!("OpenTelemetry initialized with endpoint: {} and service name: {}", 
                           otel_config.endpoint, otel_config.service_name);
             }
         }
@@ -188,7 +202,7 @@ impl FoxyLoader {
                 )?;
                 proxy_core.add_global_filter(filter).await;
 
-                log::info!("Added global filter: {}", filter_config.type_);
+                crate::info!("Added global filter: {}", filter_config.type_);
             }
         }
 

@@ -5,6 +5,21 @@
   },
   "proxy": {
     "timeout": 30,
+    "logging": {
+      "structured": true,
+      "format": "terminal",
+      "level": "trace",
+      "include_location": true,
+      "include_thread_id": true,
+      "include_trace_id": true,
+      "propagate_trace_id": true,
+      "trace_id_header": "X-Trace-ID",
+      "static_fields": {
+        "app": "foxy-proxy",
+        "version": "0.2.16",
+        "environment": "production"
+      }
+    },
     "opentelemetry": {
       "endpoint": "http://192.168.68.111:4317",
       "service_name": "my-proxy-service"
