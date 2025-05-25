@@ -7,51 +7,32 @@
 //! This module provides wrapper functions around the standard log crate's macros
 //! to ensure all logging goes through our logging system.
 
+use crate::{log_debug, log_error, log_info, log_trace, log_warning};
 use crate::logging::is_structured_logging;
 
 /// Log an error message
 pub fn error(args: std::fmt::Arguments) {
-    if is_structured_logging() {
-        slog_scope::error!("{}", args);
-    } else {
-        crate::error!("{}", args);
-    }
+    log_error("{}", args);
 }
 
 /// Log a warning message
 pub fn warn(args: std::fmt::Arguments) {
-    if is_structured_logging() {
-        slog_scope::warn!("{}", args);
-    } else {
-        crate::warn!("{}", args);
-    }
+    log_warning("{}", args);
 }
 
 /// Log an info message
 pub fn info(args: std::fmt::Arguments) {
-    if is_structured_logging() {
-        slog_scope::info!("{}", args);
-    } else {
-        crate::info!("{}", args);
-    }
+    log_info("{}", args);
 }
 
 /// Log a debug message
 pub fn debug(args: std::fmt::Arguments) {
-    if is_structured_logging() {
-        slog_scope::debug!("{}", args);
-    } else {
-        crate::debug!("{}", args);
-    }
+    log_debug("{}", args);
 }
 
 /// Log a trace message
 pub fn trace(args: std::fmt::Arguments) {
-    if is_structured_logging() {
-        slog_scope::trace!("{}", args);
-    } else {
-        crate::trace!("{}", args);
-    }
+    log_trace("{}", args);
 }
 
 /// Macro to log an error message

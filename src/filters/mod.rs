@@ -169,11 +169,11 @@ impl LoggingFilter {
     /// Log a message at the configured log level.
     fn log(&self, message: &str) {
         match self.get_log_level() {
-            Level::Error => error!("{}", message),
-            Level::Warn => warn!("{}", message),
-            Level::Info => info!("{}", message),
-            Level::Debug => debug!("{}", message),
-            Level::Trace => trace!("{}", message),
+            Level::Error => crate::error!("{}", message),
+            Level::Warn => crate::warn!("{}", message),
+            Level::Info => crate::info!("{}", message),
+            Level::Debug => crate::debug!("{}", message),
+            Level::Trace => crate::trace!("{}", message),
         }
     }
 
