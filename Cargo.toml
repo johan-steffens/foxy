@@ -1,6 +1,6 @@
 [package]
 name = "foxy-io"
-version = "0.2.17"
+version = "0.2.18"
 edition = "2024"
 authors = ["Johan Steffens <johan@steff.co.za>"]
 description = "A configuration-driven and hyper-extensible HTTP proxy library"
@@ -26,6 +26,7 @@ slog-async = "2.8.0"
 slog-json = "2.6.1"
 slog-scope = "4.4.0"
 slog-stdlog = "4.1.1"
+chrono = "0.4.35"
 
 # Async runtime
 tokio = { version = "1.28", features = ["full"] }

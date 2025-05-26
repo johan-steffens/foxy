@@ -91,8 +91,24 @@ pub fn init_global_logger(config: &LoggerConfig) -> LoggerGuard {
             Async::new(drain).build().fuse()
         }
         LogFormat::Json => {
+            // Create a custom JSON drain with our specific key names
             let drain = Json::new(io::stdout())
-                .add_default_keys()
+                .set_pretty(false)
+                .set_newlines(true)
+                // Use @timestamp for timestamp
+                .add_key_value(o!("@timestamp" => slog::PushFnValue(|_record, ser| {
+                    let time = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                    ser.emit(time)
+                })))
+                // Use message for the message
+                .add_key_value(o!("message" => slog::PushFnValue(|record, ser| {
+                    ser.emit(record.msg())
+                })))
+                // Add level without any prefix
+                .add_key_value(o!("level" => slog::PushFnValue(|record, ser| {
+                    let level = record.level().as_str();
+                    ser.emit(level)
+                })))
                 .build()
                 .fuse();
             Async::new(drain).build().fuse()
