@@ -124,12 +124,12 @@ impl ProxyServer {
             Ok(Some(config)) => config,
             _ => LoggingConfig::default(),
         };
-        
+
         // Create logging middleware
         let logging_middleware = LoggingMiddleware::new(logging_config);
-        
-        Self { 
-            config, 
+
+        Self {
+            config,
             core,
             shutdown_senders: Arc::new(RwLock::new(HashMap::new())),
             logging_middleware,
@@ -141,11 +141,11 @@ impl ProxyServer {
         let addr = format!("{}:{}", self.config.host, self.config.port)
             .parse::<SocketAddr>()
             .map_err(|e| ProxyError::Other(format!("Invalid server address: {}", e)))?;
-        
+
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .map_err(|e| ProxyError::Other(format!("Failed to bind: {}", e)))?;
-        
+
         info!("Foxy proxy listening on http://{}", addr);
 
         let health_server = HealthServer::new(self.config.health_port);
@@ -171,7 +171,7 @@ impl ProxyServer {
 
         // Create and use the shared shutdown senders map
         let shutdown_senders = self.shutdown_senders.clone();
-        
+
         // Track spawned connection tasks
         let mut join_set = JoinSet::new();
         let core = self.core.clone();
@@ -339,11 +339,13 @@ async fn convert_hyper_request(
     req: Request<Incoming>,
     client_ip: String,
 ) -> Result<ProxyRequest, ProxyError> {
+
     let method = HttpMethod::from(req.method());
     let uri = req.uri().clone();
     let path = uri.path().to_owned();
     let query = uri.query().map(|q| q.to_owned());
     let headers = req.headers().clone();
+    let target = uri.clone().to_string();
 
     crate::trace!("Converting request: {} {} with {} headers", 
         method, path, headers.len());
@@ -364,6 +366,7 @@ async fn convert_hyper_request(
             start_time: Some(std::time::Instant::now()),
             attributes: std::collections::HashMap::new(),
         })),
+        target,
     })
 }
 
@@ -371,7 +374,7 @@ async fn convert_hyper_request(
 fn convert_proxy_response(resp: ProxyResponse) -> Result<Response<Body>, ProxyError> {
     crate::trace!("Converting response with status {} and {} headers", 
         resp.status, resp.headers.len());
-        
+
     let stream = resp
         .body
         .into_data_stream()
@@ -408,7 +411,7 @@ async fn handle_request(
     // Process the request through the logging middleware
     let remote_addr = req.extensions().get::<SocketAddr>().cloned();
     let (req, request_info) = logging_middleware.process(req, remote_addr).await;
-    
+
     // Start timing for upstream request
     let upstream_start = Instant::now();
     // ---------- OpenTelemetry SERVER span ----------
@@ -449,9 +452,9 @@ async fn handle_request(
     /* ---- convert Hyper → ProxyRequest ---- */
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
-    
+
     crate::debug!("Received request: {} {}", method, path);
-    
+
     let proxy_req = match convert_hyper_request(req, client_ip.clone()).await {
         Ok(r) => r,
         Err(e) => {
@@ -503,10 +506,10 @@ async fn handle_request(
                 Ok(resp) => {
                     // Calculate upstream duration
                     let upstream_duration = upstream_start.elapsed();
-                    
+
                     // Log the response with timing information
                     logging_middleware.log_response(&resp, &request_info, Some(upstream_duration));
-                    
+
                     Ok(resp)
                 },
                 Err(e) => {
@@ -553,7 +556,7 @@ async fn handle_request(
                 .unwrap())
         }
     };
-    
+
     // Log error responses too
     if let Ok(resp) = &response {
         if resp.status().is_client_error() || resp.status().is_server_error() {

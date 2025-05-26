@@ -22,7 +22,7 @@ mod tests {
     use std::collections::HashMap;
 
     // Helper function to create a test request
-    fn create_test_request(method: HttpMethod, path: &str, headers: Vec<(&'static str, &'static str)>, body: Vec<u8>) -> ProxyRequest {
+    fn create_test_request(method: HttpMethod, path: &str, headers: Vec<(&'static str, &'static str)>, body: Vec<u8>, target: &str) -> ProxyRequest {
         let mut header_map = reqwest::header::HeaderMap::new();
         for (name, value) in headers {
             header_map.insert(
@@ -38,18 +38,18 @@ mod tests {
             headers: header_map,
             body: Body::from(body),
             context: Arc::new(RwLock::new(RequestContext::default())),
+            target: target.to_string(),
         }
     }
 
     #[tokio::test]
     async fn test_logging_filter() {
         // Create a test request
-        let request = create_test_request(
-            HttpMethod::Get,
-            "/test",
-            vec![("content-type", "application/json")],
-            b"{\"test\": \"value\"}".to_vec()
-        );
+        let request = create_test_request(HttpMethod::Get,
+                                          "/test",
+                                          vec![("content-type", "application/json")],
+                                          b"{\"test\": \"value\"}".to_vec(),
+                                          "http://test.co.za");
 
         // Create a logging filter
         let config = LoggingFilterConfig {
@@ -64,7 +64,7 @@ mod tests {
 
         // Apply the filter
         let filtered_request = filter.pre_filter(request).await.unwrap();
-        
+
         // Since logging filter doesn't modify the request, just verify it returns the request
         assert_eq!(filtered_request.path, "/test");
     }
@@ -79,13 +79,14 @@ mod tests {
                 ("content-type", "application/json"),
                 ("x-remove-me", "should be removed")
             ],
-            Vec::new()
+            Vec::new(),
+            "http://test.co.za"
         );
 
         // Create a header filter
         let mut add_request_headers = HashMap::new();
         add_request_headers.insert("x-custom-header".to_string(), "custom-value".to_string());
-        
+
         let config = HeaderFilterConfig {
             add_request_headers,
             remove_request_headers: vec!["x-remove-me".to_string()],
@@ -112,7 +113,8 @@ mod tests {
             HttpMethod::Get,
             "/test",
             vec![],
-            Vec::new()
+            Vec::new(),
+            "http://test.co.za"
         );
 
         // Create a timeout filter
@@ -127,7 +129,7 @@ mod tests {
         let timeout = context.attributes.get("timeout_ms").unwrap();
         assert_eq!(timeout, &serde_json::json!(5000));
     }
-    
+
     #[tokio::test]
     async fn test_path_rewrite_filter() {
         // Create a test request
@@ -135,7 +137,8 @@ mod tests {
             HttpMethod::Get,
             "/api/users",
             vec![],
-            Vec::new()
+            Vec::new(),
+            "http://test.co.za"
         );
 
         // Create a path rewrite filter
@@ -161,7 +164,8 @@ mod tests {
             HttpMethod::Get,
             "/other/path",
             vec![],
-            Vec::new()
+            Vec::new(),
+            "http://test.co.za"
         );
 
         // Create a path rewrite filter
@@ -179,42 +183,42 @@ mod tests {
         // Verify path was not changed
         assert_eq!(filtered_request.path, "/other/path");
     }
-    
+
     #[tokio::test]
     async fn test_tee_body_streaming() {
         use crate::filters::tee_body;
         use std::time::Duration;
-        
+
         // Create a large body with multiple chunks
         let chunk1 = Bytes::from(vec![b'a'; 500]);
         let chunk2 = Bytes::from(vec![b'b'; 500]);
         let chunk3 = Bytes::from(vec![b'c'; 500]);
-        
+
         // Create a stream of chunks
         let stream = futures_util::stream::iter(vec![
             Ok::<_, std::io::Error>(chunk1),
             Ok(chunk2),
             Ok(chunk3),
         ]);
-        
+
         // Create a body from the stream
         let body = reqwest::Body::wrap_stream(stream);
-        
+
         // Apply tee_body with a limit of 800 bytes
         let (new_body, snippet) = tee_body(body, 800).await.unwrap();
-        
+
         // Consume the body to ensure all chunks are processed
         let mut stream = new_body.into_data_stream();
         let mut total_bytes = 0;
-        
+
         while let Some(chunk_result) = stream.next().await {
             let chunk = chunk_result.unwrap();
             total_bytes += chunk.len();
         }
-        
+
         // Verify we read all 1500 bytes
         assert_eq!(total_bytes, 1500);
-        
+
         // Verify the snippet contains the first 800 bytes (500 'a's and 300 'b's)
         assert_eq!(snippet.len(), 800);
         assert_eq!(&snippet[0..500], &"a".repeat(500));

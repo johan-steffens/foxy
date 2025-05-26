@@ -5,7 +5,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        HttpMethod, ProxyRequest, ProxyResponse, 
+        HttpMethod, ProxyRequest, ProxyResponse,
         RequestContext, ResponseContext
     };
     use std::sync::Arc;
@@ -40,11 +40,11 @@ mod tests {
     #[test]
     fn test_request_context() {
         let mut context = RequestContext::default();
-        
+
         // Test attribute manipulation
         context.attributes.insert("key1".to_string(), serde_json::json!("value1"));
         context.attributes.insert("key2".to_string(), serde_json::json!(42));
-        
+
         assert_eq!(context.attributes.get("key1").unwrap(), &serde_json::json!("value1"));
         assert_eq!(context.attributes.get("key2").unwrap(), &serde_json::json!(42));
     }
@@ -52,11 +52,11 @@ mod tests {
     #[test]
     fn test_response_context() {
         let mut context = ResponseContext::default();
-        
+
         // Test attribute manipulation
         context.attributes.insert("key1".to_string(), serde_json::json!("value1"));
         context.attributes.insert("key2".to_string(), serde_json::json!(42));
-        
+
         assert_eq!(context.attributes.get("key1").unwrap(), &serde_json::json!("value1"));
         assert_eq!(context.attributes.get("key2").unwrap(), &serde_json::json!(42));
     }
@@ -71,14 +71,15 @@ mod tests {
             headers: reqwest::header::HeaderMap::new(),
             body: reqwest::Body::from(Vec::new()),
             context: context.clone(),
+            target: "http://test.co.za".to_string(),
         };
-        
+
         // Test context manipulation
         {
             let mut ctx = request.context.write().await;
             ctx.attributes.insert("test".to_string(), serde_json::json!("value"));
         }
-        
+
         let ctx = request.context.read().await;
         assert_eq!(ctx.attributes.get("test").unwrap(), &serde_json::json!("value"));
     }
@@ -92,13 +93,13 @@ mod tests {
             body: reqwest::Body::from(Vec::new()),
             context: context.clone(),
         };
-        
+
         // Test context manipulation
         {
             let mut ctx = response.context.write().await;
             ctx.attributes.insert("test".to_string(), serde_json::json!("value"));
         }
-        
+
         let ctx = response.context.read().await;
         assert_eq!(ctx.attributes.get("test").unwrap(), &serde_json::json!("value"));
     }

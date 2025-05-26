@@ -166,6 +166,7 @@ pub struct ProxyRequest {
     pub headers: reqwest::header::HeaderMap,
     pub body: reqwest::Body,
     pub context: Arc<RwLock<RequestContext>>,
+    pub target: String,
 }
 
 impl Clone for ProxyRequest {
@@ -178,6 +179,7 @@ impl Clone for ProxyRequest {
             headers:  self.headers.clone(),
             body:     reqwest::Body::from(""),
             context:  self.context.clone(),
+            target: self.target.clone(),
         }
     }
 }
@@ -339,7 +341,7 @@ impl ProxyCore {
                 }
             }
         }
-        
+
         let route = match self.router.route(&request).await {
             Ok(r) => {
                 crate::debug!("Request {} {} matched route: {}", method, path, r.id);
@@ -357,7 +359,7 @@ impl ProxyCore {
                 return Err(e);
             }
         };
-        
+
         let route_filters = route.filters.clone().unwrap_or_default();
         for f in &route_filters {
             if f.filter_type().is_pre() || f.filter_type().is_both() {
@@ -420,7 +422,7 @@ impl ProxyCore {
 
         let upstream_start = Instant::now();
         crate::trace!("Sending request to upstream with timeout: {:?}", timeout_duration);
-        
+
         let resp = match timeout(timeout_duration, builder.send()).await {
             Ok(result) => match result {
                 Ok(response) => response,
@@ -459,7 +461,7 @@ impl ProxyCore {
             ));
             client_span.end();
         }
-        
+
         let upstream_elapsed = upstream_start.elapsed();
         crate::trace!("Received response from upstream in {:?}", upstream_elapsed);
 
@@ -491,7 +493,7 @@ impl ProxyCore {
                 }
             }
         }
-        
+
         for f in self.global_filters.read().await.iter() {
             if f.filter_type().is_post() || f.filter_type().is_both() {
                 crate::trace!("Applying global post-filter: {}", f.name());
@@ -516,7 +518,7 @@ impl ProxyCore {
                 return Err(e);
             }
         };
-        
+
         /* ---------- timing log ---------- */
         let overall_elapsed = overall_start.elapsed();
         let internal_elapsed = overall_elapsed.saturating_sub(upstream_elapsed);
