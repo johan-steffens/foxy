@@ -38,7 +38,7 @@ mod tests {
             headers: header_map,
             body: Body::from(body),
             context: Arc::new(RwLock::new(RequestContext::default())),
-            target: target.to_string(),
+            custom_target: target.to_string(),
         }
     }
 

@@ -166,7 +166,7 @@ pub struct ProxyRequest {
     pub headers: reqwest::header::HeaderMap,
     pub body: reqwest::Body,
     pub context: Arc<RwLock<RequestContext>>,
-    pub target: String,
+    pub custom_target: String,
 }
 
 impl Clone for ProxyRequest {
@@ -179,7 +179,7 @@ impl Clone for ProxyRequest {
             headers:  self.headers.clone(),
             body:     reqwest::Body::from(""),
             context:  self.context.clone(),
-            target: self.target.clone(),
+            custom_target: self.custom_target.clone(),
         }
     }
 }
@@ -342,7 +342,7 @@ impl ProxyCore {
             }
         }
 
-        let route = match self.router.route(&request).await {
+        let mut route = match self.router.route(&request).await {
             Ok(r) => {
                 crate::debug!("Request {} {} matched route: {}", method, path, r.id);
                 r
@@ -374,7 +374,15 @@ impl ProxyCore {
             }
         }
 
+        crate::info!("Initial target: {}", route.target_base_url);
+
         /* ---------- build outbound req ---------- */
+        if(!request.custom_target.is_empty()){
+            crate::info!("Attempting to dynamically set target base Url from: {} to: {}", route.target_base_url, request.custom_target);
+            route.target_base_url = request.custom_target.clone();
+            crate::info!("Dynamically set target base Url to: {}", route.target_base_url);
+        }
+        
         let url = format!("{}{}", route.target_base_url, request.path);
         crate::debug!("Forwarding to target: {}", url);
         let outbound_body = mem::replace(&mut request.body, reqwest::Body::from(""));

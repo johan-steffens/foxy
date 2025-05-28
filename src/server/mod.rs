@@ -345,7 +345,7 @@ async fn convert_hyper_request(
     let path = uri.path().to_owned();
     let query = uri.query().map(|q| q.to_owned());
     let headers = req.headers().clone();
-    let target = uri.clone().to_string();
+    let custom_target = String::from("");
 
     crate::trace!("Converting request: {} {} with {} headers", 
         method, path, headers.len());
@@ -366,7 +366,7 @@ async fn convert_hyper_request(
             start_time: Some(std::time::Instant::now()),
             attributes: std::collections::HashMap::new(),
         })),
-        target,
+        custom_target,
     })
 }
 

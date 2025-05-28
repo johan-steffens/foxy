@@ -71,7 +71,7 @@ mod tests {
             headers: reqwest::header::HeaderMap::new(),
             body: reqwest::Body::from(Vec::new()),
             context: context.clone(),
-            target: "http://test.co.za".to_string(),
+            custom_target: "http://test.co.za".to_string(),
         };
 
         // Test context manipulation

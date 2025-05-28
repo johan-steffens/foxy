@@ -31,7 +31,7 @@ mod tests {
             headers: header_map,
             body: Body::from(Vec::new()),
             context: Arc::new(RwLock::new(RequestContext::default())),
-            target: target.to_string(),
+            custom_target: target.to_string(),
         }
     }
 
