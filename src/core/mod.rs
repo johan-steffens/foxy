@@ -166,7 +166,7 @@ pub struct ProxyRequest {
     pub headers: reqwest::header::HeaderMap,
     pub body: reqwest::Body,
     pub context: Arc<RwLock<RequestContext>>,
-    pub custom_target: String,
+    pub custom_target: Option<String>,
 }
 
 impl Clone for ProxyRequest {
@@ -377,10 +377,10 @@ impl ProxyCore {
         crate::info!("Initial target: {}", route.target_base_url);
 
         /* ---------- build outbound req ---------- */
-        if(!request.custom_target.is_empty()){
-            crate::info!("Attempting to dynamically set target base Url from: {} to: {}", route.target_base_url, request.custom_target);
-            route.target_base_url = request.custom_target.clone();
-            crate::info!("Dynamically set target base Url to: {}", route.target_base_url);
+        if(request.custom_target.is_some()){
+            crate::debug!("Attempting to dynamically set target base Url: {}", route.target_base_url);
+            route.target_base_url = request.custom_target.clone().unwrap();
+            crate::debug!("Dynamically set target base Url to: {}", route.target_base_url);
         }
         
         let url = format!("{}{}", route.target_base_url, request.path);
