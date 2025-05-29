@@ -19,7 +19,7 @@ mod tests {
     use std::collections::HashMap;
 
     // Helper function to create a test request
-    fn create_test_request(method: HttpMethod, path: &str, query: Option<&str>, headers: Vec<(&'static str, &'static str)>) -> ProxyRequest {
+    fn create_test_request(method: HttpMethod, path: &str, query: Option<&str>, headers: Vec<(&'static str, &'static str)>, target: &str) -> ProxyRequest {
         let mut header_map = reqwest::header::HeaderMap::new();
         for (name, value) in headers {
             header_map.insert(
@@ -35,6 +35,7 @@ mod tests {
             headers: header_map,
             body: Body::from(Vec::new()),
             context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: Some(target.to_string()),
         }
     }
 
@@ -46,17 +47,17 @@ mod tests {
         let predicate = PathPredicate::new(config).unwrap();
 
         // Test matching paths
-        let request = create_test_request(HttpMethod::Get, "/api/users", None, vec![]);
+        let request = create_test_request(HttpMethod::Get, "/api/users", None, vec![], "http://test.co.za");
         assert!(predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api/products", None, vec![]);
+        let request = create_test_request(HttpMethod::Get, "/api/products", None, vec![], "http://test.co.za");
         assert!(predicate.matches(&request).await);
 
         // Test non-matching paths
-        let request = create_test_request(HttpMethod::Get, "/users", None, vec![]);
+        let request = create_test_request(HttpMethod::Get, "/users", None, vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api", None, vec![]);
+        let request = create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
     }
 
@@ -68,17 +69,17 @@ mod tests {
         let predicate = MethodPredicate::new(config);
 
         // Test matching methods
-        let request = create_test_request(HttpMethod::Get, "/api", None, vec![]);
+        let request = create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
         assert!(predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Post, "/api", None, vec![]);
+        let request = create_test_request(HttpMethod::Post, "/api", None, vec![], "http://test.co.za");
         assert!(predicate.matches(&request).await);
 
         // Test non-matching methods
-        let request = create_test_request(HttpMethod::Put, "/api", None, vec![]);
+        let request = create_test_request(HttpMethod::Put, "/api", None, vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Delete, "/api", None, vec![]);
+        let request = create_test_request(HttpMethod::Delete, "/api", None, vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
     }
 
@@ -86,7 +87,7 @@ mod tests {
     async fn test_header_predicate() {
         let mut headers = HashMap::new();
         headers.insert("content-type".to_string(), "application/json".to_string());
-        
+
         let config = HeaderPredicateConfig {
             headers,
             exact_match: true,
@@ -99,6 +100,7 @@ mod tests {
             "/api",
             None,
             vec![("content-type", "application/json")],
+            "http://test.co.za",
         );
         assert!(predicate.matches(&request).await);
 
@@ -108,10 +110,11 @@ mod tests {
             "/api",
             None,
             vec![("content-type", "text/plain")],
+            "http://test.co.za",
         );
         assert!(!predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api", None, vec![]);
+        let request = create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
     }
 
@@ -119,7 +122,7 @@ mod tests {
     async fn test_query_predicate() {
         let mut params = HashMap::new();
         params.insert("version".to_string(), "v1".to_string());
-        
+
         let config = QueryPredicateConfig {
             params,
             exact_match: true,
@@ -127,17 +130,17 @@ mod tests {
         let predicate = QueryPredicate::new(config);
 
         // Test matching query parameters
-        let request = create_test_request(HttpMethod::Get, "/api", Some("version=v1"), vec![]);
+        let request = create_test_request(HttpMethod::Get, "/api", Some("version=v1"), vec![], "http://test.co.za");
         assert!(predicate.matches(&request).await);
 
         // Test non-matching query parameters
-        let request = create_test_request(HttpMethod::Get, "/api", Some("version=v2"), vec![]);
+        let request = create_test_request(HttpMethod::Get, "/api", Some("version=v2"), vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api", Some("other=value"), vec![]);
+        let request = create_test_request(HttpMethod::Get, "/api", Some("other=value"), vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api", None, vec![]);
+        let request = create_test_request(HttpMethod::Get, "/api", None, vec![],"http://test.co.za");
         assert!(!predicate.matches(&request).await);
     }
 }

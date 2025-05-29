@@ -42,10 +42,10 @@ mod tests {
             .header("content-type", "application/json")
             .body(Full::new(Bytes::from(r#"{"result":"success"}"#)))
             .unwrap();
-        
+
         // Convert to proxy response
         let proxy_response = convert_hyper_response(hyper_response);
-        
+
         // Verify the conversion
         assert_eq!(proxy_response.status, 200);
         assert!(proxy_response.headers.contains_key("content-type"));
