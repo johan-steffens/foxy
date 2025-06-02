@@ -31,7 +31,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::config::Config;
 use crate::core::{ProxyRequest, ProxyError, Route};
-use crate::FilterFactory;
+use crate::{debug_fmt, error_fmt, trace_fmt, warn_fmt, FilterFactory};
 
 /// Configuration for a route.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -214,7 +214,7 @@ impl crate::core::Router for PredicateRouter {
     async fn route(&self, request: &ProxyRequest) -> Result<Route, ProxyError> {
         // Find the first route where all predicates match
         let sorted_routes = self.sorted_routes.read().await;
-        crate::trace!("Routing request {} {} against {} routes", 
+        trace_fmt!("Router", "Routing request {} {} against {} routes", 
             request.method, request.path, sorted_routes.len());
 
         for route_with_predicates in sorted_routes.iter() {
@@ -222,14 +222,14 @@ impl crate::core::Router for PredicateRouter {
             let mut all_match = true;
             let route_id = &route_with_predicates.route.id;
             
-            crate::trace!("Checking route '{}' with {} predicates", 
+            trace_fmt!("Router", "Checking route '{}' with {} predicates", 
                 route_id, route_with_predicates.predicates.len());
 
             for predicate in &route_with_predicates.predicates {
                 let predicate_type = predicate.predicate_type();
                 let matches = predicate.matches(request).await;
                 
-                crate::trace!("  Predicate '{}' for route '{}': {}", 
+                trace_fmt!("Router", "  Predicate '{}' for route '{}': {}", 
                     predicate_type, route_id, if matches { "match" } else { "no match" });
                 
                 if !matches {
@@ -240,7 +240,7 @@ impl crate::core::Router for PredicateRouter {
 
             // If all predicates match, use this route
             if all_match {
-                crate::debug!("Route '{}' matched request {} {}", 
+                debug_fmt!("Router", "Route '{}' matched request {} {}", 
                     route_id, request.method, request.path);
                 return Ok(route_with_predicates.route.clone());
             }
@@ -249,7 +249,7 @@ impl crate::core::Router for PredicateRouter {
         // No route matched
         let err = ProxyError::RoutingError(format!("No route matched the request: {} {}",
                                              request.method, request.path));
-        crate::warn!("{}", err);
+        warn_fmt!("Router", "{}", err);
         Err(err)
     }
 
@@ -293,7 +293,7 @@ impl PredicateFactory {
         predicate_type: &str,
         config: serde_json::Value,
     ) -> Result<Arc<dyn Predicate>, ProxyError> {
-        crate::debug!("Creating predicate of type '{}' with config: {}", 
+        debug_fmt!("Router", "Creating predicate of type '{}' with config: {}", 
             predicate_type, config);
             
         match predicate_type {
@@ -303,7 +303,7 @@ impl PredicateFactory {
                         let err = ProxyError::RoutingError(
                             format!("Invalid path predicate config: {}", e)
                         );
-                        crate::error!("{}", err);
+                        error_fmt!("Router", "{}", err);
                         err
                     })?;
                 
@@ -318,7 +318,7 @@ impl PredicateFactory {
                         let err = ProxyError::RoutingError(
                             format!("Invalid method predicate config: {}", e)
                         );
-                        crate::error!("{}", err);
+                        error_fmt!("Router", "{}", err);
                         err
                     })?;
                 Ok(Arc::new(MethodPredicate::new(method_config)))
@@ -329,7 +329,7 @@ impl PredicateFactory {
                         let err = ProxyError::RoutingError(
                             format!("Invalid header predicate config: {}", e)
                         );
-                        crate::error!("{}", err);
+                        error_fmt!("Router", "{}", err);
                         err
                     })?;
                 Ok(Arc::new(HeaderPredicate::new(header_config)))
@@ -340,7 +340,7 @@ impl PredicateFactory {
                         let err = ProxyError::RoutingError(
                             format!("Invalid query predicate config: {}", e)
                         );
-                        crate::error!("{}", err);
+                        error_fmt!("Router", "{}", err);
                         err
                     })?;
                 Ok(Arc::new(QueryPredicate::new(query_config)))
@@ -349,7 +349,7 @@ impl PredicateFactory {
                 let err = ProxyError::RoutingError(
                     format!("Unknown predicate type: {}", predicate_type)
                 );
-                crate::error!("{}", err);
+                error_fmt!("Router", "{}", err);
                 Err(err)
             },
         }

@@ -29,9 +29,9 @@
         "type": "logging",
         "config": {
           "log_request_headers": true,
-          "log_request_body": false,
+          "log_request_body": true,
           "log_response_headers": true,
-          "log_response_body": false,
+          "log_response_body": true,
           "log_level": "debug",
           "max_body_size": 1024
         }

@@ -9,7 +9,7 @@
 
 use std::env;
 use std::error::Error;
-use foxy::{Foxy, log_info, log_error, log_warning};
+use foxy::{Foxy, log_info, log_error};
 #[cfg(feature = "opentelemetry")]
 use foxy::opentelemetry::OpenTelemetryConfig;
 

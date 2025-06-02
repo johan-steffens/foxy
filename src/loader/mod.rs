@@ -20,7 +20,7 @@ use thiserror::Error;
 
 use crate::config::{Config, ConfigError, ConfigProvider, EnvConfigProvider, FileConfigProvider};
 use crate::router::{FilterConfig, PredicateRouter, RouteConfig};
-use crate::{init_logging, log_error, log_info, logging, Filter, FilterFactory, ProxyError, ProxyServer, ServerConfig};
+use crate::{error_fmt, info_fmt, init_logging, logging, Filter, FilterFactory, ProxyError, ProxyServer, ServerConfig};
 use crate::core::ProxyCore;
 use crate::logging::config::LoggingConfig;
 use crate::logging::init_with_config;
@@ -166,21 +166,21 @@ impl FoxyLoader {
                 init_with_config(Some(log_level), Some(logging_config));
             }
             Ok(None) => {
-                log_info("Startup", "Logging configuration not found. Initializing with default settings.");
+                info_fmt!("Startup", "Logging configuration not found. Initializing with default settings.");
 
                 init_logging(Some(log_level));
             }
             Err(e) => {
-                log_error("Startup", format!("Failed to read Logging configuration: {}", e));
+                error_fmt!("Startup", "Failed to read Logging configuration: {}", e);
             }
         }
 
-        crate::info!("Foxy starting up");
+        info_fmt!("Loader", "Foxy starting up");
         
         #[cfg(feature = "opentelemetry")]
         {
             if let Ok(Some(otel_config)) = config_arc.get::<crate::opentelemetry::OpenTelemetryConfig>("proxy.opentelemetry") {
-                crate::info!("OpenTelemetry initialized with endpoint: {} and service name: {}", 
+                info_fmt!("Loader", "OpenTelemetry initialized with endpoint: {} and service name: {}", 
                           otel_config.endpoint, otel_config.service_name);
             }
         }
@@ -202,7 +202,7 @@ impl FoxyLoader {
                 )?;
                 proxy_core.add_global_filter(filter).await;
 
-                crate::info!("Added global filter: {}", filter_config.type_);
+                info_fmt!("Loader", "Added global filter: {}", filter_config.type_);
             }
         }
 

@@ -16,6 +16,7 @@ use async_trait::async_trait;
 use std::{fmt, sync::Arc};
 use serde::Deserialize;
 use crate::core::{ProxyError, ProxyRequest, ProxyResponse};
+use crate::{debug_fmt, error_fmt, info_fmt, trace_fmt};
 use crate::security::oidc::{OidcConfig, OidcProvider};
 
 /// When in the request/response lifecycle should a provider run?
@@ -44,7 +45,7 @@ pub trait SecurityProvider: fmt::Debug + Send + Sync {
         &self,
         request: ProxyRequest,
     ) -> Result<ProxyRequest, ProxyError> {
-        crate::trace!("Security provider '{}' skipping pre-auth (default implementation)", self.name());
+        trace_fmt!("SecurityChain", "Security provider '{}' skipping pre-auth (default implementation)", self.name());
         Ok(request)
     }
 
@@ -54,7 +55,7 @@ pub trait SecurityProvider: fmt::Debug + Send + Sync {
         _request: ProxyRequest,
         response: ProxyResponse,
     ) -> Result<ProxyResponse, ProxyError> {
-        crate::trace!("Security provider '{}' skipping post-auth (default implementation)", self.name());
+        trace_fmt!("SecurityChain", "Security provider '{}' skipping post-auth (default implementation)", self.name());
         Ok(response)
     }
 }
@@ -75,19 +76,19 @@ impl SecurityChain {
     pub async fn from_configs(cfgs: Vec<ProviderConfig>) -> Result<Self, ProxyError> {
         let mut chain = SecurityChain { providers: Vec::new(), bypass_routes: Vec::new() };
 
-        crate::debug!("Building security chain from {} provider configs", cfgs.len());
+        debug_fmt!("SecurityChain", "Building security chain from {} provider configs", cfgs.len());
         
         for c in cfgs {
             match c {
                 ProviderConfig::Oidc { config } => {
-                    crate::debug!("Initializing OIDC provider with issuer: {}", config.issuer_uri);
+                    debug_fmt!("SecurityChain", "Initializing OIDC provider with issuer: {}", config.issuer_uri);
                     match OidcProvider::discover(config).await {
                         Ok(p) => {
-                            crate::info!("Successfully initialized OIDC provider");
+                            info_fmt!("SecurityChain", "Successfully initialized OIDC provider");
                             chain.add(Arc::new(p));
                         },
                         Err(e) => {
-                            crate::error!("Failed to initialize OIDC provider: {}", e);
+                            error_fmt!("SecurityChain", "Failed to initialize OIDC provider: {}", e);
                             return Err(e);
                         }
                     }
@@ -103,7 +104,7 @@ impl SecurityChain {
     fn is_bypassed(&self, path: &str) -> bool {
         let bypassed = self.bypass_routes.iter().any(|p| path.starts_with(p));
         if bypassed {
-            crate::debug!("Security bypass for path: {}", path);
+            debug_fmt!("SecurityChain", "Security bypass for path: {}", path);
         }
         bypassed
     }
@@ -116,18 +117,18 @@ impl SecurityChain {
             return Ok(req); 
         }
         
-        crate::trace!("Applying security pre-auth chain with {} providers", self.providers.len());
+        trace_fmt!("SecurityChain", "Applying security pre-auth chain with {} providers", self.providers.len());
         
         for p in &self.providers {
             if p.stage().is_pre() {
-                crate::trace!("Running pre-auth provider: {}", p.name());
+                trace_fmt!("SecurityChain", "Running pre-auth provider: {}", p.name());
                 match p.pre(req).await {
                     Ok(new_req) => {
                         req = new_req;
                     },
                     Err(e) => {
                         let err = ProxyError::SecurityError(format!("{}: {}", p.name(), e));
-                        crate::error!("Security pre-auth failed: {}", err);
+                        error_fmt!("SecurityChain", "Security pre-auth failed: {}", err);
                         return Err(err);
                     }
                 }
@@ -145,18 +146,18 @@ impl SecurityChain {
             return Ok(resp); 
         }
         
-        crate::trace!("Applying security post-auth chain with {} providers", self.providers.len());
+        trace_fmt!("SecurityChain", "Applying security post-auth chain with {} providers", self.providers.len());
         
         for p in &self.providers {
             if p.stage().is_post() {
-                crate::trace!("Running post-auth provider: {}", p.name());
+                trace_fmt!("SecurityChain", "Running post-auth provider: {}", p.name());
                 match p.post(req.clone(), resp).await {
                     Ok(new_resp) => {
                         resp = new_resp;
                     },
                     Err(e) => {
                         let err = ProxyError::SecurityError(format!("{}: {}", p.name(), e));
-                        crate::error!("Security post-auth failed: {}", err);
+                        error_fmt!("SecurityChain", "Security post-auth failed: {}", err);
                         return Err(err);
                     }
                 }

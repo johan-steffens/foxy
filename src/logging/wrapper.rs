@@ -8,7 +8,6 @@
 //! to ensure all logging goes through our logging system.
 
 use crate::{log_debug, log_error, log_info, log_trace, log_warning};
-use crate::logging::is_structured_logging;
 
 /// Log an error message
 pub fn error(args: std::fmt::Arguments) {

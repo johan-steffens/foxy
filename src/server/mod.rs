@@ -38,14 +38,13 @@ use futures_util::TryStreamExt;
 use http_body_util::{BodyExt, Full};
 use reqwest::Body;
 use serde::{Serialize, Deserialize};
-use crate::{trace, debug, info, warn, error};
+use crate::{error_fmt, warn_fmt, info_fmt, debug_fmt, trace_fmt};
 use tokio::signal;
 use crate::logging::middleware::LoggingMiddleware;
 use crate::logging::config::LoggingConfig;
 use std::time::Instant;use tokio::task::{Id, JoinSet};
 use crate::core::{ProxyCore, ProxyRequest, ProxyResponse, ProxyError, HttpMethod, RequestContext};
 use std::collections::HashMap;
-use hyper::http::response;
 use tokio::sync::oneshot;
 use health::HealthServer;
 
@@ -146,7 +145,7 @@ impl ProxyServer {
             .await
             .map_err(|e| ProxyError::Other(format!("Failed to bind: {}", e)))?;
 
-        info!("Foxy proxy listening on http://{}", addr);
+        info_fmt!("Server", "Foxy proxy listening on http://{}", addr);
 
         let health_server = HealthServer::new(self.config.health_port);
         health_server.set_ready();
@@ -183,12 +182,12 @@ impl ProxyServer {
         loop {
             tokio::select! {
                 _ = &mut ctrl_c => {
-                    info!("Received Ctrl-C; initiating graceful shutdown");
+                    info_fmt!("Server", "Received Ctrl-C; initiating graceful shutdown");
                     shutdown_initiated_clone.store(true, std::sync::atomic::Ordering::SeqCst);
                     break;
                 }
                 _ = &mut sigterm => {
-                    info!("Received SIGTERM; initiating graceful shutdown");
+                    info_fmt!("Server", "Received SIGTERM; initiating graceful shutdown");
                     shutdown_initiated_clone.store(true, std::sync::atomic::Ordering::SeqCst);
                     break;
                 }
@@ -197,7 +196,7 @@ impl ProxyServer {
                         Ok((stream, remote_addr)) => {
                             // If shutdown has been initiated, reject new connections
                             if shutdown_initiated.load(std::sync::atomic::Ordering::SeqCst) {
-                                info!("Rejecting new connection during shutdown");
+                                info_fmt!("Server", "Rejecting new connection during shutdown");
                                 continue;
                             }
         
@@ -211,7 +210,7 @@ impl ProxyServer {
                                 let task_id = tokio::task::id();
                                 
                                 let service = service_fn(move |req: Request<Incoming>| {
-                                    debug!("Incoming over {:?}", &req.version());
+                                    debug_fmt!("Server", "Incoming over {:?}", &req.version());
                                     handle_request(req, core.clone(), client_ip.clone(), logging_middleware.clone())
                                 });
                                 let io = TokioIo::new(stream);
@@ -233,29 +232,29 @@ impl ProxyServer {
                                 tokio::select! {
                                     res = &mut conn => {
                                         match res {
-                                            Ok(()) => debug!("Connection closed normally"),
+                                            Ok(()) => debug_fmt!("Server", "Connection closed normally"),
                                             Err(e) => {
                                                 // Check if it's a graceful close by examining the error message
                                                 let err_str = e.to_string();
                                                 if !err_str.contains("connection closed") && 
                                                    !err_str.contains("connection reset") {
-                                                    error!("Connection error: {}", e);
+                                                    error_fmt!("Server", "Connection error: {}", e);
                                                 }
                                             }
                                         }
                                     }
                                     _ = rx => {
-                                        debug!("Connection received shutdown signal, waiting for graceful close");
+                                        debug_fmt!("Server", "Connection received shutdown signal, waiting for graceful close");
                                         conn.as_mut().graceful_shutdown();
                                         
                                         // Continue running the connection until it completes
                                         match conn.await {
-                                            Ok(()) => debug!("Connection closed gracefully after shutdown signal"),
+                                            Ok(()) => debug_fmt!("Server", "Connection closed gracefully after shutdown signal"),
                                             Err(e) => {
                                                 let err_str = e.to_string();
                                                 if !err_str.contains("connection closed") && 
                                                    !err_str.contains("connection reset") {
-                                                    error!("Connection error during graceful shutdown: {}", e);
+                                                    error_fmt!("Server", "Connection error during graceful shutdown: {}", e);
                                                 }
                                             }
                                         }
@@ -264,27 +263,27 @@ impl ProxyServer {
                                 
                                 // Clean up the shutdown sender for this task
                                 shutdown_senders_clone.write().await.remove(&task_id);
-                                debug!("Connection task {:?} completed", task_id);
+                                debug_fmt!("Server", "Connection task {:?} completed", task_id);
                             });
                             
                             // Store the shutdown sender for this task
                             shutdown_senders.write().await.insert(handle.id(), tx);
                         }
-                        Err(e) => error!("Accept error: {}", e),
+                        Err(e) => error_fmt!("Server", "Accept error: {}", e),
                     }
                 }
             }
         }
 
         // Stop accepting connections and signal existing ones to shut down
-        info!("Shutting down; waiting for {} connection(s)", join_set.len());
+        info_fmt!("Server", "Shutting down; waiting for {} connection(s)", join_set.len());
 
         // Signal all connections to close gracefully
         {
             let mut senders = shutdown_senders.write().await;
-            info!("Signaling {} connections to shut down", senders.len());
+            info_fmt!("Server", "Signaling {} connections to shut down", senders.len());
             for (task_id, sender) in senders.drain() {
-                debug!("Sending shutdown signal to task {:?}", task_id);
+                debug_fmt!("Server", "Sending shutdown signal to task {:?}", task_id);
                 let _ = sender.send(());
             }
         }
@@ -300,14 +299,14 @@ impl ProxyServer {
             while let Some(res) = join_set.join_next().await {
                 completed += 1;
                 match res {
-                    Ok(_) => debug!("Connection task completed ({}/{})", completed, total),
-                    Err(e) if e.is_cancelled() => debug!("Connection task cancelled ({}/{})", completed, total),
-                    Err(e) => error!("Connection task failed ({}/{}): {}", completed, total, e),
+                    Ok(_) => debug_fmt!("Server", "Connection task completed ({}/{})", completed, total),
+                    Err(e) if e.is_cancelled() => debug_fmt!("Server", "Connection task cancelled ({}/{})", completed, total),
+                    Err(e) => error_fmt!("Server", "Connection task failed ({}/{}): {}", completed, total, e),
                 }
 
                 let elapsed = start_time.elapsed();
                 if completed % 10 == 0 || total - completed < 10 {
-                    info!("Shutdown progress: {}/{} connections closed (elapsed: {:.1}s)", 
+                    info_fmt!("Server", "Shutdown progress: {}/{} connections closed (elapsed: {:.1}s)", 
                   completed, total, elapsed.as_secs_f32());
                 }
             }
@@ -316,10 +315,10 @@ impl ProxyServer {
         match tokio::time::timeout(shutdown_timeout, shutdown_future).await {
             Ok(_) => {
                 let elapsed = start_time.elapsed();
-                info!("All connections drained gracefully in {:.1}s", elapsed.as_secs_f32());
+                info_fmt!("Server", "All connections drained gracefully in {:.1}s", elapsed.as_secs_f32());
             }
             Err(_) => {
-                warn!("Shutdown timed out after {} seconds, some connections may be forcefully closed", 
+                warn_fmt!("Server", "Shutdown timed out after {} seconds, some connections may be forcefully closed", 
               shutdown_timeout.as_secs());
                 // Cancel remaining tasks
                 join_set.shutdown().await;
@@ -329,7 +328,7 @@ impl ProxyServer {
         // Ensure health server is also shut down
         drop(health_server);
 
-        info!("Shutdown complete");
+        info_fmt!("Server", "Shutdown complete");
         Ok(())
     }
 }
@@ -346,7 +345,7 @@ async fn convert_hyper_request(
     let query = uri.query().map(|q| q.to_owned());
     let headers = req.headers().clone();
 
-    crate::trace!("Converting request: {} {} with {} headers", 
+    trace_fmt!("Server", "Converting request: {} {} with {} headers", 
         method, path, headers.len());
 
     // Incoming → Stream → reqwest::Body
@@ -371,14 +370,14 @@ async fn convert_hyper_request(
 
 /// Convert a proxy response to a hyper response.
 fn convert_proxy_response(resp: ProxyResponse) -> Result<Response<Body>, ProxyError> {
-    crate::trace!("Converting response with status {} and {} headers", 
+    trace_fmt!("Server", "Converting response with status {} and {} headers", 
         resp.status, resp.headers.len());
 
     let stream = resp
         .body
         .into_data_stream()
         .map_err(|e| {
-            crate::error!("Error streaming response body: {}", e);
+            error_fmt!("Server", "Error streaming response body: {}", e);
             std::io::Error::new(std::io::ErrorKind::Other, e)
         });
 
@@ -386,7 +385,7 @@ fn convert_proxy_response(resp: ProxyResponse) -> Result<Response<Body>, ProxyEr
 
     let mut builder = Response::builder().status(resp.status);
     let mut_headers = builder.headers_mut().ok_or_else(|| {
-        crate::error!("Failed to get mutable headers from response builder");
+        error_fmt!("Server", "Failed to get mutable headers from response builder");
         ProxyError::Other("Failed to build response: unable to get mutable headers".into())
     })?;
     *mut_headers = resp.headers;
@@ -395,7 +394,7 @@ fn convert_proxy_response(resp: ProxyResponse) -> Result<Response<Body>, ProxyEr
         .body(body)
         .map_err(|e| {
             let err = ProxyError::Other(e.to_string());
-            crate::error!("Failed to build response: {}", err);
+            error_fmt!("Server", "Failed to build response: {}", err);
             err
         })
 }
@@ -452,12 +451,12 @@ async fn handle_request(
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
 
-    crate::debug!("Received request: {} {}", method, path);
+    debug_fmt!("Server", "Received request: {} {}", method, path);
 
     let proxy_req = match convert_hyper_request(req, client_ip.clone()).await {
         Ok(r) => r,
         Err(e) => {
-            crate::error!("Failed to convert request {} {}: {}", method, path, e);
+            error_fmt!("Server", "Failed to convert request {} {}: {}", method, path, e);
             return Ok(Response::builder()
                 .status(500)
                 .body(Body::from("Internal Server Error"))
@@ -495,7 +494,7 @@ async fn handle_request(
     /* ---------- map response ---------- */
     let response: Result<Response<Body>, Infallible> = match result {
         Ok(proxy_resp) => {
-            crate::debug!(
+            debug_fmt!("Server", 
                 "Successfully processed request {} {} -> {}",
                 method,
                 path,
@@ -512,7 +511,7 @@ async fn handle_request(
                     Ok(resp)
                 },
                 Err(e) => {
-                    crate::error!(
+                    error_fmt!("Server", 
                         "Failed to convert response for {} {}: {}",
                         method,
                         path,
@@ -528,23 +527,23 @@ async fn handle_request(
         Err(e) => {
             let (status, msg) = match &e {
                 ProxyError::Timeout(d) => {
-                    crate::warn!("Request {} {} timed out after {:?}", method, path, d);
+                    warn_fmt!("Server", "Request {} {} timed out after {:?}", method, path, d);
                     (504, format!("Gateway Timeout after {d:?}"))
                 }
                 ProxyError::RoutingError(msg) => {
-                    crate::warn!("Routing error for {} {}: {}", method, path, msg);
+                    warn_fmt!("Server", "Routing error for {} {}: {}", method, path, msg);
                     (404, "Route not found".into())
                 }
                 ProxyError::SecurityError(msg) => {
-                    crate::warn!("Security error for {} {}: {}", method, path, msg);
+                    warn_fmt!("Server", "Security error for {} {}: {}", method, path, msg);
                     (403, "Forbidden".into())
                 }
                 ProxyError::ClientError(err) => {
-                    crate::error!("Client error for {} {}: {}", method, path, err);
+                    error_fmt!("Server", "Client error for {} {}: {}", method, path, err);
                     (502, "Bad Gateway".into())
                 }
                 _ => {
-                    crate::error!("Internal error processing {} {}: {}", method, path, e);
+                    error_fmt!("Server", "Internal error processing {} {}: {}", method, path, e);
                     (500, "Internal Server Error".into())
                 }
             };
