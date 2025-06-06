@@ -1,6 +1,6 @@
 [package]
 name = "foxy-io"
-version = "0.2.20"
+version = "0.3.0"
 edition = "2024"
 authors = ["Johan Steffens <johan@steff.co.za>"]
 description = "A configuration-driven and hyper-extensible HTTP proxy library"
@@ -49,7 +49,6 @@ hyper-util = { version = "0.1.3", features = ["tokio", "server"] }
 http-body-util = "0.1.0"
 reqwest = { version = "0.12.15", features = ["stream", "json", "rustls-tls"] }
 regex = "1.11.1"
-url = "2.5.4"
 
 # Security
 jsonwebtoken = "9"

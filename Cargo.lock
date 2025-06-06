@@ -449,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "foxy-io"
-version = "0.2.20"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -489,7 +489,6 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "url",
  "uuid",
 ]
 

@@ -9,7 +9,7 @@
 
 use std::env;
 use std::error::Error;
-use foxy::{Foxy, log_info, log_error};
+use foxy::{error_fmt, info_fmt, trace_fmt, Foxy};
 #[cfg(feature = "opentelemetry")]
 use foxy::opentelemetry::OpenTelemetryConfig;
 
@@ -55,27 +55,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Ok(Some(otel_config)) => {
                 if !otel_config.endpoint.is_empty() {
                     foxy::opentelemetry::init(Some(otel_config)).unwrap_or_else(|err| {
-                        log_error("Startup", format!("Failed to initialise OpenTelemetry: {}", err));
+                        error_fmt!("Startup", "Failed to initialise OpenTelemetry: {}", err);
                     });
                 } else {
-                    log_info("Startup", "OpenTelemetry endpoint is not configured. Skipping initialization.");
+                    info_fmt!("Startup", "OpenTelemetry endpoint is not configured. Skipping initialization.");
                 }
             }
             Ok(None) => {
-                log_info("Startup", "OpenTelemetry configuration not found. Skipping initialization.");
+                info_fmt!("Startup", "OpenTelemetry configuration not found. Skipping initialization.");
             }
             Err(e) => {
-                log_error("Startup", format!("Failed to read OpenTelemetry configuration: {}", e));
+                info_fmt!("Startup", "Failed to read OpenTelemetry configuration: {}", e);
             }
         }   
     }
     
     match proxy.start().await {
         Ok(_) => {
-            log_info("Foxy", "Proxy server stopped gracefully");
+            info_fmt!("Foxy", "Proxy server stopped gracefully");
         },
         Err(e) => {
-            log_error("Foxy", format!("Proxy server failed: {}", e));
+            info_fmt!("Foxy", "Proxy server failed: {}", e);
             return Err(e.into());
         }
     }

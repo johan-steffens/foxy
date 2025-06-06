@@ -75,8 +75,7 @@ pub use security::{
 };
 pub use server::{ProxyServer, ServerConfig};
 pub use logging::{
-    init as init_logging, 
-    log_error, log_warning, log_debug, log_trace, log_info,
-    wrapper::{error, warn, info, debug, trace}
+    init_with_config,
+    wrapper
 };
 pub use crate::opentelemetry::init;

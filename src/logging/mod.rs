@@ -26,56 +26,29 @@ static INIT: Once = Once::new();
 static USING_STRUCTURED: AtomicBool = AtomicBool::new(false);
 static mut LOGGER_GUARD: Option<LoggerGuard> = None;
 
-/// Initialize logging with the specified level.
-///
-/// This function ensures logging is only initialized once.
-pub fn init(level: Option<LevelFilter>) {
-    init_with_config(level, None);
-}
-
 /// Initialize logging with the specified level and configuration.
 ///
 /// This function ensures logging is only initialized once.
-pub fn init_with_config(level: Option<LevelFilter>, config: Option<LoggingConfig>) {
+pub fn init_with_config(level: LevelFilter, config: &LoggingConfig) {
     INIT.call_once(|| {
-        if let Some(config) = config {
-            if config.structured {
-                // Initialize structured logging
-                let logger_config = config.to_logger_config();
-                let guard = init_global_logger(&logger_config);
-                
-                // Store the guard to keep the logger alive
-                unsafe {
-                    LOGGER_GUARD = Some(guard);
-                }
-                
-                USING_STRUCTURED.store(true, Ordering::SeqCst);
-                
-                // Log using structured logging
-                slog_scope::info!("Structured logging initialized"; 
-                    "level" => format!("{:?}", logger_config.level),
-                    "format" => format!("{:?}", logger_config.format)
-                );
-                
-                return;
-            }
-        }
-        
-        // Fall back to traditional logging
-        let env = env_logger::Env::default()
-            .filter_or("RUST_LOG", level.map_or("info", |l| match l {
-                LevelFilter::Trace => "trace",
-                LevelFilter::Debug => "debug",
-                LevelFilter::Info => "info",
-                LevelFilter::Warn => "warn",
-                LevelFilter::Error => "error",
-                LevelFilter::Off => "off",
-            }));
+        log::set_max_level(level);
 
-        env_logger::Builder::from_env(env)
-            .format_timestamp_millis()
-            .format_target(true)
-            .init();
+        if config.structured {
+            let logger_config = config.to_logger_config();
+            let guard = init_global_logger(&logger_config);
+
+            // Keep the logger alive
+            unsafe { LOGGER_GUARD = Some(guard); }
+            USING_STRUCTURED.store(true, Ordering::SeqCst);
+        } else {
+            // Fallback to env_logger, using our determined level as the default.
+            // The RUST_LOG env var can still override this if it was set.
+            let env = env_logger::Env::default().filter_or("RUST_LOG", level.as_str());
+            env_logger::Builder::from_env(env)
+                .format_timestamp_millis()
+                .format_target(true)
+                .init();
+        }
 
         info!("Logging initialized at level: {}", log::max_level());
     });

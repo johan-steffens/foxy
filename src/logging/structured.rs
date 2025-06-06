@@ -126,7 +126,17 @@ pub fn init_global_logger(config: &LoggerConfig) -> LoggerGuard {
 
     // Set up the global logger
     let guard = slog_scope::set_global_logger(logger);
-    slog_stdlog::init().unwrap();
+
+    let log_level_filter = match config.level {
+        slog::Level::Trace => log::Level::Trace,
+        slog::Level::Debug => log::Level::Debug,
+        slog::Level::Info => log::Level::Info,
+        slog::Level::Warning => log::Level::Warn,
+        slog::Level::Error => log::Level::Error,
+        slog::Level::Critical => log::Level::Error,
+    };
+
+    slog_stdlog::init_with_level(log_level_filter).unwrap();
 
     LoggerGuard { _guard: guard }
 }
