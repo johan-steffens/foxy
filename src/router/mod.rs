@@ -25,6 +25,8 @@ pub use predicates::*;
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use once_cell::sync::Lazy;
+use std::sync::RwLock as StdRwLock;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 use serde::{Serialize, Deserialize};
@@ -82,6 +84,33 @@ pub trait Predicate: Send + Sync + std::fmt::Debug {
 
     /// Get the predicate type.
     fn predicate_type(&self) -> &str;
+}
+
+/// Constructor signature every dynamic predicate must implement
+pub type PredicateConstructor =
+fn(serde_json::Value) -> Result<Arc<dyn Predicate>, ProxyError>;
+
+
+/// Global registry – `register_predicate()` writes to it,
+/// `PredicateFactory::create_predicate()` reads from it.
+static PREDICATE_REGISTRY: Lazy<StdRwLock<HashMap<String, PredicateConstructor>>> =
+    Lazy::new(|| StdRwLock::new(HashMap::new()));
+
+/// Register a predicate under a unique name.
+pub fn register_predicate(name: &str, ctor: PredicateConstructor) {
+    PREDICATE_REGISTRY
+        .write()
+        .expect("PREDICATE_REGISTRY poisoned")
+        .insert(name.to_string(), ctor);
+}
+
+/// Internal helper – fetch a constructor if somebody registered one.
+fn get_registered_predicate(name: &str) -> Option<PredicateConstructor> {
+    PREDICATE_REGISTRY
+        .read()
+        .expect("PREDICATE_REGISTRY poisoned")
+        .get(name)
+        .copied()
 }
 
 /// The predicable router implementation.
@@ -295,6 +324,11 @@ impl PredicateFactory {
     ) -> Result<Arc<dyn Predicate>, ProxyError> {
         debug_fmt!("Router", "Creating predicate of type '{}' with config: {}", 
             predicate_type, config);
+
+        // See if we've got an external predicate registered of that name
+        if let Some(ctor) = get_registered_predicate(predicate_type) {
+            return ctor(config);
+        }
             
         match predicate_type {
             "path" => {

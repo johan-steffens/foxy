@@ -42,40 +42,35 @@
 
 // Module declarations
 pub mod config;
-pub mod loader;
 pub mod core;
-pub mod router;
 pub mod filters;
-pub mod server;
-pub mod security;
+pub mod loader;
 pub mod logging;
 pub mod opentelemetry;
+pub mod router;
+pub mod security;
+pub mod server;
 
 // Re-export key types at the crate root for convenience
-pub use config::{ConfigProvider, ConfigProviderExt, ConfigError};
-pub use loader::{Foxy, FoxyLoader, LoaderError};
+pub use crate::opentelemetry::init;
+pub use config::{ConfigError, ConfigProvider, ConfigProviderExt};
 pub use core::{
-    Filter, FilterType, Router, Route,
-    ProxyRequest, ProxyResponse, ProxyError,
-    RequestContext, ResponseContext, HttpMethod
-};
-pub use router::{
-    PredicateRouter, Predicate, PredicateFactory,
-    PathPredicate, MethodPredicate, HeaderPredicate, QueryPredicate
+    Filter, FilterType, HttpMethod, ProxyError, ProxyRequest, ProxyResponse, RequestContext,
+    ResponseContext, Route, Router,
 };
 pub use filters::{
-    LoggingFilter, HeaderFilter, TimeoutFilter, FilterFactory,
-    PathRewriteFilter, PathRewriteFilterConfig
+    FilterFactory, HeaderFilter, LoggingFilter, PathRewriteFilter, PathRewriteFilterConfig,
+    TimeoutFilter, register_filter,
+};
+pub use loader::{Foxy, FoxyLoader, LoaderError};
+pub use logging::{init_with_config, wrapper};
+pub use router::{
+    HeaderPredicate, MethodPredicate, PathPredicate, Predicate, PredicateFactory, PredicateRouter,
+    QueryPredicate, register_predicate,
 };
 pub use security::{
-    SecurityProvider,
-    SecurityStage,
-    SecurityChain,
-    oidc::{OidcProvider, OidcConfig},
+    SecurityChain, SecurityProvider, SecurityStage,
+    oidc::{OidcConfig, OidcProvider},
+    register_security_provider,
 };
 pub use server::{ProxyServer, ServerConfig};
-pub use logging::{
-    init_with_config,
-    wrapper
-};
-pub use crate::opentelemetry::init;

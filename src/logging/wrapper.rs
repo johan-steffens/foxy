@@ -49,10 +49,6 @@ macro_rules! trace_fmt {
     };
 }
 
-// The following simple wrapper macros and functions are no longer necessary
-// with this unified approach, as standard `log::*` macros can be used directly.
-// You may want to remove them from here and `src/logging/mod.rs` to clean up the code.
-
 /// Macro to log an error message
 #[macro_export]
 macro_rules! error {

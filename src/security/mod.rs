@@ -12,9 +12,14 @@ pub mod oidc;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use async_trait::async_trait;
 use std::{fmt, sync::Arc};
+use once_cell::sync::Lazy;
 use serde::Deserialize;
+use std::sync::RwLock as StdRwLock;
 use crate::core::{ProxyError, ProxyRequest, ProxyResponse};
 use crate::{debug_fmt, error_fmt, info_fmt, trace_fmt};
 use crate::security::oidc::{OidcConfig, OidcProvider};
@@ -60,40 +65,26 @@ pub trait SecurityProvider: fmt::Debug + Send + Sync {
     }
 }
 
-/// Executes all registered providers, honouring bypass-routes.
+/// Executes all registered providers.
 #[derive(Debug)]
 pub struct SecurityChain {
     providers: Vec<Arc<dyn SecurityProvider>>,
-    bypass_routes: Vec<String>,
 }
 
 impl SecurityChain {
-    pub fn new(bypass_routes: Vec<String>) -> Self {
-        Self { providers: Vec::new(), bypass_routes }
+    pub fn new() -> Self {
+        Self { providers: Vec::new() }
     }
 
     /// Build from raw config list.
     pub async fn from_configs(cfgs: Vec<ProviderConfig>) -> Result<Self, ProxyError> {
-        let mut chain = SecurityChain { providers: Vec::new(), bypass_routes: Vec::new() };
+        let mut chain = SecurityChain::new();
 
         debug_fmt!("SecurityChain", "Building security chain from {} provider configs", cfgs.len());
-        
+
         for c in cfgs {
-            match c {
-                ProviderConfig::Oidc { config } => {
-                    debug_fmt!("SecurityChain", "Initializing OIDC provider with issuer: {}", config.issuer_uri);
-                    match OidcProvider::discover(config).await {
-                        Ok(p) => {
-                            info_fmt!("SecurityChain", "Successfully initialized OIDC provider");
-                            chain.add(Arc::new(p));
-                        },
-                        Err(e) => {
-                            error_fmt!("SecurityChain", "Failed to initialize OIDC provider: {}", e);
-                            return Err(e);
-                        }
-                    }
-                }
-            }
+            let provider = SecurityProviderFactory::create_provider(&c.type_, c.config).await?;
+            chain.add(provider);
         }
 
         Ok(chain)
@@ -101,24 +92,12 @@ impl SecurityChain {
 
     pub fn add(&mut self, p: Arc<dyn SecurityProvider>) { self.providers.push(p); }
 
-    fn is_bypassed(&self, path: &str) -> bool {
-        let bypassed = self.bypass_routes.iter().any(|p| path.starts_with(p));
-        if bypassed {
-            debug_fmt!("SecurityChain", "Security bypass for path: {}", path);
-        }
-        bypassed
-    }
-
     pub async fn apply_pre(
         &self,
         mut req: ProxyRequest,
     ) -> Result<ProxyRequest, ProxyError> {
-        if self.is_bypassed(&req.path) { 
-            return Ok(req); 
-        }
-        
         trace_fmt!("SecurityChain", "Applying security pre-auth chain with {} providers", self.providers.len());
-        
+
         for p in &self.providers {
             if p.stage().is_pre() {
                 trace_fmt!("SecurityChain", "Running pre-auth provider: {}", p.name());
@@ -142,12 +121,8 @@ impl SecurityChain {
         req: ProxyRequest,
         mut resp: ProxyResponse,
     ) -> Result<ProxyResponse, ProxyError> {
-        if self.is_bypassed(&req.path) { 
-            return Ok(resp); 
-        }
-        
         trace_fmt!("SecurityChain", "Applying security post-auth chain with {} providers", self.providers.len());
-        
+
         for p in &self.providers {
             if p.stage().is_post() {
                 trace_fmt!("SecurityChain", "Running post-auth provider: {}", p.name());
@@ -168,7 +143,64 @@ impl SecurityChain {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum ProviderConfig {
-    Oidc { config: OidcConfig },
+pub struct ProviderConfig {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub config: serde_json::Value,
+}
+
+
+/// Constructor signature every dynamic security provider must implement.
+/// Because providers may need to perform async operations (like OIDC discovery),
+/// the constructor returns a pinned, boxed future.
+pub type SecurityProviderConstructor =
+fn(serde_json::Value) -> Pin<Box<dyn Future<Output = Result<Arc<dyn SecurityProvider>, ProxyError>> + Send>>;
+
+
+/// Global registry for security providers.
+static SECURITY_PROVIDER_REGISTRY: Lazy<StdRwLock<HashMap<String, SecurityProviderConstructor>>> =
+    Lazy::new(|| StdRwLock::new(HashMap::new()));
+
+/// Register a security provider under a unique name.
+pub fn register_security_provider(name: &str, ctor: SecurityProviderConstructor) {
+    SECURITY_PROVIDER_REGISTRY
+        .write()
+        .expect("SECURITY_PROVIDER_REGISTRY poisoned")
+        .insert(name.to_string(), ctor);
+}
+
+/// Internal helper to get a registered security provider constructor.
+fn get_registered_security_provider(name: &str) -> Option<SecurityProviderConstructor> {
+    SECURITY_PROVIDER_REGISTRY
+        .read()
+        .expect("SECURITY_PROVIDER_REGISTRY poisoned")
+        .get(name)
+        .copied()
+}
+
+/// Factory for creating security providers based on configuration.
+#[derive(Debug)]
+pub struct SecurityProviderFactory;
+
+impl SecurityProviderFactory {
+    /// Create a security provider based on its type and configuration.
+    pub async fn create_provider(
+        provider_type: &str,
+        config: serde_json::Value,
+    ) -> Result<Arc<dyn SecurityProvider>, ProxyError> {
+        debug_fmt!("SecurityProviderFactory", "Creating security provider of type '{}'", provider_type);
+        if let Some(ctor) = get_registered_security_provider(provider_type) {
+            return ctor(config).await;
+        }
+
+        match provider_type {
+            "oidc" => {
+                let oidc_config: OidcConfig = serde_json::from_value(config)
+                    .map_err(|e| ProxyError::SecurityError(format!("Invalid OIDC provider config: {}", e)))?;
+                let provider = OidcProvider::discover(oidc_config).await?;
+                Ok(Arc::new(provider))
+            }
+            _ => Err(ProxyError::SecurityError(format!("Unknown security provider type: {}", provider_type))),
+        }
+    }
 }

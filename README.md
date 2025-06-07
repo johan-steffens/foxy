@@ -170,7 +170,7 @@ Example configuration:
 }
 ```
 
-For detailed configuration options, see the [Configuration Guide](./CONFIGURATION.md).
+For detailed configuration options, see the [Configuration Guide](docs/CONFIGURATION.md).
 
 ### Security
 
@@ -253,7 +253,7 @@ Key benefits:
 - **Rich Context**: Detailed request information and timing metrics
 - **Static Fields**: Add environment-specific fields to all logs
 
-For detailed configuration options, see the [Configuration Guide](./CONFIGURATION.md#structured-logging).
+For detailed configuration options, see the [Configuration Guide](docs/CONFIGURATION.md#structured-logging).
 
 
 ## Performance Features
@@ -290,12 +290,19 @@ The `LoggingFilter` can peek and log request/response bodies:
 
 ## Extension Points
 
-Foxy is designed to be extended through traits:
+Foxy is designed to be highly extensible. You can inject your own custom logic into the proxy pipeline by implementing a few simple traits. This allows you to add custom routing rules, request/response modifications, and authentication mechanisms without forking the project.
 
-- **ConfigProvider**: Add custom configuration sources
-- **Filter**: Create custom request/response processing logic
-- **Predicate**: Implement custom routing logic
-- **SecurityProvider**: Add authentication mechanisms
+The primary extension points are:
+- **`Filter`**: Modify requests and responses.
+- **`Predicate`**: Implement custom routing logic.
+- **`SecurityProvider`**: Add custom authentication and authorization.
+
+All extension points follow a similar pattern:
+1.  **Implement** the corresponding trait.
+2.  **Register** your implementation with Foxy's global registry at startup.
+3.  **Use** your custom component in the configuration file.
+
+For a detailed guide on adding extension points, see the [Extension Guide](docs/EXTENSION.md).
 
 ## Development Status
 
