@@ -16,6 +16,12 @@ proxy:
       app: foxy-proxy
       version: 0.2.16
       environment: production
+  swagger_ui:
+    enabled: true
+    path: "/swagger-ui"
+    sources:
+      - name: "Petstore"
+        url: "https://petstore.swagger.io/v2/swagger.json"
   global_filters:
     - type: logging
       config:

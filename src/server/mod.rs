@@ -8,7 +8,7 @@
 //! listening socket(s) and translates between Hyper's body types and the
 //! internal [`ProxyRequest`] / [`ProxyResponse`] generics that the core uses.
 //!
-//! **Protocol support**  
+//! **Protocol support**
 //! Uses `hyper_util::server::conn::auto::Builder`, so the same
 //! connection transparently handles both HTTP/1.1 *and* HTTP/2.
 //!
@@ -21,6 +21,8 @@
 #[cfg(test)]
 mod tests;
 mod health;
+#[cfg(feature = "swagger-ui")]
+pub mod swagger;
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -47,6 +49,8 @@ use crate::core::{ProxyCore, ProxyRequest, ProxyResponse, ProxyError, HttpMethod
 use std::collections::HashMap;
 use tokio::sync::oneshot;
 use health::HealthServer;
+#[cfg(feature = "swagger-ui")]
+use crate::server::swagger::SwaggerUIConfig;
 
 #[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};
@@ -409,6 +413,22 @@ async fn handle_request(
     // Process the request through the logging middleware
     let remote_addr = req.extensions().get::<SocketAddr>().cloned();
     let (req, request_info) = logging_middleware.process(req, remote_addr).await;
+
+    // Start Swagger UI Handling
+    #[cfg(feature = "swagger-ui")]
+    {
+        if let Ok(Some(swagger_config)) = core.config.get::<SwaggerUIConfig>("proxy.swagger_ui") {
+            if swagger_config.enabled
+                && (req.uri().path().eq(&swagger_config.path)
+                || req.uri().path().starts_with(&swagger_config.path)) {
+                let swagger_response = swagger::handle_swagger_request(&req, &swagger_config)
+                    .await
+                    .unwrap();
+                return Ok(swagger_response);
+            }
+        }
+    }
+    // End Swagger UI Handling
 
     // Start timing for upstream request
     let upstream_start = Instant::now();

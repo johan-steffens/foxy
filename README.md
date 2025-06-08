@@ -197,7 +197,7 @@ Add JWT validation with the OIDC security provider:
 
 This configuration validates all requests against the identity provider, while allowing public access to `/health`.
 
-### OpenTelemetry Integration
+### OpenTelemetry Feature
 
 Enable distributed tracing with OpenTelemetry:
 
@@ -222,6 +222,35 @@ Configure the OpenTelemetry collector in your configuration:
       "collector_headers": {
         "X-API-Key": "d41000b6-6191-47c5-99f1-7b88b1b97409"
       }
+    }
+  }
+}
+```
+
+### SwaggerUI Feature
+
+Enable the Swagger UI feature:
+
+```toml
+# In your Cargo.toml
+[dependencies]
+foxy-io = { version = "...", features = ["swagger-ui"] }
+```
+
+Configure the OpenAPI schemas to be served on the Swagger UI in your configuration:
+
+```json
+{
+  "proxy": {
+    "swagger_ui": {
+      "enabled": true,
+      "path": "/swagger-ui",
+      "sources": [
+        {
+          "name": "Petstore",
+          "url": "https://petstore.swagger.io/v2/swagger.json"
+        }
+      ]
     }
   }
 }

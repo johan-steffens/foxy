@@ -74,3 +74,5 @@ pub use security::{
     register_security_provider,
 };
 pub use server::{ProxyServer, ServerConfig};
+#[cfg(feature = "swagger-ui")]
+pub use server::swagger::{SwaggerSource, SwaggerUIConfig};

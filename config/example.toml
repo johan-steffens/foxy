@@ -5,22 +5,6 @@ port = 8080
 [proxy]
 timeout = 30
 
-#     "logging": {
-#      "structured": true,
-#      "format": "terminal",
-#      "level": "trace",
-#      "include_location": true,
-#      "include_thread_id": true,
-#      "include_trace_id": true,
-#      "propagate_trace_id": true,
-#      "trace_id_header": "X-Trace-ID",
-#      "static_fields": {
-#        "app": "foxy-proxy",
-#        "version": "0.2.16",
-#        "environment": "production"
-#      }
-#    },
-
 [[proxy.logging]]
 structured = true
 format = "terminal"
@@ -35,6 +19,14 @@ trace_id_header = "X-Trace-ID"
 app = "foxy-proxy"
 version = "0.2.16"
 environment = "production"
+
+[[proxy.swagger_ui]]
+enabled = true
+path = "/swagger-ui"
+
+[proxy.swagger_ui.sources]
+name = "Petstore"
+url = "https://petstore.swagger.io/v2/swagger.json"
 
 [[proxy.global_filters]]
 type = "logging"

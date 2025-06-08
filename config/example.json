@@ -5,6 +5,16 @@
   },
   "proxy": {
     "timeout": 30,
+    "swagger_ui": {
+      "enabled": true,
+      "path": "/swagger-ui",
+      "sources": [
+        {
+          "name": "Petstore",
+          "url": "https://petstore.swagger.io/v2/swagger.json"
+        }
+      ]
+    },
     "logging": {
       "structured": true,
       "format": "terminal",
