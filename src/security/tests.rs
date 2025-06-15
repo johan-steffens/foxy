@@ -121,4 +121,104 @@ mod tests {
         let request_blocked = create_test_request(HttpMethod::Get, "/api/data", vec![]);
         assert!(chain.apply_pre(request_blocked).await.is_err());
     }
+
+    #[tokio::test]
+    async fn test_basic_auth_provider_success() {
+        use crate::security::basic::{BasicAuthConfig, BasicAuthProvider, RouteRuleConfig};
+
+        let config = BasicAuthConfig {
+            credentials: vec!["user1:pass1".to_string(), "user2:pass2".to_string()],
+            bypass: vec![],
+        };
+        let provider = BasicAuthProvider::new(config).unwrap();
+        let chain = SecurityChain::from_configs(vec![
+            crate::security::ProviderConfig {
+                type_: "basic".to_string(),
+                config: serde_json::to_value(BasicAuthConfig {
+                    credentials: vec!["user1:pass1".to_string()],
+                    bypass: vec![],
+                }).unwrap(),
+            }
+        ]).await.unwrap();
+
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/protected",
+            vec![("authorization", "Basic dXNlcjE6cGFzczE=")], // user1:pass1 base64 encoded
+        );
+        assert!(chain.apply_pre(request).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_basic_auth_provider_failure_invalid_credentials() {
+        use crate::security::basic::{BasicAuthConfig, BasicAuthProvider, RouteRuleConfig};
+
+        let config = BasicAuthConfig {
+            credentials: vec!["user1:pass1".to_string()],
+            bypass: vec![],
+        };
+        let provider = BasicAuthProvider::new(config).unwrap();
+        let chain = SecurityChain::from_configs(vec![
+            crate::security::ProviderConfig {
+                type_: "basic".to_string(),
+                config: serde_json::to_value(BasicAuthConfig {
+                    credentials: vec!["user1:pass1".to_string()],
+                    bypass: vec![],
+                }).unwrap(),
+            }
+        ]).await.unwrap();
+
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/protected",
+            vec![("authorization", "Basic dXNlcjE6d3JvbmdwYXNz")], // user1:wrongpass base64 encoded
+        );
+        assert!(chain.apply_pre(request).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_basic_auth_provider_bypass() {
+        use crate::security::basic::{BasicAuthConfig, BasicAuthProvider, RouteRuleConfig};
+
+        let config = BasicAuthConfig {
+            credentials: vec!["user1:pass1".to_string()],
+            bypass: vec![
+                RouteRuleConfig {
+                    methods: vec!["GET".to_string()],
+                    path: "/public/*".to_string(),
+                },
+            ],
+        };
+        let provider = BasicAuthProvider::new(config).unwrap();
+        let chain = SecurityChain::from_configs(vec![
+            crate::security::ProviderConfig {
+                type_: "basic".to_string(),
+                config: serde_json::to_value(BasicAuthConfig {
+                    credentials: vec!["user1:pass1".to_string()],
+                    bypass: vec![
+                        RouteRuleConfig {
+                            methods: vec!["GET".to_string()],
+                            path: "/public/*".to_string(),
+                        },
+                    ],
+                }).unwrap(),
+            }
+        ]).await.unwrap();
+
+        // Test bypassed route
+        let request_bypassed = create_test_request(HttpMethod::Get, "/public/data", vec![]);
+        assert!(chain.apply_pre(request_bypassed).await.is_ok());
+
+        // Test non-bypassed route (missing auth header)
+        let request_blocked_no_auth = create_test_request(HttpMethod::Get, "/protected", vec![]);
+        assert!(chain.apply_pre(request_blocked_no_auth).await.is_err());
+
+        // Test non-bypassed route (wrong auth header)
+        let request_blocked_wrong_auth = create_test_request(
+            HttpMethod::Get,
+            "/protected",
+            vec![("authorization", "Basic dXNlcjE6d3JvbmdwYXNz")],
+        );
+        assert!(chain.apply_pre(request_blocked_wrong_auth).await.is_err());
+    }
 }

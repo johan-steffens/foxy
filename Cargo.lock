@@ -449,9 +449,10 @@ dependencies = [
 
 [[package]]
 name = "foxy-io"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "async-trait",
+ "base64",
  "bytes",
  "chrono",
  "env_logger",

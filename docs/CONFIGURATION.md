@@ -376,7 +376,7 @@ The OIDC provider authenticates requests with JWT tokens using OpenID Connect di
     "issuer-uri": "https://id.example.com/.well-known/openid-configuration",
     "aud": "my-api",
     "shared-secret": "base64url-or-hex-encoded-secret",
-    "bypass-routes": [
+    "bypass": [
       {
         "methods": ["GET", "POST"],
         "path": "/public/**"
@@ -407,6 +407,46 @@ Each object inside `bypass-routes` has:
 | `path` | String | Glob pattern applied to the request path |
 
 > **Tip:** You can have multiple OIDC providers in the chain—for example, one for first-party tokens and another for partner identities.
+
+## Basic Auth Provider
+
+The Basic Auth provider authenticates requests using the `Authorization` header with `Basic` scheme.
+
+```json
+{
+  "type": "basic",
+  "config": {
+    "credentials": [
+      "user1:pass1",
+      "admin:secure_password"
+    ],
+    "bypass": [
+      {
+        "methods": ["GET"],
+        "path": "/public/*"
+      },
+      {
+        "methods": ["*"],
+        "path": "/health"
+      }
+    ]
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `credentials` | String[] | Required | List of valid `username:password` strings |
+| `bypass-routes` | Array | `[]` | List of routes that skip Basic Auth checks |
+
+### Bypass Route Rules
+
+Each object inside `bypass-routes` has:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `methods` | String[] | List of HTTP methods to match. Use `"*"` to match any method |
+| `path` | String | Glob pattern applied to the request path |
 
 ## Environment Variable Configuration
 

@@ -8,6 +8,7 @@
 //! implementing [`SecurityProvider`] and registering them on [`ProxyCore`].
 
 pub mod oidc;
+pub mod basic;
 
 #[cfg(test)]
 mod tests;
@@ -23,6 +24,7 @@ use std::sync::RwLock as StdRwLock;
 use crate::core::{ProxyError, ProxyRequest, ProxyResponse};
 use crate::{debug_fmt, error_fmt, info_fmt, trace_fmt};
 use crate::security::oidc::{OidcConfig, OidcProvider};
+use crate::security::basic::{BasicAuthConfig, BasicAuthProvider};
 
 /// When in the request/response lifecycle should a provider run?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,7 +201,13 @@ impl SecurityProviderFactory {
                     .map_err(|e| ProxyError::SecurityError(format!("Invalid OIDC provider config: {}", e)))?;
                 let provider = OidcProvider::discover(oidc_config).await?;
                 Ok(Arc::new(provider))
-            }
+            },
+            "basic" => {
+                let basic_auth_config: BasicAuthConfig = serde_json::from_value(config)
+                    .map_err(|e| ProxyError::SecurityError(format!("Invalid Basic Auth provider config: {}", e)))?;
+                let provider = BasicAuthProvider::new(basic_auth_config)?;
+                Ok(Arc::new(provider))
+            },
             _ => Err(ProxyError::SecurityError(format!("Unknown security provider type: {}", provider_type))),
         }
     }

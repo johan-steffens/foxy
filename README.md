@@ -185,7 +185,7 @@ Add JWT validation with the OIDC security provider:
         "config": {
           "issuer-uri": "https://id.example.com/.well-known/openid-configuration",
           "aud": "my-api",
-          "bypass-routes": [
+          "bypass": [
             { "methods": ["GET"], "path": "/health" }
           ]
         }
@@ -196,6 +196,33 @@ Add JWT validation with the OIDC security provider:
 ```
 
 This configuration validates all requests against the identity provider, while allowing public access to `/health`.
+
+### Basic Auth Provider
+
+Add Basic Authentication to your proxy:
+
+```json
+{
+  "proxy": {
+    "security_chain": [
+      {
+        "type": "basic",
+        "config": {
+          "credentials": [
+            "user1:pass1",
+            "admin:secure_password"
+          ],
+          "bypass": [
+            { "methods": ["GET"], "path": "/public/*" }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+This configuration enables Basic Authentication for all routes, except those matching `/public/*` with a GET method.
 
 ### OpenTelemetry Feature
 
@@ -342,7 +369,7 @@ For a detailed guide on adding extension points, see the [Extension Guide](docs/
 - [x] Request/Response Filters
 - [x] Security Chain
   - [x] OIDC provider
-  - [ ] Basic auth provider
+  - [x] Basic auth provider
 - [x] OpenTelemetry Integration
 
 ## License
