@@ -219,12 +219,7 @@ impl ProxyServer {
                                 });
                                 let io = TokioIo::new(stream);
         
-                                let builder = {
-                                    let mut b = AutoBuilder::new(TokioExecutor::new());
-                                    b.http1();
-                                    b.http2();
-                                    b
-                                };
+                                let builder = AutoBuilder::new(TokioExecutor::new());
         
                                 // Create the connection
                                 let connection = builder.serve_connection(io, service);

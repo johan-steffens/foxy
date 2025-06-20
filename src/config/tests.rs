@@ -94,4 +94,191 @@ mod tests {
         let timeout = config.get_or_default("server.timeout", 30).unwrap();
         assert_eq!(timeout, 30);
     }
+
+    #[test]
+    fn test_config_provider_priority() {
+        // Create providers with different priorities
+        let mut provider1 = MockConfigProvider::new("low-priority", 0);
+        provider1.values.insert("shared.key".to_string(), serde_json::json!("low-value"));
+
+        let mut provider2 = MockConfigProvider::new("high-priority", 10);
+        provider2.values.insert("shared.key".to_string(), serde_json::json!("high-value"));
+
+        let config = Config::builder()
+            .with_provider(provider1)
+            .with_provider(provider2)
+            .build();
+
+        // Higher priority provider should win
+        let value = config.get::<String>("shared.key").unwrap().unwrap();
+        assert_eq!(value, "high-value");
+    }
+
+    #[test]
+    fn test_config_type_conversion() {
+        let provider = MockConfigProvider::new("test", 0);
+        let config = Config::builder()
+            .with_provider(provider)
+            .build();
+
+        // Test different type conversions
+        let port_u64 = config.get::<u64>("server.port").unwrap().unwrap();
+        assert_eq!(port_u64, 8080);
+
+        let port_u16 = config.get::<u16>("server.port").unwrap().unwrap();
+        assert_eq!(port_u16, 8080);
+
+        let host_string = config.get::<String>("server.host").unwrap().unwrap();
+        assert_eq!(host_string, "127.0.0.1");
+    }
+
+    #[test]
+    fn test_config_invalid_type_conversion() {
+        let mut provider = MockConfigProvider::new("test", 0);
+        provider.values.insert("invalid.number".to_string(), serde_json::json!("not-a-number"));
+
+        let config = Config::builder()
+            .with_provider(provider)
+            .build();
+
+        // Should fail to convert string to number
+        let result = config.get::<u64>("invalid.number");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_nested_keys() {
+        let mut provider = MockConfigProvider::new("test", 0);
+        provider.values.insert("database.connection.host".to_string(), serde_json::json!("db.example.com"));
+        provider.values.insert("database.connection.port".to_string(), serde_json::json!(5432));
+
+        let config = Config::builder()
+            .with_provider(provider)
+            .build();
+
+        let host = config.get::<String>("database.connection.host").unwrap().unwrap();
+        assert_eq!(host, "db.example.com");
+
+        let port = config.get::<u16>("database.connection.port").unwrap().unwrap();
+        assert_eq!(port, 5432);
+    }
+
+    #[test]
+    fn test_config_array_values() {
+        let mut provider = MockConfigProvider::new("test", 0);
+        provider.values.insert("servers".to_string(), serde_json::json!(["server1", "server2", "server3"]));
+
+        let config = Config::builder()
+            .with_provider(provider)
+            .build();
+
+        let servers = config.get::<Vec<String>>("servers").unwrap().unwrap();
+        assert_eq!(servers.len(), 3);
+        assert_eq!(servers[0], "server1");
+        assert_eq!(servers[1], "server2");
+        assert_eq!(servers[2], "server3");
+    }
+
+    #[test]
+    fn test_config_object_values() {
+        let mut provider = MockConfigProvider::new("test", 0);
+        let server_config = serde_json::json!({
+            "host": "localhost",
+            "port": 8080,
+            "ssl": true
+        });
+        provider.values.insert("server".to_string(), server_config);
+
+        let config = Config::builder()
+            .with_provider(provider)
+            .build();
+
+        #[derive(serde::Deserialize, PartialEq, Debug)]
+        struct ServerConfig {
+            host: String,
+            port: u16,
+            ssl: bool,
+        }
+
+        let server = config.get::<ServerConfig>("server").unwrap().unwrap();
+        assert_eq!(server.host, "localhost");
+        assert_eq!(server.port, 8080);
+        assert_eq!(server.ssl, true);
+    }
+
+    #[test]
+    fn test_config_boolean_values() {
+        let mut provider = MockConfigProvider::new("test", 0);
+        provider.values.insert("feature.enabled".to_string(), serde_json::json!(true));
+        provider.values.insert("feature.disabled".to_string(), serde_json::json!(false));
+
+        let config = Config::builder()
+            .with_provider(provider)
+            .build();
+
+        let enabled = config.get::<bool>("feature.enabled").unwrap().unwrap();
+        assert_eq!(enabled, true);
+
+        let disabled = config.get::<bool>("feature.disabled").unwrap().unwrap();
+        assert_eq!(disabled, false);
+    }
+
+    #[test]
+    fn test_config_empty_provider() {
+        let provider = MockConfigProvider {
+            values: serde_json::Map::new(),
+            name: "empty".to_string(),
+            priority: 0,
+        };
+
+        let config = Config::builder()
+            .with_provider(provider)
+            .build();
+
+        let result = config.get::<String>("nonexistent.key");
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_config_provider_name() {
+        let provider = MockConfigProvider::new("test-provider", 0);
+        assert_eq!(provider.provider_name(), "test-provider");
+    }
+
+    #[test]
+    fn test_config_provider_has() {
+        let provider = MockConfigProvider::new("test", 0);
+
+        assert!(provider.has("server.port"));
+        assert!(provider.has("server.host"));
+        assert!(!provider.has("nonexistent.key"));
+    }
+
+    #[test]
+    fn test_config_get_raw_error() {
+        #[derive(Debug)]
+        struct ErrorProvider;
+
+        impl ConfigProvider for ErrorProvider {
+            fn has(&self, _key: &str) -> bool {
+                true
+            }
+
+            fn provider_name(&self) -> &str {
+                "error-provider"
+            }
+
+            fn get_raw(&self, _key: &str) -> Result<Option<serde_json::Value>, ConfigError> {
+                Err(ConfigError::ParseError("Simulated error".to_string()))
+            }
+        }
+
+        let config = Config::builder()
+            .with_provider(ErrorProvider)
+            .build();
+
+        let result = config.get::<String>("any.key");
+        assert!(result.is_err());
+    }
 }

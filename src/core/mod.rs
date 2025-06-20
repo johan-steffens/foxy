@@ -11,13 +11,11 @@
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, mem};
-use std::borrow::Cow;
 use thiserror::Error;
-use crate::security::{ProviderConfig, SecurityChain, SecurityProvider, SecurityStage};
+use crate::security::{ProviderConfig, SecurityChain, SecurityProvider};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
 use serde::{Serialize, Deserialize};
@@ -377,7 +375,7 @@ impl ProxyCore {
         info_fmt!("Core", "Initial target: {}", route.target_base_url);
 
         /* ---------- build outbound req ---------- */
-        if(request.custom_target.is_some()){
+        if request.custom_target.is_some() {
             debug_fmt!("Core", "Attempting to dynamically set target base Url: {}", route.target_base_url);
             route.target_base_url = request.custom_target.clone().unwrap();
             debug_fmt!("Core", "Dynamically set target base Url to: {}", route.target_base_url);
@@ -387,7 +385,10 @@ impl ProxyCore {
         debug_fmt!("Core", "Forwarding to target: {}", url);
         let outbound_body = mem::replace(&mut request.body, reqwest::Body::from(""));
 
+        #[cfg(feature = "opentelemetry")]
         let mut outbound_headers = request.headers.clone();
+        #[cfg(not(feature = "opentelemetry"))]
+        let outbound_headers = request.headers.clone();
         #[cfg(feature = "opentelemetry")]
         {
             span_context.span().set_attribute(KeyValue::new("target", url.clone()));
@@ -397,15 +398,18 @@ impl ProxyCore {
             });
         }
 
-        let mut builder = self
+        // If there's a query string, append it to the URL directly
+        let final_url = if let Some(q) = &request.query {
+            format!("{}?{}", url, q)
+        } else {
+            url.clone()
+        };
+
+        let builder = self
             .client
-            .request(request.method.into(), &url)
+            .request(request.method.into(), &final_url)
             .headers(outbound_headers)
             .body(outbound_body);
-
-        if let Some(q) = &request.query {
-            builder = builder.query(&[(q, "")]);
-        }
 
         /* ---------- send with timeout ---------- */
         // The client already has a timeout configured.

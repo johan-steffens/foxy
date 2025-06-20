@@ -187,7 +187,6 @@ mod tests {
     #[tokio::test]
     async fn test_tee_body_streaming() {
         use crate::filters::tee_body;
-        use std::time::Duration;
 
         // Create a large body with multiple chunks
         let chunk1 = Bytes::from(vec![b'a'; 500]);
