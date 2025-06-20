@@ -32,8 +32,7 @@ jobs:
       uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
-        # components: rustfmt, clippy
-        components: rustfmt
+        components: rustfmt, clippy
 
     - name: Cache cargo registry
       uses: actions/cache@v4
@@ -56,11 +55,11 @@ jobs:
     # - name: Check formatting
     #   run: cargo fmt --all -- --check
 
-    # - name: Run clippy
-    #   run: cargo clippy --all-targets --all-features -- -D warnings
+    - name: Run clippy
+      run: cargo clippy --lib --bins -- -D warnings
 
     - name: Build
-      run: cargo build --verbose --all-features
+      run: cargo build --verbose
 
     - name: Run unit tests
       run: cargo test --lib --verbose
