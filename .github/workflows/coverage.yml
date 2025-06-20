@@ -1,0 +1,117 @@
+name: Coverage Report
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_codecov:
+        description: 'Upload coverage to Codecov'
+        required: false
+        default: true
+        type: boolean
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  coverage:
+    name: Generate Coverage Report
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-coverage-
+          ${{ runner.os }}-cargo-
+
+    - name: Cache coverage tools
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/cargo-llvm-cov
+          ~/.cargo/bin/cargo-tarpaulin
+        key: ${{ runner.os }}-coverage-tools-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-coverage-tools-
+
+    - name: Install coverage tools
+      run: |
+        # Only install if not cached
+        if ! command -v cargo-llvm-cov &> /dev/null; then
+          cargo install cargo-llvm-cov
+        fi
+        if ! command -v cargo-tarpaulin &> /dev/null; then
+          cargo install cargo-tarpaulin
+        fi
+        
+        # Ensure llvm-tools-preview is available
+        rustup component add llvm-tools-preview || echo "llvm-tools-preview already installed or handled"
+
+    - name: Generate coverage report
+      run: |
+        # Generate both HTML and LCOV formats for comprehensive coverage reporting
+        cargo llvm-cov --html --output-dir coverage \
+          --ignore-filename-regex 'benches/.*'
+        cargo llvm-cov --lcov --output-path coverage/lcov.info \
+          --ignore-filename-regex 'benches/.*'
+        cargo llvm-cov --json --output-path coverage/coverage.json \
+          --ignore-filename-regex 'benches/.*'
+
+    - name: Upload coverage to Codecov
+      if: ${{ inputs.upload_to_codecov != false && secrets.CODECOV_TOKEN != '' }}
+      uses: codecov/codecov-action@v5
+      with:
+        files: coverage/lcov.info
+        token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: false
+
+    - name: Codecov upload skipped
+      if: ${{ inputs.upload_to_codecov != false && secrets.CODECOV_TOKEN == '' }}
+      run: |
+        echo "⚠️ Codecov upload skipped: CODECOV_TOKEN secret not configured"
+        echo "To enable Codecov uploads, add your Codecov token as a repository secret named 'CODECOV_TOKEN'"
+
+    - name: Upload coverage artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage/
+
+    - name: Coverage summary
+      run: |
+        if [ -f coverage/coverage.json ]; then
+          COVERAGE=$(jq '.data[0].totals.lines.percent' coverage/coverage.json)
+          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "Current coverage: **$COVERAGE%**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 [View detailed HTML report in artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+
+          # Add Codecov status
+          if [ "${{ secrets.CODECOV_TOKEN }}" != "" ] && [ "${{ inputs.upload_to_codecov }}" != "false" ]; then
+            echo "✅ Coverage uploaded to Codecov" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ secrets.CODECOV_TOKEN }}" == "" ]; then
+            echo "⚠️ Codecov upload skipped (no token configured)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ Codecov upload disabled by user input" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
