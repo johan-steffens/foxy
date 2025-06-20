@@ -13,13 +13,11 @@ mod tests;
 
 use std::cmp;
 use std::sync::Arc;
-use std::time::Instant;
 use async_trait::async_trait;
-use bytes::Bytes;
-use futures_util::{stream, StreamExt, TryStreamExt};
+use futures_util::{StreamExt, TryStreamExt};
 use http_body_util::BodyExt;
 use log::Level;
-use crate::{trace, debug, info, warn, error, error_fmt, warn_fmt, info_fmt, debug_fmt, trace_fmt};
+use crate::{error_fmt, warn_fmt, info_fmt, debug_fmt, trace_fmt};
 use regex::Regex;
 use serde::{Serialize, Deserialize};
 use once_cell::sync::Lazy;
@@ -143,16 +141,19 @@ pub struct LoggingFilter {
     config: LoggingFilterConfig,
 }
 
+impl Default for LoggingFilter {
+    fn default() -> Self {
+        Self::new(LoggingFilterConfig::default())
+    }
+}
+
 impl LoggingFilter {
     /// Create a new logging filter with the given configuration.
     pub fn new(config: LoggingFilterConfig) -> Self {
         Self { config }
     }
 
-    /// Create a new logging filter with default configuration.
-    pub fn default() -> Self {
-        Self::new(LoggingFilterConfig::default())
-    }
+
 
     /// Get the log level from the configuration.
     fn get_log_level(&self) -> Level {
@@ -182,7 +183,7 @@ impl LoggingFilter {
         let mut header_lines = Vec::new();
         for (name, value) in headers.iter() {
             if let Ok(value_str) = value.to_str() {
-                header_lines.push(format!("{}: {}", name, value_str));
+                header_lines.push(format!("{name}: {value_str}"));
             }
         }
         header_lines.join("\n")
@@ -222,15 +223,17 @@ impl Filter for LoggingFilter {
     async fn pre_filter(&self, mut request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
         if self.config.log_request_headers {
             self.log(&format!(">> {} {}", request.method, request.path));
-            for (k, v) in request.headers.iter() {
-                self.log(&format!(">> {}: {:?}", k, v));
+            let formatted_headers = self.format_headers(&request.headers);
+            if !formatted_headers.is_empty() {
+                for line in formatted_headers.lines() {
+                    self.log(&format!(">> {line}"));
+                }
             }
         }
         if self.config.log_request_body {
-            let (new_body, snippet) = tee_body(request.body, 1_000).await?;
-            let truncated = if snippet.len() == 1000 {"(truncated)"} else {""};
-            
-            self.log(&format!(">> Request Body:\n{}{}", snippet, truncated));
+            let (new_body, snippet) = tee_body(request.body, self.config.max_body_size).await?;
+            let formatted_body = self.format_body(snippet.as_bytes());
+            self.log(&format!(">> Request Body:\n{formatted_body}"));
             request.body = new_body;
         }
         Ok(request)
@@ -243,15 +246,17 @@ impl Filter for LoggingFilter {
     ) -> Result<ProxyResponse, ProxyError> {
         if self.config.log_response_headers {
             self.log(&format!("<< {}", response.status));
-            for (k, v) in response.headers.iter() {
-                self.log(&format!("<< {}: {:?}", k, v));
+            let formatted_headers = self.format_headers(&response.headers);
+            if !formatted_headers.is_empty() {
+                for line in formatted_headers.lines() {
+                    self.log(&format!("<< {line}"));
+                }
             }
         }
         if self.config.log_response_body {
-            let (new_body, snippet) = tee_body(response.body, 1_000).await?;
-            let truncated = if snippet.len() == 1000 {"(truncated)"} else {""};
-
-            self.log(&format!(">> Response Body:\n{}{}", snippet, truncated));
+            let (new_body, snippet) = tee_body(response.body, self.config.max_body_size).await?;
+            let formatted_body = self.format_body(snippet.as_bytes());
+            self.log(&format!("<< Response Body:\n{formatted_body}"));
             response.body = new_body;
         }
         Ok(response)
@@ -293,7 +298,7 @@ async fn tee_body(
     
     // Create a stream that yields our buffered chunks followed by any remaining chunks
     let combined_stream = futures_util::stream::iter(chunks)
-        .chain(stream_in.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
+        .chain(stream_in.map_err(std::io::Error::other));
     
     // Wrap the stream back into a reqwest::Body
     let new_body = reqwest::Body::wrap_stream(combined_stream);
@@ -305,7 +310,7 @@ async fn tee_body(
 }
 
 /// Configuration for a header modification filter.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HeaderFilterConfig {
     /// Headers to add or replace in the request
     #[serde(default)]
@@ -324,21 +329,18 @@ pub struct HeaderFilterConfig {
     pub remove_response_headers: Vec<String>,
 }
 
-impl Default for HeaderFilterConfig {
-    fn default() -> Self {
-        Self {
-            add_request_headers: std::collections::HashMap::new(),
-            remove_request_headers: Vec::new(),
-            add_response_headers: std::collections::HashMap::new(),
-            remove_response_headers: Vec::new(),
-        }
-    }
-}
+
 
 /// A filter that modifies HTTP headers.
 #[derive(Debug)]
 pub struct HeaderFilter {
     config: HeaderFilterConfig,
+}
+
+impl Default for HeaderFilter {
+    fn default() -> Self {
+        Self::new(HeaderFilterConfig::default())
+    }
 }
 
 impl HeaderFilter {
@@ -347,10 +349,7 @@ impl HeaderFilter {
         Self { config }
     }
 
-    /// Create a new header filter with default configuration.
-    pub fn default() -> Self {
-        Self::new(HeaderFilterConfig::default())
-    }
+
 
     /// Apply header modifications to the given header map.
     fn apply_headers(&self, headers: &mut reqwest::header::HeaderMap,
@@ -427,16 +426,19 @@ pub struct TimeoutFilter {
     config: TimeoutFilterConfig,
 }
 
+impl Default for TimeoutFilter {
+    fn default() -> Self {
+        Self::new(TimeoutFilterConfig::default())
+    }
+}
+
 impl TimeoutFilter {
     /// Create a new timeout filter with the given configuration.
     pub fn new(config: TimeoutFilterConfig) -> Self {
         Self { config }
     }
 
-    /// Create a new timeout filter with default configuration.
-    pub fn default() -> Self {
-        Self::new(TimeoutFilterConfig::default())
-    }
+
 }
 
 #[async_trait]
@@ -451,13 +453,12 @@ impl Filter for TimeoutFilter {
 
     async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
         // Store the timeout in the request context
-        match request.context.write().await {
-            mut context => {
-                context.attributes.insert(
-                    "timeout_ms".to_string(),
-                    serde_json::to_value(self.config.timeout_ms).unwrap()
-                );
-            }
+        {
+            let mut context = request.context.write().await;
+            context.attributes.insert(
+                "timeout_ms".to_string(),
+                serde_json::to_value(self.config.timeout_ms).unwrap()
+            );
         }
 
         Ok(request)
@@ -503,7 +504,7 @@ impl PathRewriteFilter {
     }
 
     /// Create a new path rewrite filter with default configuration.
-    pub fn default() -> Result<Self, ProxyError> {
+    pub fn with_defaults() -> Result<Self, ProxyError> {
         Self::new(PathRewriteFilterConfig {
             pattern: "(.*)".to_string(),
             replacement: "$1".to_string(),
@@ -570,7 +571,7 @@ impl FilterFactory {
             "logging" => {
                 let config: LoggingFilterConfig = serde_json::from_value(config)
                     .map_err(|e| {
-                        let err = ProxyError::FilterError(format!("Invalid logging filter config: {}", e));
+                        let err = ProxyError::FilterError(format!("Invalid logging filter config: {e}"));
                         error_fmt!("Filter", "{}", err);
                         err
                     })?;
@@ -579,7 +580,7 @@ impl FilterFactory {
             "header" => {
                 let config: HeaderFilterConfig = serde_json::from_value(config)
                     .map_err(|e| {
-                        let err = ProxyError::FilterError(format!("Invalid header filter config: {}", e));
+                        let err = ProxyError::FilterError(format!("Invalid header filter config: {e}"));
                         error_fmt!("Filter", "{}", err);
                         err
                     })?;
@@ -588,7 +589,7 @@ impl FilterFactory {
             "timeout" => {
                 let config: TimeoutFilterConfig = serde_json::from_value(config)
                     .map_err(|e| {
-                        let err = ProxyError::FilterError(format!("Invalid timeout filter config: {}", e));
+                        let err = ProxyError::FilterError(format!("Invalid timeout filter config: {e}"));
                         error_fmt!("Filter", "{}", err);
                         err
                     })?;
@@ -597,7 +598,7 @@ impl FilterFactory {
             "path_rewrite" => {
                 let config: PathRewriteFilterConfig = serde_json::from_value(config)
                     .map_err(|e| {
-                        let err = ProxyError::FilterError(format!("Invalid path rewrite filter config: {}", e));
+                        let err = ProxyError::FilterError(format!("Invalid path rewrite filter config: {e}"));
                         error_fmt!("Filter", "{}", err);
                         err
                     })?;
@@ -611,7 +612,7 @@ impl FilterFactory {
                 }
             },
             _ => {
-                let err = ProxyError::FilterError(format!("Unknown filter type: {}", filter_type));
+                let err = ProxyError::FilterError(format!("Unknown filter type: {filter_type}"));
                 error_fmt!("Filter", "{}", err);
                 Err(err)
             },

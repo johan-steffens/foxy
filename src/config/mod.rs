@@ -66,7 +66,7 @@ pub trait ConfigProviderExt: ConfigProvider {
             Some(value) => {
                 serde_json::from_value(value)
                     .map(Some)
-                    .map_err(|e| ConfigError::ParseError(format!("failed to deserialize '{}': {}", key, e)))
+                    .map_err(|e| ConfigError::ParseError(format!("failed to deserialize '{key}': {e}")))
             },
             None => Ok(None),
         }
@@ -133,7 +133,7 @@ impl Config {
             Some(value) => {
                 serde_json::from_value(value)
                     .map(Some)
-                    .map_err(|e| ConfigError::ParseError(format!("failed to deserialize '{}': {}", key, e)))
+                    .map_err(|e| ConfigError::ParseError(format!("failed to deserialize '{key}': {e}")))
             },
             None => Ok(None),
         }

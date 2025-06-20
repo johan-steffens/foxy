@@ -11,15 +11,13 @@
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use log::LevelFilter;
-use serde_json::Value;
 use thiserror::Error;
 
 use crate::config::{Config, ConfigError, ConfigProvider, EnvConfigProvider, FileConfigProvider};
-use crate::router::{FilterConfig, PredicateRouter, RouteConfig};
+use crate::router::{FilterConfig, PredicateRouter};
 use crate::{info_fmt, init_with_config, Filter, FilterFactory, ProxyError, ProxyServer, ServerConfig};
 use crate::core::ProxyCore;
 use crate::logging::config::LoggingConfig;
@@ -45,7 +43,7 @@ pub enum LoaderError {
 }
 
 /// Builder for initializing and configuring Foxy.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FoxyLoader {
     config_builder: Option<Config>,
     config_file_path: Option<String>,
@@ -54,17 +52,7 @@ pub struct FoxyLoader {
     custom_filters: Vec<Arc<dyn Filter>>,
 }
 
-impl Default for FoxyLoader {
-    fn default() -> Self {
-        Self {
-            config_builder: None,
-            config_file_path: None,
-            use_env_vars: false,
-            env_prefix: None,
-            custom_filters: Vec::new(),
-        }
-    }
-}
+
 
 impl FoxyLoader {
     /// Create a new Foxy loader with default settings.

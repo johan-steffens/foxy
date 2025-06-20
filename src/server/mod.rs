@@ -24,7 +24,6 @@ mod health;
 #[cfg(feature = "swagger-ui")]
 pub mod swagger;
 
-use std::borrow::Cow;
 use std::sync::Arc;
 use std::net::SocketAddr;
 use std::convert::Infallible;
@@ -37,7 +36,7 @@ use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use bytes::Bytes;
 use futures_util::TryStreamExt;
-use http_body_util::{BodyExt, Full};
+use http_body_util::BodyExt;
 use reqwest::Body;
 use serde::{Serialize, Deserialize};
 use crate::{error_fmt, warn_fmt, info_fmt, debug_fmt, trace_fmt};
@@ -143,11 +142,11 @@ impl ProxyServer {
     pub async fn start(&self) -> Result<(), ProxyError> {
         let addr = format!("{}:{}", self.config.host, self.config.port)
             .parse::<SocketAddr>()
-            .map_err(|e| ProxyError::Other(format!("Invalid server address: {}", e)))?;
+            .map_err(|e| ProxyError::Other(format!("Invalid server address: {e}")))?;
 
         let listener = tokio::net::TcpListener::bind(addr)
             .await
-            .map_err(|e| ProxyError::Other(format!("Failed to bind: {}", e)))?;
+            .map_err(|e| ProxyError::Other(format!("Failed to bind: {e}")))?;
 
         info_fmt!("Server", "Foxy proxy listening on http://{}", addr);
 
@@ -160,7 +159,7 @@ impl ProxyServer {
         // On Unix, install the SIGTERM stream once and store it in a variable
         #[cfg(unix)]
         let mut term_stream = signal(SignalKind::terminate())
-            .map_err(|e| ProxyError::Other(format!("Cannot install SIGTERM handler: {}", e)))?;
+            .map_err(|e| ProxyError::Other(format!("Cannot install SIGTERM handler: {e}")))?;
 
         // Build the actual future that we'll await
         #[cfg(unix)]
@@ -219,12 +218,7 @@ impl ProxyServer {
                                 });
                                 let io = TokioIo::new(stream);
         
-                                let builder = {
-                                    let mut b = AutoBuilder::new(TokioExecutor::new());
-                                    b.http1();
-                                    b.http2();
-                                    b
-                                };
+                                let builder = AutoBuilder::new(TokioExecutor::new());
         
                                 // Create the connection
                                 let connection = builder.serve_connection(io, service);
@@ -382,7 +376,7 @@ fn convert_proxy_response(resp: ProxyResponse) -> Result<Response<Body>, ProxyEr
         .into_data_stream()
         .map_err(|e| {
             error_fmt!("Server", "Error streaming response body: {}", e);
-            std::io::Error::new(std::io::ErrorKind::Other, e)
+            std::io::Error::other(e)
         });
 
     let body = Body::wrap_stream(stream);
@@ -576,6 +570,7 @@ async fn handle_request(
     };
 
     // Log error responses too
+    #[allow(clippy::collapsible_if)]
     if let Ok(resp) = &response {
         if resp.status().is_client_error() || resp.status().is_server_error() {
             logging_middleware.log_response(resp, &request_info, None);
