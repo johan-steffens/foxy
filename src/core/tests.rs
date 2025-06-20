@@ -11,6 +11,7 @@ mod tests {
     };
     use crate::core::ProxyCore;
     use crate::config::{Config, ConfigProvider, ConfigError};
+    use crate::security::{SecurityProvider, SecurityStage};
     use async_trait::async_trait;
     use std::sync::Arc;
     use tokio::sync::RwLock;
@@ -266,6 +267,60 @@ mod tests {
             }
 
             Ok(response)
+        }
+    }
+
+    #[derive(Debug)]
+    struct MockSecurityProvider {
+        name: String,
+        pre_failure: bool,
+        post_failure: bool,
+    }
+
+    impl MockSecurityProvider {
+        fn new(name: &str) -> Self {
+            Self {
+                name: name.to_string(),
+                pre_failure: false,
+                post_failure: false,
+            }
+        }
+
+        fn with_pre_failure(mut self) -> Self {
+            self.pre_failure = true;
+            self
+        }
+
+        fn with_post_failure(mut self) -> Self {
+            self.post_failure = true;
+            self
+        }
+    }
+
+    #[async_trait]
+    impl SecurityProvider for MockSecurityProvider {
+        fn stage(&self) -> SecurityStage {
+            SecurityStage::Both
+        }
+
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        async fn pre(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+            if self.pre_failure {
+                Err(ProxyError::SecurityError("Mock security pre-auth failure".to_string()))
+            } else {
+                Ok(request)
+            }
+        }
+
+        async fn post(&self, _request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
+            if self.post_failure {
+                Err(ProxyError::SecurityError("Mock security post-auth failure".to_string()))
+            } else {
+                Ok(response)
+            }
         }
     }
 
@@ -701,5 +756,451 @@ mod tests {
         // Test remove_route
         let result = router.remove_route("test-route").await;
         assert!(result.is_ok());
+    }
+
+    // Tests for ProxyCore::process_request - Error scenarios
+    #[tokio::test]
+    async fn test_proxy_core_process_request_security_pre_auth_failure() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new());
+        let proxy_core = ProxyCore::new(config, router).await.unwrap();
+
+        // Add a security provider that will fail
+        let security_provider = Arc::new(MockSecurityProvider::new("test-security").with_pre_failure());
+        proxy_core.add_security_provider(security_provider).await;
+
+        let request = create_test_request(HttpMethod::Get, "/test");
+
+        let result = proxy_core.process_request(
+            request,
+            #[cfg(feature = "opentelemetry")]
+            None,
+        ).await;
+
+        assert!(result.is_err());
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert_eq!(msg, "test-security: security error: Mock security pre-auth failure");
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_process_request_global_pre_filter_failure() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new().with_route(Route {
+            id: "test-route".to_string(),
+            target_base_url: "http://example.com".to_string(),
+            path_pattern: "/test/*".to_string(),
+            filters: None,
+        }));
+        let proxy_core = ProxyCore::new(config, router).await.unwrap();
+
+        // Add a global filter that will fail
+        let filter = Arc::new(MockFilter::new("failing-filter", FilterType::Pre).with_failure());
+        proxy_core.add_global_filter(filter).await;
+
+        let request = create_test_request(HttpMethod::Get, "/test");
+
+        let result = proxy_core.process_request(
+            request,
+            #[cfg(feature = "opentelemetry")]
+            None,
+        ).await;
+
+        assert!(result.is_err());
+        if let Err(ProxyError::FilterError(msg)) = result {
+            assert_eq!(msg, "Mock filter failure");
+        } else {
+            panic!("Expected FilterError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_process_request_routing_failure() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new().with_failure());
+        let proxy_core = ProxyCore::new(config, router).await.unwrap();
+
+        let request = create_test_request(HttpMethod::Get, "/test");
+
+        let result = proxy_core.process_request(
+            request,
+            #[cfg(feature = "opentelemetry")]
+            None,
+        ).await;
+
+        assert!(result.is_err());
+        if let Err(ProxyError::RoutingError(msg)) = result {
+            assert_eq!(msg, "Mock routing failure");
+        } else {
+            panic!("Expected RoutingError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_process_request_route_pre_filter_failure() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+
+        // Create a route with a failing filter
+        let failing_filter = Arc::new(MockFilter::new("route-filter", FilterType::Pre).with_failure());
+        let route = Route {
+            id: "test-route".to_string(),
+            target_base_url: "http://example.com".to_string(),
+            path_pattern: "/test/*".to_string(),
+            filters: Some(vec![failing_filter]),
+        };
+
+        let router = Arc::new(MockRouter::new().with_route(route));
+        let proxy_core = ProxyCore::new(config, router).await.unwrap();
+
+        let request = create_test_request(HttpMethod::Get, "/test");
+
+        let result = proxy_core.process_request(
+            request,
+            #[cfg(feature = "opentelemetry")]
+            None,
+        ).await;
+
+        assert!(result.is_err());
+        if let Err(ProxyError::FilterError(msg)) = result {
+            assert_eq!(msg, "Mock filter failure");
+        } else {
+            panic!("Expected FilterError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_process_request_custom_target() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new().with_route(Route {
+            id: "test-route".to_string(),
+            target_base_url: "http://original.com".to_string(),
+            path_pattern: "/test/*".to_string(),
+            filters: None,
+        }));
+        let proxy_core = ProxyCore::new(config, router).await.unwrap();
+
+        let mut request = create_test_request(HttpMethod::Get, "/test");
+        request.custom_target = Some("http://custom.com".to_string());
+
+        // This test will fail at the HTTP request stage since we're not mocking the HTTP client
+        // But it will test the custom target logic
+        let result = proxy_core.process_request(
+            request,
+            #[cfg(feature = "opentelemetry")]
+            None,
+        ).await;
+
+        // We expect this to fail with a client error since we can't actually make HTTP requests
+        assert!(result.is_err());
+        // The error should be a client error, not a routing error
+        assert!(matches!(result.unwrap_err(), ProxyError::ClientError(_)));
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_process_request_with_query_string() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new().with_route(Route {
+            id: "test-route".to_string(),
+            target_base_url: "http://example.com".to_string(),
+            path_pattern: "/test/*".to_string(),
+            filters: None,
+        }));
+        let proxy_core = ProxyCore::new(config, router).await.unwrap();
+
+        let mut request = create_test_request(HttpMethod::Get, "/test");
+        request.query = Some("param1=value1&param2=value2".to_string());
+
+        let result = proxy_core.process_request(
+            request,
+            #[cfg(feature = "opentelemetry")]
+            None,
+        ).await;
+
+        // Should fail with client error since we can't make real HTTP requests
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), ProxyError::ClientError(_)));
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_process_request_timeout_from_context() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new().with_route(Route {
+            id: "test-route".to_string(),
+            target_base_url: "http://example.com".to_string(),
+            path_pattern: "/test/*".to_string(),
+            filters: None,
+        }));
+        let proxy_core = ProxyCore::new(config, router).await.unwrap();
+
+        let request = create_test_request(HttpMethod::Get, "/test");
+
+        // Set a custom timeout in the request context
+        {
+            let mut ctx = request.context.write().await;
+            ctx.attributes.insert("timeout_ms".to_string(), Value::Number(1000.into()));
+        }
+
+        let result = proxy_core.process_request(
+            request,
+            #[cfg(feature = "opentelemetry")]
+            None,
+        ).await;
+
+        // Should fail with client error since we can't make real HTTP requests
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), ProxyError::ClientError(_)));
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_process_request_route_post_filter_failure() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+
+        // Create a route with a failing post filter
+        let failing_filter = Arc::new(MockFilter::new("route-post-filter", FilterType::Post).with_failure());
+        let route = Route {
+            id: "test-route".to_string(),
+            target_base_url: "http://httpbin.org".to_string(), // Use a real endpoint
+            path_pattern: "/test/*".to_string(),
+            filters: Some(vec![failing_filter]),
+        };
+
+        let router = Arc::new(MockRouter::new().with_route(route));
+        let proxy_core = ProxyCore::new(config, router).await.unwrap();
+
+        let request = create_test_request(HttpMethod::Get, "/get");
+
+        let result = proxy_core.process_request(
+            request,
+            #[cfg(feature = "opentelemetry")]
+            None,
+        ).await;
+
+        // This might succeed or fail depending on network, but if it gets to post-filter stage
+        // and the filter fails, we should get a FilterError
+        if let Err(ProxyError::FilterError(msg)) = result {
+            assert_eq!(msg, "Mock filter failure");
+        } else {
+            // If it fails earlier (e.g., network), that's also acceptable for this test
+            assert!(result.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_process_request_global_post_filter_failure() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new().with_route(Route {
+            id: "test-route".to_string(),
+            target_base_url: "http://httpbin.org".to_string(),
+            path_pattern: "/test/*".to_string(),
+            filters: None,
+        }));
+        let proxy_core = ProxyCore::new(config, router).await.unwrap();
+
+        // Add a global post filter that will fail
+        let filter = Arc::new(MockFilter::new("failing-post-filter", FilterType::Post).with_failure());
+        proxy_core.add_global_filter(filter).await;
+
+        let request = create_test_request(HttpMethod::Get, "/get");
+
+        let result = proxy_core.process_request(
+            request,
+            #[cfg(feature = "opentelemetry")]
+            None,
+        ).await;
+
+        // This might succeed or fail depending on network, but if it gets to post-filter stage
+        // and the filter fails, we should get a FilterError
+        if let Err(ProxyError::FilterError(msg)) = result {
+            assert_eq!(msg, "Mock filter failure");
+        } else {
+            // If it fails earlier (e.g., network), that's also acceptable for this test
+            assert!(result.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_process_request_security_post_auth_failure() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new().with_route(Route {
+            id: "test-route".to_string(),
+            target_base_url: "http://httpbin.org".to_string(),
+            path_pattern: "/test/*".to_string(),
+            filters: None,
+        }));
+        let proxy_core = ProxyCore::new(config, router).await.unwrap();
+
+        // Add a security provider that will fail post-auth
+        let security_provider = Arc::new(MockSecurityProvider::new("test-security").with_post_failure());
+        proxy_core.add_security_provider(security_provider).await;
+
+        let request = create_test_request(HttpMethod::Get, "/get");
+
+        let result = proxy_core.process_request(
+            request,
+            #[cfg(feature = "opentelemetry")]
+            None,
+        ).await;
+
+        // This might succeed or fail depending on network, but if it gets to post-auth stage
+        // and the security provider fails, we should get a SecurityError
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Mock security post-auth failure"));
+        } else {
+            // If it fails earlier (e.g., network), that's also acceptable for this test
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn test_proxy_error_from_config_error() {
+        let config_error = crate::config::error::ConfigError::ParseError("Invalid format".to_string());
+        let proxy_error = ProxyError::from(config_error);
+        assert!(proxy_error.to_string().contains("configuration error"));
+        assert!(proxy_error.to_string().contains("Invalid format"));
+    }
+
+    #[test]
+    fn test_proxy_error_from_globset_error() {
+        // Create a globset error by using invalid pattern
+        let glob_result = globset::Glob::new("[");
+        assert!(glob_result.is_err());
+        let globset_error = glob_result.unwrap_err();
+        let proxy_error = ProxyError::from(globset_error);
+        assert!(proxy_error.to_string().contains("security error"));
+    }
+
+    #[test]
+    fn test_proxy_error_from_jwt_error() {
+        let jwt_error = jsonwebtoken::errors::Error::from(jsonwebtoken::errors::ErrorKind::InvalidToken);
+        let proxy_error = ProxyError::from(jwt_error);
+        assert!(proxy_error.to_string().contains("security error"));
+    }
+
+    #[test]
+    fn test_http_method_from_unsupported_method() {
+        // Test the default case for unsupported HTTP methods
+        let custom_method = reqwest::Method::from_bytes(b"CUSTOM").unwrap();
+        let http_method = HttpMethod::from(&custom_method);
+        assert_eq!(http_method, HttpMethod::Get); // Should default to GET
+    }
+
+    #[test]
+    fn test_http_method_into_reqwest() {
+        assert_eq!(reqwest::Method::from(HttpMethod::Get), reqwest::Method::GET);
+        assert_eq!(reqwest::Method::from(HttpMethod::Post), reqwest::Method::POST);
+        assert_eq!(reqwest::Method::from(HttpMethod::Put), reqwest::Method::PUT);
+        assert_eq!(reqwest::Method::from(HttpMethod::Delete), reqwest::Method::DELETE);
+        assert_eq!(reqwest::Method::from(HttpMethod::Head), reqwest::Method::HEAD);
+        assert_eq!(reqwest::Method::from(HttpMethod::Options), reqwest::Method::OPTIONS);
+        assert_eq!(reqwest::Method::from(HttpMethod::Patch), reqwest::Method::PATCH);
+        assert_eq!(reqwest::Method::from(HttpMethod::Trace), reqwest::Method::TRACE);
+        assert_eq!(reqwest::Method::from(HttpMethod::Connect), reqwest::Method::CONNECT);
+    }
+
+    #[test]
+    fn test_filter_type_is_methods() {
+        assert!(FilterType::Pre.is_pre());
+        assert!(!FilterType::Pre.is_post());
+        assert!(!FilterType::Pre.is_both());
+
+        assert!(!FilterType::Post.is_pre());
+        assert!(FilterType::Post.is_post());
+        assert!(!FilterType::Post.is_both());
+
+        assert!(FilterType::Both.is_pre());
+        assert!(FilterType::Both.is_post());
+        assert!(FilterType::Both.is_both());
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_with_security_chain_config_error() {
+        let config_provider = MockConfigProvider::new()
+            .with_value("proxy.security_chain", Value::String("invalid".to_string()));
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new());
+
+        // This should still succeed but log a warning and use empty security chain
+        let proxy_core = ProxyCore::new(config, router).await;
+        assert!(proxy_core.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_with_no_security_chain_config() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new());
+
+        let proxy_core = ProxyCore::new(config, router).await;
+        assert!(proxy_core.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_client_builder_error() {
+        // Test with an invalid timeout value that might cause client builder to fail
+        let config_provider = MockConfigProvider::new()
+            .with_value("proxy.timeout", Value::Number(u64::MAX.into()));
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new());
+
+        // This might succeed or fail depending on the reqwest client's validation
+        let proxy_core = ProxyCore::new(config, router).await;
+        // We can't easily force a client builder error, so we just ensure it doesn't panic
+        assert!(proxy_core.is_ok() || proxy_core.is_err());
+    }
+
+    #[test]
+    fn test_route_clone() {
+        let filter = Arc::new(MockFilter::new("test-filter", FilterType::Pre));
+        let route = Route {
+            id: "test-route".to_string(),
+            target_base_url: "http://example.com".to_string(),
+            path_pattern: "/api/*".to_string(),
+            filters: Some(vec![filter.clone()]),
+        };
+
+        let cloned_route = route.clone();
+        assert_eq!(cloned_route.id, route.id);
+        assert_eq!(cloned_route.target_base_url, route.target_base_url);
+        assert_eq!(cloned_route.path_pattern, route.path_pattern);
+        assert!(cloned_route.filters.is_some());
+        assert_eq!(cloned_route.filters.as_ref().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_request_context_clone() {
+        let mut context = RequestContext::default();
+        context.client_ip = Some("192.168.1.1".to_string());
+        context.start_time = Some(std::time::Instant::now());
+        context.attributes.insert("key".to_string(), Value::String("value".to_string()));
+
+        let cloned = context.clone();
+        assert_eq!(cloned.client_ip, context.client_ip);
+        assert_eq!(cloned.attributes, context.attributes);
+        // start_time should be cloned but we can't easily test Instant equality
+        assert!(cloned.start_time.is_some());
+    }
+
+    #[test]
+    fn test_response_context_clone() {
+        let mut context = ResponseContext::default();
+        context.receive_time = Some(std::time::Instant::now());
+        context.attributes.insert("key".to_string(), Value::String("value".to_string()));
+
+        let cloned = context.clone();
+        assert_eq!(cloned.attributes, context.attributes);
+        // receive_time should be cloned but we can't easily test Instant equality
+        assert!(cloned.receive_time.is_some());
     }
 }

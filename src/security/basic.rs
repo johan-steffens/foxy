@@ -64,7 +64,7 @@ impl BasicAuthProvider {
             if parts.len() == 2 {
                 valid_credentials.push((parts[0].to_string(), parts[1].to_string()));
             } else {
-                let err = ProxyError::SecurityError(format!("Invalid credential format: {}", cred_pair));
+                let err = ProxyError::SecurityError(format!("Invalid credential format: {cred_pair}"));
                 error_fmt!("BasicAuthProvider", "{}", err);
                 return Err(err);
             }
@@ -93,7 +93,7 @@ impl BasicAuthProvider {
                 },
                 Err(e) => {
                     let err = ProxyError::SecurityError(
-                        format!("Invalid glob pattern in bypass rule: {}", e)
+                        format!("Invalid glob pattern in bypass rule: {e}")
                     );
                     error_fmt!("BasicAuthProvider", "{}", err);
                     return Err(err);
@@ -138,7 +138,7 @@ impl SecurityProvider for BasicAuthProvider {
                 Ok(s) => s,
                 Err(e) => {
                     let err = ProxyError::SecurityError(
-                        format!("Invalid authorization header: {}", e)
+                        format!("Invalid authorization header: {e}")
                     );
                     warn_fmt!("BasicAuthProvider", "{}", err);
                     return Err(err);
@@ -172,13 +172,13 @@ impl SecurityProvider for BasicAuthProvider {
             Ok(bytes) => match String::from_utf8(bytes) {
                 Ok(s) => s,
                 Err(e) => {
-                    let err = ProxyError::SecurityError(format!("Invalid UTF-8 in credentials: {}", e));
+                    let err = ProxyError::SecurityError(format!("Invalid UTF-8 in credentials: {e}"));
                     warn_fmt!("BasicAuthProvider", "{}", err);
                     return Err(err);
                 }
             },
             Err(e) => {
-                let err = ProxyError::SecurityError(format!("Failed to base64 decode credentials: {}", e));
+                let err = ProxyError::SecurityError(format!("Failed to base64 decode credentials: {e}"));
                 warn_fmt!("BasicAuthProvider", "{}", err);
                 return Err(err);
             }

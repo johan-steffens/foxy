@@ -30,9 +30,7 @@ fn convert_hyper_response(resp: Response<Full<Bytes>>) -> ProxyResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{HttpMethod, ProxyRequest, ProxyResponse, RequestContext};
-    use hyper::{Request, StatusCode};
-    use std::time::Duration;
+    use hyper::StatusCode;
 
     #[tokio::test]
     async fn test_convert_hyper_response() {

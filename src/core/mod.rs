@@ -400,7 +400,7 @@ impl ProxyCore {
 
         // If there's a query string, append it to the URL directly
         let final_url = if let Some(q) = &request.query {
-            format!("{}?{}", url, q)
+            format!("{url}?{q}")
         } else {
             url.clone()
         };

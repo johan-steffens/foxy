@@ -4,7 +4,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::config::{Config, ConfigProvider, ConfigError};
+    use crate::config::{Config, ConfigProvider, ConfigError, ConfigBuilder, ConfigProviderExt};
     use serde_json::Value;
 
     // Simple mock config provider for testing
@@ -280,5 +280,176 @@ mod tests {
 
         let result = config.get::<String>("any.key");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_default_file() {
+        use std::fs::File;
+        use std::io::Write;
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("config.json");
+
+        let content = r#"{
+            "server": {
+                "host": "localhost",
+                "port": 9090
+            },
+            "debug": true
+        }"#;
+
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+
+        let config = Config::default_file(file_path.to_str().unwrap()).unwrap();
+
+        let host: String = config.get("server.host").unwrap().unwrap();
+        assert_eq!(host, "localhost");
+
+        let port: u16 = config.get("server.port").unwrap().unwrap();
+        assert_eq!(port, 9090);
+
+        let debug: bool = config.get("debug").unwrap().unwrap();
+        assert_eq!(debug, true);
+    }
+
+    #[test]
+    fn test_config_default_file_error() {
+        let result = Config::default_file("/nonexistent/path/config.json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_builder_new() {
+        let builder = ConfigBuilder::new();
+        assert_eq!(builder.providers.len(), 0);
+
+        let config = builder.build();
+        assert_eq!(config.providers.len(), 0);
+    }
+
+    #[test]
+    fn test_config_builder_default() {
+        let builder = ConfigBuilder::default();
+        assert_eq!(builder.providers.len(), 0);
+    }
+
+    #[test]
+    fn test_config_builder_multiple_providers() {
+        let provider1 = MockConfigProvider::new("provider1", 1);
+        let provider2 = MockConfigProvider::new("provider2", 2);
+        let provider3 = MockConfigProvider::new("provider3", 3);
+
+        let config = ConfigBuilder::new()
+            .with_provider(provider1)
+            .with_provider(provider2)
+            .with_provider(provider3)
+            .build();
+
+        assert_eq!(config.providers.len(), 3);
+    }
+
+    #[test]
+    fn test_config_clone() {
+        let provider = MockConfigProvider::new("test", 0);
+        let config = Config::builder().with_provider(provider).build();
+
+        let cloned_config = config.clone();
+        assert_eq!(cloned_config.providers.len(), config.providers.len());
+
+        // Both configs should work independently
+        let value1: String = config.get("server.host").unwrap().unwrap();
+        let value2: String = cloned_config.get("server.host").unwrap().unwrap();
+        assert_eq!(value1, value2);
+    }
+
+    #[test]
+    fn test_config_provider_ext_get() {
+        let provider = MockConfigProvider::new("test", 0);
+
+        // Existing key should return the value
+        let port: Option<u16> = provider.get("server.port").unwrap();
+        assert_eq!(port, Some(8080));
+
+        // Non-existing key should return None
+        let timeout: Option<u32> = provider.get("timeout").unwrap();
+        assert_eq!(timeout, None);
+    }
+
+    #[test]
+    fn test_config_provider_ext_error_handling() {
+        #[derive(Debug)]
+        struct ErrorProvider;
+
+        impl ConfigProvider for ErrorProvider {
+            fn has(&self, _key: &str) -> bool {
+                true
+            }
+
+            fn provider_name(&self) -> &str {
+                "error-provider"
+            }
+
+            fn get_raw(&self, _key: &str) -> Result<Option<serde_json::Value>, ConfigError> {
+                Err(ConfigError::ParseError("Simulated error".to_string()))
+            }
+        }
+
+        let provider = ErrorProvider;
+
+        let result = provider.get::<String>("any.key");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_provider_ext_type_conversion_error() {
+        let mut provider = MockConfigProvider::new("test", 0);
+        provider.values.insert("invalid.number".to_string(), serde_json::json!("not_a_number"));
+
+        let result = provider.get::<u32>("invalid.number");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_provider_ext_null_values() {
+        let mut provider = MockConfigProvider::new("test", 0);
+        provider.values.insert("null.value".to_string(), serde_json::json!(null));
+
+        // Null values should cause a deserialization error when trying to convert to a specific type
+        let result: Result<Option<String>, ConfigError> = provider.get("null.value");
+        assert!(result.is_err());
+
+        // But we can check if the key exists
+        assert!(provider.has("null.value"));
+
+        // And get the raw value
+        let raw_value = provider.get_raw("null.value").unwrap();
+        assert!(raw_value.is_some());
+        assert!(raw_value.unwrap().is_null());
+    }
+
+    #[test]
+    fn test_config_provider_debug() {
+        let provider = MockConfigProvider::new("test-provider", 0);
+        let debug_str = format!("{:?}", provider);
+        assert!(debug_str.contains("MockConfigProvider"));
+        assert!(debug_str.contains("test-provider"));
+    }
+
+    #[test]
+    fn test_config_builder_debug() {
+        let provider = MockConfigProvider::new("test", 0);
+        let builder = ConfigBuilder::new().with_provider(provider);
+        let debug_str = format!("{:?}", builder);
+        assert!(debug_str.contains("ConfigBuilder"));
+    }
+
+    #[test]
+    fn test_config_debug() {
+        let provider = MockConfigProvider::new("test", 0);
+        let config = Config::builder().with_provider(provider).build();
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("Config"));
     }
 }

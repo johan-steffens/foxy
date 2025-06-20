@@ -11,9 +11,71 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  cache-warmup:
+    name: Cache Warmup
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-warmup-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-warmup-
+          ${{ runner.os }}-cargo-
+
+    - name: Cache coverage tools
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/cargo-llvm-cov
+          ~/.cargo/bin/cargo-tarpaulin
+        key: ${{ runner.os }}-coverage-tools-warmup-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-coverage-tools-warmup-
+          ${{ runner.os }}-coverage-tools-
+
+    - name: Cache cargo-audit
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/cargo-audit
+        key: ${{ runner.os }}-cargo-audit-warmup-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-audit-warmup-
+          ${{ runner.os }}-cargo-audit-
+
+    - name: Warm up dependency cache
+      run: |
+        # Build dependencies only to warm up cache
+        cargo build --lib --bins
+        cargo build --tests
+
+    - name: Warm up tool cache
+      run: |
+        # Install tools if not cached
+        if ! command -v cargo-llvm-cov &> /dev/null; then
+          cargo install cargo-llvm-cov
+        fi
+        if ! command -v cargo-tarpaulin &> /dev/null; then
+          cargo install cargo-tarpaulin
+        fi
+        if ! command -v cargo-audit &> /dev/null; then
+          cargo install cargo-audit
+        fi
+
   test:
     name: Test Suite
     runs-on: ubuntu-latest
+    needs: cache-warmup
     strategy:
       matrix:
         rust:
@@ -46,11 +108,27 @@ jobs:
           ${{ runner.os }}-cargo-${{ matrix.rust }}-
           ${{ runner.os }}-cargo-
 
+    - name: Cache coverage tools
+      if: matrix.coverage
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/cargo-llvm-cov
+          ~/.cargo/bin/cargo-tarpaulin
+        key: ${{ runner.os }}-coverage-tools-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-coverage-tools-
+
     - name: Install coverage tools
       if: matrix.coverage
       run: |
-        cargo install cargo-llvm-cov
-        cargo install cargo-tarpaulin
+        # Only install if not cached
+        if ! command -v cargo-llvm-cov &> /dev/null; then
+          cargo install cargo-llvm-cov
+        fi
+        if ! command -v cargo-tarpaulin &> /dev/null; then
+          cargo install cargo-tarpaulin
+        fi
 
     # - name: Check formatting
     #   run: cargo fmt --all -- --check
@@ -94,6 +172,7 @@ jobs:
   security:
     name: Security Audit
     runs-on: ubuntu-latest
+    needs: cache-warmup
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -101,8 +180,30 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
 
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: ${{ runner.os }}-cargo-security-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-security-
+
+    - name: Cache cargo-audit
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/cargo-audit
+        key: ${{ runner.os }}-cargo-audit-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-audit-
+
     - name: Install cargo-audit
-      run: cargo install cargo-audit
+      run: |
+        # Only install if not cached
+        if ! command -v cargo-audit &> /dev/null; then
+          cargo install cargo-audit
+        fi
 
     - name: Run security audit
       run: cargo audit
@@ -142,7 +243,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, security, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -151,6 +252,18 @@ jobs:
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-release-
+          ${{ runner.os }}-cargo-
 
     - name: Build release binary
       run: cargo build --release
@@ -170,7 +283,7 @@ jobs:
     name: Quality Gates
     runs-on: ubuntu-latest
     needs: test
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -178,8 +291,42 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
 
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-quality-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-quality-
+          ${{ runner.os }}-cargo-
+
+    - name: Cache coverage tools
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/cargo-llvm-cov
+        key: ${{ runner.os }}-coverage-tools-quality-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-coverage-tools-quality-
+          ${{ runner.os }}-coverage-tools-
+
+    - name: Cache cargo-audit
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/cargo-audit
+        key: ${{ runner.os }}-cargo-audit-quality-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-audit-quality-
+          ${{ runner.os }}-cargo-audit-
+
     - name: Install coverage tools
-      run: cargo install cargo-llvm-cov
+      run: |
+        # Only install if not cached
+        if ! command -v cargo-llvm-cov &> /dev/null; then
+          cargo install cargo-llvm-cov
+        fi
 
     - name: Generate coverage report
       run: |
@@ -208,5 +355,8 @@ jobs:
         
     - name: Dependency vulnerability check
       run: |
-        cargo install cargo-audit
+        # Only install if not cached
+        if ! command -v cargo-audit &> /dev/null; then
+          cargo install cargo-audit
+        fi
         cargo audit --deny warnings

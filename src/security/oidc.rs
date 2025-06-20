@@ -104,7 +104,7 @@ impl OidcProvider {
             .user_agent("foxy/oidc")
             .build()
             .map_err(|e| {
-                let err = ProxyError::SecurityError(format!("Failed to build HTTP client: {}", e));
+                let err = ProxyError::SecurityError(format!("Failed to build HTTP client: {e}"));
                 error_fmt!("OidcProvider", "{}", err);
                 err
             })?;
@@ -120,7 +120,7 @@ impl OidcProvider {
                             Ok(meta) => meta,
                             Err(e) => {
                                 let err = ProxyError::SecurityError(
-                                    format!("Failed to parse OIDC discovery response: {}", e)
+                                    format!("Failed to parse OIDC discovery response: {e}")
                                 );
                                 error_fmt!("OidcProvider", "{}", err);
                                 return Err(err);
@@ -129,7 +129,7 @@ impl OidcProvider {
                     },
                     Err(e) => {
                         let err = ProxyError::SecurityError(
-                            format!("OIDC discovery endpoint returned error: {}", e)
+                            format!("OIDC discovery endpoint returned error: {e}")
                         );
                         error_fmt!("OidcProvider", "{}", err);
                         return Err(err);
@@ -138,7 +138,7 @@ impl OidcProvider {
             },
             Err(e) => {
                 let err = ProxyError::SecurityError(
-                    format!("Failed to connect to OIDC discovery endpoint: {}", e)
+                    format!("Failed to connect to OIDC discovery endpoint: {e}")
                 );
                 error_fmt!("OidcProvider", "{}", err);
                 return Err(err);
@@ -171,7 +171,7 @@ impl OidcProvider {
                 },
                 Err(e) => {
                     let err = ProxyError::SecurityError(
-                        format!("Invalid glob pattern in bypass rule: {}", e)
+                        format!("Invalid glob pattern in bypass rule: {e}")
                     );
                     error_fmt!("OidcProvider", "{}", err);
                     return Err(err);
@@ -216,7 +216,7 @@ impl OidcProvider {
                             Ok(jwks) => jwks,
                             Err(e) => {
                                 let err = ProxyError::SecurityError(
-                                    format!("Failed to parse JWKS response: {}", e)
+                                    format!("Failed to parse JWKS response: {e}")
                                 );
                                 error_fmt!("OidcProvider", "{}", err);
                                 return Err(err);
@@ -225,7 +225,7 @@ impl OidcProvider {
                     },
                     Err(e) => {
                         let err = ProxyError::SecurityError(
-                            format!("JWKS endpoint returned error: {}", e)
+                            format!("JWKS endpoint returned error: {e}")
                         );
                         error_fmt!("OidcProvider", "{}", err);
                         return Err(err);
@@ -234,7 +234,7 @@ impl OidcProvider {
             },
             Err(e) => {
                 let err = ProxyError::SecurityError(
-                    format!("Failed to connect to JWKS endpoint: {}", e)
+                    format!("Failed to connect to JWKS endpoint: {e}")
                 );
                 error_fmt!("OidcProvider", "{}", err);
                 return Err(err);
@@ -262,7 +262,7 @@ impl OidcProvider {
                 trace_fmt!("OidcProvider", "Converting RSA JWK to decoding key");
                 DecodingKey::from_rsa_components(&params.n, &params.e)
                     .map_err(|e| {
-                        let err = ProxyError::SecurityError(format!("Invalid RSA key: {}", e));
+                        let err = ProxyError::SecurityError(format!("Invalid RSA key: {e}"));
                         error_fmt!("OidcProvider", "{}", err);
                         err
                     })
@@ -271,7 +271,7 @@ impl OidcProvider {
                 trace_fmt!("OidcProvider", "Converting EC JWK to decoding key");
                 DecodingKey::from_ec_components(&params.x, &params.y)
                     .map_err(|e| {
-                        let err = ProxyError::SecurityError(format!("Invalid EC key: {}", e));
+                        let err = ProxyError::SecurityError(format!("Invalid EC key: {e}"));
                         error_fmt!("OidcProvider", "{}", err);
                         err
                     })
@@ -284,7 +284,7 @@ impl OidcProvider {
                 trace_fmt!("OidcProvider", "Converting OKP JWK to decoding key");
                 DecodingKey::from_ed_components(&params.x)
                     .map_err(|e| {
-                        let err = ProxyError::SecurityError(format!("Invalid OKP key: {}", e));
+                        let err = ProxyError::SecurityError(format!("Invalid OKP key: {e}"));
                         error_fmt!("OidcProvider", "{}", err);
                         err
                     })
@@ -297,7 +297,7 @@ impl OidcProvider {
         let header = match decode_header(token) {
             Ok(h) => h,
             Err(e) => {
-                let err = ProxyError::SecurityError(format!("Invalid JWT header: {}", e));
+                let err = ProxyError::SecurityError(format!("Invalid JWT header: {e}"));
                 warn_fmt!("OidcProvider", "{}", err);
                 return Err(err);
             }
@@ -358,12 +358,12 @@ impl OidcProvider {
                                 trace_fmt!("OidcProvider", "Using shared secret for HS* algorithm");
                                 DecodingKey::from_secret(secret.as_bytes())
                             } else {
-                                let err = ProxyError::SecurityError(format!("Key ID {} not found in JWKS", kid));
+                                let err = ProxyError::SecurityError(format!("Key ID {kid} not found in JWKS"));
                                 warn_fmt!("OidcProvider", "{}", err);
                                 return Err(err);
                             }
                         } else {
-                            let err = ProxyError::SecurityError(format!("Key ID {} not found in JWKS", kid));
+                            let err = ProxyError::SecurityError(format!("Key ID {kid} not found in JWKS"));
                             warn_fmt!("OidcProvider", "{}", err);
                             return Err(err);
                         }
@@ -395,13 +395,14 @@ impl OidcProvider {
                 Ok(token_data.claims)
             }
             Err(e) => {
-                let err = ProxyError::SecurityError(format!("JWT validation failed: {}", e));
+                let err = ProxyError::SecurityError(format!("JWT validation failed: {e}"));
                 warn_fmt!("OidcProvider", "{}", err);
                 Err(err)
             }
         }
     }
 
+    #[allow(dead_code)]
     fn validate_std_claims(&self, claims: &serde_json::Value) -> Result<(), ProxyError> {
         // Check issuer
         if let Some(iss) = claims["iss"].as_str() {
@@ -430,7 +431,7 @@ impl OidcProvider {
             
             if !valid_audience {
                 let err = ProxyError::SecurityError(
-                    format!("Invalid audience: expected '{}'", expected_aud)
+                    format!("Invalid audience: expected '{expected_aud}'")
                 );
                 warn_fmt!("OidcProvider", "{}", err);
                 return Err(err);
@@ -446,7 +447,7 @@ impl OidcProvider {
                 
             if exp <= now {
                 let err = ProxyError::SecurityError(
-                    format!("Token expired at {}, current time is {}", exp, now)
+                    format!("Token expired at {exp}, current time is {now}")
                 );
                 warn_fmt!("OidcProvider", "{}", err);
                 return Err(err);
@@ -464,6 +465,335 @@ impl OidcProvider {
             debug_fmt!("OidcProvider", "OIDC bypass for {} {}", method, path);
         }
         bypassed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::{ProxyRequest, HttpMethod, RequestContext};
+    use reqwest::header::HeaderMap;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    #[test]
+    fn test_route_rule_config_deserialization() {
+        let json = r#"{
+            "methods": ["GET", "POST"],
+            "path": "/api/*"
+        }"#;
+
+        let config: RouteRuleConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.methods, vec!["GET", "POST"]);
+        assert_eq!(config.path, "/api/*");
+    }
+
+    #[test]
+    fn test_route_rule_matches() {
+        let mut builder = GlobSetBuilder::new();
+        builder.add(Glob::new("/api/*").unwrap());
+        let paths = builder.build().unwrap();
+
+        let rule = RouteRule {
+            methods: vec!["GET".to_string(), "POST".to_string()],
+            paths,
+        };
+
+        // Test method and path matching
+        assert!(rule.matches("GET", "/api/users"));
+        assert!(rule.matches("POST", "/api/users"));
+        assert!(!rule.matches("DELETE", "/api/users"));
+        assert!(!rule.matches("GET", "/health"));
+
+        // Test case sensitive method matching (methods are stored in uppercase)
+        assert!(!rule.matches("get", "/api/users"));
+        assert!(!rule.matches("post", "/api/users"));
+    }
+
+    #[test]
+    fn test_route_rule_wildcard_methods() {
+        let mut builder = GlobSetBuilder::new();
+        builder.add(Glob::new("/health").unwrap());
+        let paths = builder.build().unwrap();
+
+        let rule = RouteRule {
+            methods: vec!["*".to_string()],
+            paths,
+        };
+
+        assert!(rule.matches("GET", "/health"));
+        assert!(rule.matches("POST", "/health"));
+        assert!(rule.matches("DELETE", "/health"));
+        assert!(!rule.matches("GET", "/api"));
+    }
+
+    #[test]
+    fn test_oidc_config_deserialization() {
+        let json = r#"{
+            "issuer-uri": "https://auth.example.com/.well-known/openid-configuration",
+            "aud": "my-app",
+            "shared-secret": "secret123",
+            "bypass": [
+                {
+                    "methods": ["GET"],
+                    "path": "/health"
+                }
+            ]
+        }"#;
+
+        let config: OidcConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.issuer_uri, "https://auth.example.com/.well-known/openid-configuration");
+        assert_eq!(config.aud, Some("my-app".to_string()));
+        assert_eq!(config.shared_secret, Some("secret123".to_string()));
+        assert_eq!(config.bypass.len(), 1);
+        assert_eq!(config.bypass[0].methods, vec!["GET"]);
+        assert_eq!(config.bypass[0].path, "/health");
+    }
+
+    #[test]
+    fn test_oidc_config_minimal() {
+        let json = r#"{
+            "issuer-uri": "https://auth.example.com"
+        }"#;
+
+        let config: OidcConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.issuer_uri, "https://auth.example.com");
+        assert_eq!(config.aud, None);
+        assert_eq!(config.shared_secret, None);
+        assert!(config.bypass.is_empty());
+    }
+
+    #[test]
+    fn test_oidc_config_empty_bypass() {
+        let json = r#"{
+            "issuer-uri": "https://auth.example.com",
+            "bypass": []
+        }"#;
+
+        let config: OidcConfig = serde_json::from_str(json).unwrap();
+        assert!(config.bypass.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_discover_invalid_url() {
+        let config = OidcConfig {
+            issuer_uri: "invalid-url".to_string(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let result = OidcProvider::discover(config).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Failed to connect to OIDC discovery endpoint"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[test]
+    fn test_oidc_provider_is_bypassed() {
+        let mut builder1 = GlobSetBuilder::new();
+        builder1.add(Glob::new("/health").unwrap());
+        let paths1 = builder1.build().unwrap();
+
+        let mut builder2 = GlobSetBuilder::new();
+        builder2.add(Glob::new("/public/*").unwrap());
+        let paths2 = builder2.build().unwrap();
+
+        let rules = vec![
+            RouteRule {
+                methods: vec!["GET".to_string()],
+                paths: paths1,
+            },
+            RouteRule {
+                methods: vec!["*".to_string()],
+                paths: paths2,
+            },
+        ];
+
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules,
+        };
+
+        // Test bypass rules
+        assert!(provider.is_bypassed("GET", "/health"));
+        assert!(!provider.is_bypassed("POST", "/health"));
+        assert!(provider.is_bypassed("GET", "/public/api"));
+        assert!(provider.is_bypassed("POST", "/public/api"));
+        assert!(!provider.is_bypassed("GET", "/private/api"));
+    }
+
+    #[test]
+    fn test_security_provider_trait_implementation() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        assert_eq!(provider.name(), "OidcProvider");
+        assert_eq!(provider.stage(), SecurityStage::Pre);
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_pre_bypass() {
+        let mut builder = GlobSetBuilder::new();
+        builder.add(Glob::new("/health").unwrap());
+        let paths = builder.build().unwrap();
+
+        let rules = vec![
+            RouteRule {
+                methods: vec!["GET".to_string()],
+                paths,
+            },
+        ];
+
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules,
+        };
+
+        let headers = HeaderMap::new();
+        let request = ProxyRequest {
+            method: HttpMethod::Get,
+            path: "/health".to_string(),
+            query: None,
+            headers,
+            body: reqwest::Body::from(""),
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: None,
+        };
+
+        let result = provider.pre(request).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_pre_missing_auth_header() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        let headers = HeaderMap::new();
+        let request = ProxyRequest {
+            method: HttpMethod::Get,
+            path: "/api/users".to_string(),
+            query: None,
+            headers,
+            body: reqwest::Body::from(""),
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: None,
+        };
+
+        let result = provider.pre(request).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert_eq!(msg, "Missing authorization header");
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_pre_invalid_auth_scheme() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Basic dXNlcjpwYXNz".parse().unwrap());
+
+        let request = ProxyRequest {
+            method: HttpMethod::Get,
+            path: "/api/users".to_string(),
+            query: None,
+            headers,
+            body: reqwest::Body::from(""),
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: None,
+        };
+
+        let result = provider.pre(request).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Invalid authorization scheme"));
+            assert!(msg.contains("expected 'Bearer'"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_pre_empty_bearer_token() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer ".parse().unwrap());
+
+        let request = ProxyRequest {
+            method: HttpMethod::Get,
+            path: "/api/users".to_string(),
+            query: None,
+            headers,
+            body: reqwest::Body::from(""),
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: None,
+        };
+
+        let result = provider.pre(request).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert_eq!(msg, "Empty bearer token");
+        } else {
+            panic!("Expected SecurityError");
+        }
     }
 }
 
@@ -488,7 +818,7 @@ impl SecurityProvider for OidcProvider {
                 Ok(s) => s.to_lowercase(),
                 Err(e) => {
                     let err = ProxyError::SecurityError(
-                        format!("Invalid authorization header: {}", e)
+                        format!("Invalid authorization header: {e}")
                     );
                     warn_fmt!("OidcProvider", "{}", err);
                     return Err(err);

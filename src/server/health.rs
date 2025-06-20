@@ -42,7 +42,7 @@ impl HealthServer {
                         let ready = ready.clone();
                         async move {
                             let map_err = |_: std::convert::Infallible| {
-                                std::io::Error::new(std::io::ErrorKind::Other, "error")
+                                std::io::Error::other("error")
                             };
                             
                             let response = match req.uri().path() {
@@ -86,5 +86,227 @@ impl HealthServer {
 
     pub fn set_ready(&self) {
         self.is_ready.store(true, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    async fn get_available_port() -> u16 {
+        // Use port 0 to let the OS assign an available port
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        port
+    }
+
+    async fn make_request(port: u16, path: &str) -> Result<(u16, String), Box<dyn std::error::Error + Send + Sync>> {
+        let url = format!("http://127.0.0.1:{}{}", port, path);
+        let response = reqwest::get(&url).await?;
+        let status = response.status().as_u16();
+        let body = response.text().await?;
+        Ok((status, body))
+    }
+
+    #[tokio::test]
+    async fn test_health_server_creation() {
+        let port = get_available_port().await;
+        let health_server = HealthServer::new(port);
+
+        // Verify the server was created
+        assert!(!health_server.is_ready.load(Ordering::Relaxed));
+
+        // Give the server a moment to start
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    async fn test_health_endpoint() {
+        let port = get_available_port().await;
+        let _health_server = HealthServer::new(port);
+
+        // Give the server time to start
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Test health endpoint
+        let result = timeout(Duration::from_secs(5), make_request(port, "/health")).await;
+        assert!(result.is_ok());
+
+        let (status, body) = result.unwrap().unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(body, "OK");
+    }
+
+    #[tokio::test]
+    async fn test_ready_endpoint_not_ready() {
+        let port = get_available_port().await;
+        let health_server = HealthServer::new(port);
+
+        // Give the server time to start
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Test ready endpoint when not ready
+        let result = timeout(Duration::from_secs(5), make_request(port, "/ready")).await;
+        assert!(result.is_ok());
+
+        let (status, body) = result.unwrap().unwrap();
+        assert_eq!(status, 503);
+        assert_eq!(body, "NOT READY");
+
+        // Verify is_ready is still false
+        assert!(!health_server.is_ready.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn test_ready_endpoint_ready() {
+        let port = get_available_port().await;
+        let health_server = HealthServer::new(port);
+
+        // Give the server time to start
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Set ready
+        health_server.set_ready();
+        assert!(health_server.is_ready.load(Ordering::Relaxed));
+
+        // Test ready endpoint when ready
+        let result = timeout(Duration::from_secs(5), make_request(port, "/ready")).await;
+        assert!(result.is_ok());
+
+        let (status, body) = result.unwrap().unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(body, "READY");
+    }
+
+    #[tokio::test]
+    async fn test_unknown_endpoint() {
+        let port = get_available_port().await;
+        let _health_server = HealthServer::new(port);
+
+        // Give the server time to start
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Test unknown endpoint
+        let result = timeout(Duration::from_secs(5), make_request(port, "/unknown")).await;
+        assert!(result.is_ok());
+
+        let (status, body) = result.unwrap().unwrap();
+        assert_eq!(status, 404);
+        assert_eq!(body, "Not Found");
+    }
+
+    #[tokio::test]
+    async fn test_multiple_endpoints() {
+        let port = get_available_port().await;
+        let health_server = HealthServer::new(port);
+
+        // Give the server time to start
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Test health endpoint
+        let (status, body) = timeout(Duration::from_secs(5), make_request(port, "/health"))
+            .await.unwrap().unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(body, "OK");
+
+        // Test ready endpoint (not ready)
+        let (status, body) = timeout(Duration::from_secs(5), make_request(port, "/ready"))
+            .await.unwrap().unwrap();
+        assert_eq!(status, 503);
+        assert_eq!(body, "NOT READY");
+
+        // Set ready and test again
+        health_server.set_ready();
+        let (status, body) = timeout(Duration::from_secs(5), make_request(port, "/ready"))
+            .await.unwrap().unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(body, "READY");
+
+        // Test health endpoint again
+        let (status, body) = timeout(Duration::from_secs(5), make_request(port, "/health"))
+            .await.unwrap().unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(body, "OK");
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_requests() {
+        let port = get_available_port().await;
+        let health_server = HealthServer::new(port);
+
+        // Give the server time to start
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Make multiple concurrent requests
+        let mut handles = vec![];
+
+        for _ in 0..5 {
+            let handle = tokio::spawn(async move {
+                make_request(port, "/health").await
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all requests to complete
+        for handle in handles {
+            let result = timeout(Duration::from_secs(5), handle).await;
+            assert!(result.is_ok());
+            let (status, body) = result.unwrap().unwrap().unwrap();
+            assert_eq!(status, 200);
+            assert_eq!(body, "OK");
+        }
+
+        // Set ready and test ready endpoint concurrently
+        health_server.set_ready();
+
+        let mut ready_handles = vec![];
+        for _ in 0..3 {
+            let handle = tokio::spawn(async move {
+                make_request(port, "/ready").await
+            });
+            ready_handles.push(handle);
+        }
+
+        for handle in ready_handles {
+            let result = timeout(Duration::from_secs(5), handle).await;
+            assert!(result.is_ok());
+            let (status, body) = result.unwrap().unwrap().unwrap();
+            assert_eq!(status, 200);
+            assert_eq!(body, "READY");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_set_ready_multiple_times() {
+        let port = get_available_port().await;
+        let health_server = HealthServer::new(port);
+
+        // Initially not ready
+        assert!(!health_server.is_ready.load(Ordering::Relaxed));
+
+        // Set ready multiple times
+        health_server.set_ready();
+        assert!(health_server.is_ready.load(Ordering::Relaxed));
+
+        health_server.set_ready();
+        assert!(health_server.is_ready.load(Ordering::Relaxed));
+
+        health_server.set_ready();
+        assert!(health_server.is_ready.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn test_health_server_debug() {
+        let port = get_available_port().await;
+        let health_server = HealthServer::new(port);
+
+        // Test Debug implementation
+        let debug_str = format!("{:?}", health_server);
+        assert!(debug_str.contains("HealthServer"));
+        assert!(debug_str.contains("is_ready"));
+        assert!(debug_str.contains("_handle"));
     }
 }

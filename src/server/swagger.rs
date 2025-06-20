@@ -11,7 +11,7 @@
 
 use std::convert::Infallible;
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
+
 use hyper::{header, Request, Response, StatusCode};
 use hyper::body::Incoming;
 use reqwest::Body;
