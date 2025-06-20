@@ -27,23 +27,63 @@ impl TestConfigProvider {
     /// Create a new test config provider with default values
     pub fn new(name: &str) -> Self {
         let mut values = HashMap::new();
-        
+
         // Default server configuration
         values.insert("server.host".to_string(), Value::String("127.0.0.1".to_string()));
         values.insert("server.port".to_string(), Value::Number(8080.into()));
         values.insert("server.health_port".to_string(), Value::Number(8081.into()));
-        
+
         // Default proxy configuration
         values.insert("proxy.timeout".to_string(), Value::Number(30.into()));
         values.insert("proxy.max_body_size".to_string(), Value::Number(1048576.into())); // 1MB
-        
+
         // Default logging configuration
         values.insert("proxy.logging.enabled".to_string(), Value::Bool(true));
         values.insert("proxy.logging.level".to_string(), Value::String("info".to_string()));
-        
+
         Self {
             values,
             name: name.to_string(),
+        }
+    }
+
+    /// Create a new test config provider from a JSON configuration
+    pub fn from_json(config: Value) -> Self {
+        let mut values = HashMap::new();
+
+        // Flatten the JSON config into dot-notation keys
+        Self::flatten_json(&config, "", &mut values);
+
+        Self {
+            values,
+            name: "json-config".to_string(),
+        }
+    }
+
+    /// Helper function to flatten JSON into dot-notation keys
+    fn flatten_json(value: &Value, prefix: &str, values: &mut HashMap<String, Value>) {
+        match value {
+            Value::Object(obj) => {
+                for (key, val) in obj {
+                    let new_key = if prefix.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{}.{}", prefix, key)
+                    };
+
+                    match val {
+                        Value::Object(_) => {
+                            Self::flatten_json(val, &new_key, values);
+                        },
+                        _ => {
+                            values.insert(new_key, val.clone());
+                        }
+                    }
+                }
+            },
+            _ => {
+                values.insert(prefix.to_string(), value.clone());
+            }
         }
     }
     

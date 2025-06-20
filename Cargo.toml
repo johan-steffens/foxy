@@ -98,6 +98,7 @@ mockito = "1.4"
 hyper = { version = "1.6.0", features = ["server", "http1", "http2"] }
 tower = { version = "0.4", features = ["util"] }
 tower-test = "0.4"
+warp = "0.3"
 
 # Target-specific TLS for dev dependencies
 [target.'cfg(windows)'.dev-dependencies]
