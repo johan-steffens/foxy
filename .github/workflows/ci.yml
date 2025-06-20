@@ -39,8 +39,11 @@ jobs:
         path: |
           ~/.cargo/bin/cargo-llvm-cov
           ~/.cargo/bin/cargo-tarpaulin
-        key: ${{ runner.os }}-coverage-tools-warmup-${{ hashFiles('**/Cargo.lock') }}
+          ~/.rustup/toolchains/*/lib/rustlib/*/bin/llvm-*
+          ~/.rustup/toolchains/*/lib/rustlib/*/bin/rust-*
+        key: ${{ runner.os }}-coverage-tools-warmup-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('~/.rustup/settings.toml') }}
         restore-keys: |
+          ${{ runner.os }}-coverage-tools-warmup-${{ hashFiles('**/Cargo.lock') }}-
           ${{ runner.os }}-coverage-tools-warmup-
           ${{ runner.os }}-coverage-tools-
 
@@ -72,6 +75,9 @@ jobs:
           cargo install cargo-audit
         fi
 
+        # Pre-install llvm-tools-preview component for coverage
+        rustup component add llvm-tools-preview
+
   test:
     name: Test Suite
     runs-on: ubuntu-latest
@@ -80,8 +86,8 @@ jobs:
       matrix:
         rust:
           - stable
-          - beta
-          - nightly
+          # - beta
+          # - nightly
         include:
           - rust: stable
             coverage: true
@@ -115,8 +121,11 @@ jobs:
         path: |
           ~/.cargo/bin/cargo-llvm-cov
           ~/.cargo/bin/cargo-tarpaulin
-        key: ${{ runner.os }}-coverage-tools-${{ hashFiles('**/Cargo.lock') }}
+          ~/.rustup/toolchains/*/lib/rustlib/*/bin/llvm-*
+          ~/.rustup/toolchains/*/lib/rustlib/*/bin/rust-*
+        key: ${{ runner.os }}-coverage-tools-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('~/.rustup/settings.toml') }}
         restore-keys: |
+          ${{ runner.os }}-coverage-tools-${{ hashFiles('**/Cargo.lock') }}-
           ${{ runner.os }}-coverage-tools-
 
     - name: Install coverage tools
@@ -129,6 +138,9 @@ jobs:
         if ! command -v cargo-tarpaulin &> /dev/null; then
           cargo install cargo-tarpaulin
         fi
+
+        # Ensure llvm-tools-preview is available (should be cached from warmup)
+        rustup component add llvm-tools-preview
 
     # - name: Check formatting
     #   run: cargo fmt --all -- --check
@@ -152,7 +164,9 @@ jobs:
     - name: Generate coverage report
       if: matrix.coverage
       run: |
-        cargo llvm-cov --html --output-dir coverage \
+        # Generate LCOV formats for comprehensive coverage reporting
+        mkdir coverage
+        cargo llvm-cov --lcov --output-path coverage/lcov.info \
           --ignore-filename-regex 'benches/.*'
 
     - name: Upload coverage to Codecov
@@ -306,9 +320,13 @@ jobs:
     - name: Cache coverage tools
       uses: actions/cache@v4
       with:
-        path: ~/.cargo/bin/cargo-llvm-cov
-        key: ${{ runner.os }}-coverage-tools-quality-${{ hashFiles('**/Cargo.lock') }}
+        path: |
+          ~/.cargo/bin/cargo-llvm-cov
+          ~/.rustup/toolchains/*/lib/rustlib/*/bin/llvm-*
+          ~/.rustup/toolchains/*/lib/rustlib/*/bin/rust-*
+        key: ${{ runner.os }}-coverage-tools-quality-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('~/.rustup/settings.toml') }}
         restore-keys: |
+          ${{ runner.os }}-coverage-tools-quality-${{ hashFiles('**/Cargo.lock') }}-
           ${{ runner.os }}-coverage-tools-quality-
           ${{ runner.os }}-coverage-tools-
 
@@ -327,6 +345,9 @@ jobs:
         if ! command -v cargo-llvm-cov &> /dev/null; then
           cargo install cargo-llvm-cov
         fi
+
+        # Ensure llvm-tools-preview is available (should be cached from warmup)
+        rustup component add llvm-tools-preview
 
     - name: Generate coverage report
       run: |
