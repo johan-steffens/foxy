@@ -159,7 +159,7 @@ impl ProxyServer {
         // On Unix, install the SIGTERM stream once and store it in a variable
         #[cfg(unix)]
         let mut term_stream = signal(SignalKind::terminate())
-            .map_err(|e| ProxyError::Other(format!("Cannot install SIGTERM handler: {}", e)))?;
+            .map_err(|e| ProxyError::Other(format!("Cannot install SIGTERM handler: {e}")))?;
 
         // Build the actual future that we'll await
         #[cfg(unix)]
