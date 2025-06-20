@@ -19,15 +19,25 @@ async fn start_mock_server() -> (tokio::task::JoinHandle<()>, u16) {
     // Create mock endpoints that return httpbin-like responses
     let get_route = warp::path("get")
         .and(warp::get())
-        .map(|| {
+        .and(warp::header::headers_cloned())
+        .map(|headers: warp::http::HeaderMap| {
+            println!("🔍 Mock server received GET /get request");
+            println!("📋 Headers: {:?}", headers);
+
+            // Check if request came through Foxy proxy by looking for forwarded headers
+            let via_foxy = headers.get("x-forwarded-for").is_some() ||
+                          headers.get("user-agent").map(|v| v.to_str().unwrap_or("")).unwrap_or("").contains("reqwest");
+
             warp::reply::json(&json!({
                 "args": {},
                 "headers": {
                     "Host": "httpbin.org",
-                    "User-Agent": "reqwest/0.11"
+                    "User-Agent": "reqwest/0.11",
+                    "Via-Foxy": via_foxy
                 },
                 "origin": "127.0.0.1",
-                "url": "https://httpbin.org/get"
+                "url": "https://httpbin.org/get",
+                "proxy_test": "✅ Request processed by mock server"
             }))
         });
 
@@ -87,7 +97,11 @@ async fn start_mock_server() -> (tokio::task::JoinHandle<()>, u16) {
 
     let anything_route = warp::path("anything")
         .and(warp::path::tail())
-        .map(|tail: warp::path::Tail| {
+        .and(warp::header::headers_cloned())
+        .map(|tail: warp::path::Tail, headers: warp::http::HeaderMap| {
+            println!("🔍 Mock server received GET /anything/{} request", tail.as_str());
+            println!("📋 Headers: {:?}", headers);
+
             warp::reply::json(&json!({
                 "args": {},
                 "data": "",
@@ -100,7 +114,8 @@ async fn start_mock_server() -> (tokio::task::JoinHandle<()>, u16) {
                 "json": null,
                 "method": "GET",
                 "origin": "127.0.0.1",
-                "url": format!("https://httpbin.org/anything/{}", tail.as_str())
+                "url": format!("https://httpbin.org/anything/{}", tail.as_str()),
+                "proxy_test": "✅ Request processed by mock server"
             }))
         });
 
@@ -348,6 +363,9 @@ async fn test_anything_endpoint() {
     tokio::time::sleep(Duration::from_millis(1000)).await;
 
     // Make request to mock anything endpoint
+    println!("🚀 Making request to Foxy proxy at http://127.0.0.1:8080/anything/test");
+    println!("📡 Mock server running on port: {}", mock_port);
+
     let client = reqwest::Client::new();
     let response = timeout(
         Duration::from_secs(10),
@@ -357,9 +375,14 @@ async fn test_anything_endpoint() {
     // Verify the response
     match response {
         Ok(Ok(resp)) => {
+            println!("✅ Response status: {}", resp.status());
             assert_eq!(resp.status(), 200);
             let body = resp.text().await.expect("Failed to read body");
+            println!("📄 Response body: {}", body);
             assert!(body.contains("httpbin") || body.contains("origin") || body.contains("url"));
+
+            // Verify it contains our proxy test marker
+            assert!(body.contains("proxy_test"), "Response should contain proxy_test marker from mock server");
         },
         Ok(Err(e)) => panic!("Request failed: {}", e),
         Err(_) => panic!("Request timed out"),

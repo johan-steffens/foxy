@@ -16,6 +16,9 @@ pub mod config;
 pub mod wrapper;
 pub mod middleware;
 
+#[cfg(test)]
+mod tests;
+
 use log::{debug, error, info, trace, warn, LevelFilter};
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
