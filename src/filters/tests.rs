@@ -10,7 +10,8 @@ mod tests {
     use crate::{
         HttpMethod, ProxyRequest, ProxyResponse, ProxyError, FilterType,
         LoggingFilter, HeaderFilter, TimeoutFilter,
-        PathRewriteFilter, PathRewriteFilterConfig
+        PathRewriteFilter, PathRewriteFilterConfig,
+        RateLimitFilter, RateLimitFilterConfig
     };
     use crate::filters::{
         LoggingFilterConfig, HeaderFilterConfig, TimeoutFilterConfig
@@ -1719,5 +1720,175 @@ mod tests {
         let deserialized: TimeoutFilterConfig = serde_json::from_str(&serialized).unwrap();
 
         assert_eq!(config.timeout_ms, deserialized.timeout_ms);
+    }
+
+    // Tests for RateLimitFilter
+    #[tokio::test]
+    async fn test_rate_limit_filter_creation() {
+        let config = RateLimitFilterConfig {
+            requests_per_second: 5.0,
+            burst_size: 10,
+        };
+        let filter = RateLimitFilter::new(config);
+        assert_eq!(filter.name(), "rate_limit");
+        assert_eq!(filter.filter_type(), FilterType::Pre);
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_filter_default_config() {
+        let config = RateLimitFilterConfig::default();
+        assert_eq!(config.requests_per_second, 10.0);
+        assert_eq!(config.burst_size, 10);
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_filter_allows_requests_within_limit() {
+        let config = RateLimitFilterConfig {
+            requests_per_second: 10.0,
+            burst_size: 5,
+        };
+        let filter = RateLimitFilter::new(config);
+
+        // Create test request
+        let request = create_rate_limit_test_request();
+
+        // First few requests should be allowed (within burst size)
+        for i in 1..=5 {
+            let result = filter.pre_filter(request.clone()).await;
+            assert!(result.is_ok(), "Request {} should be allowed", i);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_filter_blocks_requests_over_limit() {
+        let config = RateLimitFilterConfig {
+            requests_per_second: 1.0,
+            burst_size: 2,
+        };
+        let filter = RateLimitFilter::new(config);
+
+        // Create test request
+        let request = create_rate_limit_test_request();
+
+        // First two requests should be allowed (burst size)
+        for i in 1..=2 {
+            let result = filter.pre_filter(request.clone()).await;
+            assert!(result.is_ok(), "Request {} should be allowed", i);
+        }
+
+        // Third request should be blocked
+        let result = filter.pre_filter(request.clone()).await;
+        assert!(result.is_err(), "Request 3 should be blocked");
+
+        if let Err(ProxyError::RateLimitExceeded(msg)) = result {
+            assert!(msg.contains("Rate limit exceeded"));
+            assert!(msg.contains("1 requests per second"));
+            assert!(msg.contains("burst size: 2"));
+        } else {
+            panic!("Expected RateLimitExceeded error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_filter_token_refill() {
+        let config = RateLimitFilterConfig {
+            requests_per_second: 10.0, // 10 tokens per second = 1 token per 100ms
+            burst_size: 1,
+        };
+        let filter = RateLimitFilter::new(config);
+
+        // Create test request
+        let request = create_rate_limit_test_request();
+
+        // First request should be allowed
+        let result = filter.pre_filter(request.clone()).await;
+        assert!(result.is_ok(), "First request should be allowed");
+
+        // Second request should be blocked immediately
+        let result = filter.pre_filter(request.clone()).await;
+        assert!(result.is_err(), "Second request should be blocked");
+
+        // Wait for token refill (200ms should be enough for 2 tokens at 10/sec)
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+        // Third request should be allowed after refill
+        let result = filter.pre_filter(request.clone()).await;
+        assert!(result.is_ok(), "Third request should be allowed after refill");
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_filter_high_burst_size() {
+        let config = RateLimitFilterConfig {
+            requests_per_second: 1.0,
+            burst_size: 100,
+        };
+        let filter = RateLimitFilter::new(config);
+
+        // Create test request
+        let request = create_rate_limit_test_request();
+
+        // Should allow many requests initially due to high burst size
+        for i in 1..=50 {
+            let result = filter.pre_filter(request.clone()).await;
+            assert!(result.is_ok(), "Request {} should be allowed", i);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_filter_zero_burst_size() {
+        let config = RateLimitFilterConfig {
+            requests_per_second: 10.0,
+            burst_size: 0,
+        };
+        let filter = RateLimitFilter::new(config);
+
+        // Create test request
+        let request = create_rate_limit_test_request();
+
+        // Should block all requests with zero burst size
+        let result = filter.pre_filter(request.clone()).await;
+        assert!(result.is_err(), "Request should be blocked with zero burst size");
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_filter_fractional_rate() {
+        let config = RateLimitFilterConfig {
+            requests_per_second: 0.5, // 1 request every 2 seconds
+            burst_size: 1,
+        };
+        let filter = RateLimitFilter::new(config);
+
+        // Create test request
+        let request = create_rate_limit_test_request();
+
+        // First request should be allowed
+        let result = filter.pre_filter(request.clone()).await;
+        assert!(result.is_ok(), "First request should be allowed");
+
+        // Second request should be blocked
+        let result = filter.pre_filter(request.clone()).await;
+        assert!(result.is_err(), "Second request should be blocked");
+    }
+
+    // Helper function to create a test request for rate limiting tests
+    fn create_rate_limit_test_request() -> ProxyRequest {
+        use crate::core::RequestContext;
+        use reqwest::Body;
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
+        ProxyRequest {
+            method: HttpMethod::Get,
+            path: "/test".to_string(),
+            query: None,
+            headers: reqwest::header::HeaderMap::new(),
+            body: Body::from(""),
+            custom_target: None,
+            context: Arc::new(RwLock::new(RequestContext {
+                client_ip: None,
+                start_time: None,
+                attributes: std::collections::HashMap::new(),
+            })),
+        }
     }
 }

@@ -557,6 +557,10 @@ async fn handle_request(
                     error_fmt!("Server", "Client error for {} {}: {}", method, path, err);
                     (502, "Bad Gateway".into())
                 }
+                ProxyError::RateLimitExceeded(msg) => {
+                    warn_fmt!("Server", "Rate limit exceeded for {} {}: {}", method, path, msg);
+                    (429, "Too Many Requests".into())
+                }
                 _ => {
                     error_fmt!("Server", "Internal error processing {} {}: {}", method, path, e);
                     (500, "Internal Server Error".into())

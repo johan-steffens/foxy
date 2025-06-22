@@ -208,7 +208,7 @@ impl SecurityProviderFactory {
                 let provider = OidcProvider::discover(oidc_config).await?;
                 Ok(Arc::new(provider))
             },
-            "basic" => {
+            "basic" | "basic_auth" => {
                 let basic_auth_config: BasicAuthConfig = serde_json::from_value(config)
                     .map_err(|e| ProxyError::SecurityError(format!("Invalid Basic Auth provider config: {e}")))?;
                 let provider = BasicAuthProvider::new(basic_auth_config)?;

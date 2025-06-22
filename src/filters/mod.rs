@@ -23,6 +23,8 @@ use serde::{Serialize, Deserialize};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::RwLock;
+use std::time::Instant;
+use tokio::sync::Mutex;
 
 use crate::core::{
     Filter, FilterType, ProxyRequest, ProxyResponse, ProxyError
@@ -553,6 +555,122 @@ impl Filter for PathRewriteFilter {
     }
 }
 
+/// Configuration for a rate limiting filter.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitFilterConfig {
+    /// Number of requests allowed per second
+    pub requests_per_second: f64,
+    /// Maximum burst size (number of requests that can be made immediately)
+    pub burst_size: u32,
+}
+
+impl Default for RateLimitFilterConfig {
+    fn default() -> Self {
+        Self {
+            requests_per_second: 10.0,
+            burst_size: 10,
+        }
+    }
+}
+
+/// A token bucket for rate limiting
+#[derive(Debug)]
+struct TokenBucket {
+    /// Maximum number of tokens (burst size)
+    capacity: u32,
+    /// Current number of tokens
+    tokens: f64,
+    /// Rate at which tokens are replenished (tokens per second)
+    refill_rate: f64,
+    /// Last time tokens were replenished
+    last_refill: Instant,
+}
+
+impl TokenBucket {
+    fn new(capacity: u32, refill_rate: f64) -> Self {
+        Self {
+            capacity,
+            tokens: capacity as f64,
+            refill_rate,
+            last_refill: Instant::now(),
+        }
+    }
+
+    /// Try to consume a token. Returns true if successful, false if rate limited.
+    fn try_consume(&mut self) -> bool {
+        self.refill();
+
+        if self.tokens >= 1.0 {
+            self.tokens -= 1.0;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Refill tokens based on elapsed time
+    fn refill(&mut self) {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_refill).as_secs_f64();
+
+        if elapsed > 0.0 {
+            let tokens_to_add = elapsed * self.refill_rate;
+            self.tokens = (self.tokens + tokens_to_add).min(self.capacity as f64);
+            self.last_refill = now;
+        }
+    }
+}
+
+/// A filter that implements rate limiting using a token bucket algorithm.
+#[derive(Debug)]
+pub struct RateLimitFilter {
+    config: RateLimitFilterConfig,
+    /// Token bucket for rate limiting (shared across all requests)
+    bucket: Arc<Mutex<TokenBucket>>,
+}
+
+impl RateLimitFilter {
+    /// Create a new rate limit filter with the given configuration.
+    pub fn new(config: RateLimitFilterConfig) -> Self {
+        let bucket = TokenBucket::new(config.burst_size, config.requests_per_second);
+        Self {
+            config,
+            bucket: Arc::new(Mutex::new(bucket)),
+        }
+    }
+}
+
+#[async_trait]
+impl Filter for RateLimitFilter {
+    fn filter_type(&self) -> FilterType {
+        FilterType::Pre
+    }
+
+    fn name(&self) -> &str {
+        "rate_limit"
+    }
+
+    async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+        let mut bucket = self.bucket.lock().await;
+
+        if bucket.try_consume() {
+            // Request allowed
+            debug_fmt!("RateLimitFilter", "Request allowed for path: {}", request.path);
+            Ok(request)
+        } else {
+            // Rate limit exceeded
+            warn_fmt!("RateLimitFilter", "Rate limit exceeded for path: {}", request.path);
+            Err(ProxyError::RateLimitExceeded(format!(
+                "Rate limit exceeded: {} requests per second, burst size: {}",
+                self.config.requests_per_second,
+                self.config.burst_size
+            )))
+        }
+    }
+}
+
+
+
 /// Factory for creating filters based on configuration.
 #[derive(Debug)]
 pub struct FilterFactory;
@@ -610,6 +728,15 @@ impl FilterFactory {
                         Err(e)
                     }
                 }
+            },
+            "rate_limit" => {
+                let config: RateLimitFilterConfig = serde_json::from_value(config)
+                    .map_err(|e| {
+                        let err = ProxyError::FilterError(format!("Invalid rate limit filter config: {e}"));
+                        error_fmt!("Filter", "{}", err);
+                        err
+                    })?;
+                Ok(Arc::new(RateLimitFilter::new(config)))
             },
             _ => {
                 let err = ProxyError::FilterError(format!("Unknown filter type: {filter_type}"));

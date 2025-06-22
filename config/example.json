@@ -46,7 +46,12 @@
           "max_body_size": 1024
         }
       }
-    ]
+    ],
+     "client": {
+      "http2": true,
+      "http2_prior_knowledge": false,
+      "timeout": 30
+    }
   },
   "routes": [
     {

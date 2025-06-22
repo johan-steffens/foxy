@@ -59,11 +59,11 @@ once_cell = "1.21.3"
 # Target-specific TLS dependencies
 # Windows: Use rustls to avoid OpenSSL build issues
 [target.'cfg(windows)'.dependencies]
-reqwest = { version = "0.12.15", default-features = false, features = ["stream", "json", "rustls-tls"] }
+reqwest = { version = "0.12.20", default-features = false, features = ["json", "stream", "rustls-tls", "http2"] }
 
 # Unix/Linux: Use vendored OpenSSL for Docker builds to avoid build-time dependency issues
 [target.'cfg(unix)'.dependencies]
-reqwest = { version = "0.12.15", default-features = false, features = ["stream", "json", "native-tls"] }
+reqwest = { version = "0.12.20", default-features = false, features = ["json", "stream", "native-tls", "http2"] }
 openssl = { version = "0.10.72", features = ["vendored"] }
 
 # OpenTelemetry dependencies (optional)
@@ -99,13 +99,6 @@ hyper = { version = "1.6.0", features = ["server", "http1", "http2"] }
 tower = { version = "0.4", features = ["util"] }
 tower-test = "0.4"
 warp = "0.3"
-
-# Target-specific TLS for dev dependencies
-[target.'cfg(windows)'.dev-dependencies]
-reqwest = { version = "0.12.15", default-features = false, features = ["json", "stream", "rustls-tls"] }
-
-[target.'cfg(unix)'.dev-dependencies]
-reqwest = { version = "0.12.15", default-features = false, features = ["json", "stream", "native-tls"] }
 
 [features]
 default = []

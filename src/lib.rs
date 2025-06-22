@@ -60,7 +60,7 @@ pub use core::{
 };
 pub use filters::{
     FilterFactory, HeaderFilter, LoggingFilter, PathRewriteFilter, PathRewriteFilterConfig,
-    TimeoutFilter, register_filter,
+    RateLimitFilter, RateLimitFilterConfig, TimeoutFilter, register_filter,
 };
 pub use loader::{Foxy, FoxyLoader, LoaderError};
 pub use logging::{init_with_config, wrapper};

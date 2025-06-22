@@ -39,6 +39,11 @@ log_response_body = false
 log_level = "debug"
 max_body_size = 1024
 
+[[proxy.client]]
+timeout = 30
+http2 = true
+http2_prior_knowledge = false
+
 [[routes]]
 id = "httpbin-get"
 target = "https://httpbin.org"

@@ -20,6 +20,7 @@ mod tests {
             let mut values = HashMap::new();
             values.insert("server.port".to_string(), serde_json::json!(8080));
             values.insert("server.host".to_string(), serde_json::json!("127.0.0.1"));
+            values.insert("proxy.timeout".to_string(), serde_json::json!(30));
             Self { values }
         }
     }

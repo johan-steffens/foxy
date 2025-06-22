@@ -366,7 +366,17 @@ impl PredicateFactory {
                         error_fmt!("Router", "{}", err);
                         err
                     })?;
-                Ok(Arc::new(HeaderPredicate::new(header_config)))
+
+                let predicate = HeaderPredicate::new(header_config);
+                if !predicate.is_valid_config() {
+                    let err = ProxyError::RoutingError(
+                        "Header predicate config must specify either 'headers' map or both 'name' and 'value' fields".to_string()
+                    );
+                    error_fmt!("Router", "{}", err);
+                    return Err(err);
+                }
+
+                Ok(Arc::new(predicate))
             },
             "query" => {
                 let query_config: QueryPredicateConfig = serde_json::from_value(config)

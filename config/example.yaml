@@ -31,6 +31,10 @@ proxy:
         log_response_body: false
         log_level: debug
         max_body_size: 1024
+  client:
+    http2: true
+    http2_prior_knowledge: false
+    timeout: 30
 routes:
   - id: httpbin-get
     target: https://httpbin.org

@@ -68,6 +68,10 @@ pub enum ProxyError {
     #[error("security error: {0}")]
     SecurityError(String),
 
+    /// Rate limit exceeded error
+    #[error("rate limit exceeded: {0}")]
+    RateLimitExceeded(String),
+
     /// Generic error
     #[error("{0}")]
     Other(String),
@@ -231,10 +235,29 @@ impl ProxyCore {
     pub async fn new(config: Arc<Config>, router: Arc<dyn Router>) -> Result<Self, ProxyError> {
         // Configure the HTTP client based on the configuration
         let timeout_secs: u64 = config.get_or_default("proxy.timeout", 30_u64)?;
+        let http2_enabled: bool = config.get_or_default("proxy.client.http2", true)?;
+        let http2_prior_knowledge: bool = config.get_or_default("proxy.client.http2_prior_knowledge", false)?;
 
-        let client_builder = reqwest::Client::builder();
+        let mut client_builder = reqwest::Client::builder()
+            .timeout(Duration::from_secs(timeout_secs));
+
+        // Configure HTTP/2 support
+        if http2_enabled {
+            if http2_prior_knowledge {
+                client_builder = client_builder.http2_prior_knowledge();
+                debug_fmt!("Core", "HTTP/2 enabled with prior knowledge (no protocol negotiation)");
+            } else {
+                // HTTP/2 is enabled by default in reqwest when the feature is available
+                // Protocol negotiation will happen automatically via ALPN
+                debug_fmt!("Core", "HTTP/2 enabled with protocol negotiation (ALPN)");
+            }
+        } else {
+            // Force HTTP/1.1 only
+            client_builder = client_builder.http1_only();
+            debug_fmt!("Core", "HTTP/2 disabled, using HTTP/1.1 only");
+        }
+
         let client = client_builder
-            .timeout(Duration::from_secs(timeout_secs))
             .build()
             .map_err(ProxyError::ClientError)?;
 
@@ -429,7 +452,7 @@ impl ProxyCore {
             // For consistency, we could fetch it from config again or store it in ProxyCore.
             // For now, let's assume the client's timeout is sufficient.
             // If we want to re-fetch:
-            self.config.get_or_default("proxy.timeout", 30_u64).map(Duration::from_secs)?
+            self.config.get_or_default("proxy.client.timeout", 30_u64).map(Duration::from_secs)?
         };
 
         let upstream_start = Instant::now();
@@ -627,3 +650,4 @@ pub trait Router: fmt::Debug + Send + Sync {
     /// Remove a route from the router.
     async fn remove_route(&self, route_id: &str) -> Result<(), ProxyError>;
 }
+

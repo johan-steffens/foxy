@@ -132,8 +132,13 @@ impl Predicate for MethodPredicate {
 /// Configuration for a header predicate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeaderPredicateConfig {
-    /// The headers to match (name and value)
+    /// The headers to match (name and value) - for multiple headers
+    #[serde(default)]
     pub headers: HashMap<String, String>,
+    /// Single header name to match - for single header configuration
+    pub name: Option<String>,
+    /// Single header value to match - for single header configuration
+    pub value: Option<String>,
     /// Whether to require exact match for header values
     #[serde(default)]
     pub exact_match: bool,
@@ -151,12 +156,32 @@ impl HeaderPredicate {
     pub fn new(config: HeaderPredicateConfig) -> Self {
         Self { config }
     }
+
+    /// Get the headers to match, combining both configuration formats
+    fn get_headers_to_match(&self) -> HashMap<String, String> {
+        let mut headers = self.config.headers.clone();
+
+        // If single header name/value is specified, add it to the headers map
+        if let (Some(name), Some(value)) = (&self.config.name, &self.config.value) {
+            headers.insert(name.clone(), value.clone());
+        }
+
+        headers
+    }
+
+    /// Validate that the configuration has at least one header to match
+    pub fn is_valid_config(&self) -> bool {
+        !self.config.headers.is_empty() ||
+        (self.config.name.is_some() && self.config.value.is_some())
+    }
 }
 
 #[async_trait]
 impl Predicate for HeaderPredicate {
     async fn matches(&self, request: &ProxyRequest) -> bool {
-        for (name, expected_value) in &self.config.headers {
+        let headers_to_match = self.get_headers_to_match();
+
+        for (name, expected_value) in &headers_to_match {
             // Try to get the header
             if let Some(header_value) = request.headers.get(name) {
                 // Convert to string for comparison
