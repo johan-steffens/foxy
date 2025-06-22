@@ -77,17 +77,8 @@ jobs:
         cargo llvm-cov --json --output-path coverage/coverage.json \
           --ignore-filename-regex 'benches/.*'
 
-    - name: Check Codecov Token
-      id: check_codecov_token
-      run: |
-        if [ -n "${{ secrets.CODECOV_TOKEN }}" ]; then
-          echo "codecov_token_exists=true" >> $GITHUB_OUTPUT
-        else
-          echo "codecov_token_exists=false" >> $GITHUB_OUTPUT
-        fi
-
     - name: Upload coverage to Codecov
-      if: ${{ inputs.upload_to_codecov && steps.check_codecov_token.outputs.codecov_token_exists == 'true' }}
+      if: ${{ inputs.upload_to_codecov }}
       uses: codecov/codecov-action@v5
       with:
         files: coverage/lcov.info
@@ -95,7 +86,7 @@ jobs:
         fail_ci_if_error: false
 
     - name: Codecov upload skipped
-      if: ${{ inputs.upload_to_codecov && steps.check_codecov_token.outputs.codecov_token_exists == 'false' }}
+      if: ${{ inputs.upload_to_codecov  }}
       run: |
         echo "⚠️ Codecov upload skipped: CODECOV_TOKEN secret not configured"
         echo "To enable Codecov uploads, add your Codecov token as a repository secret named 'CODECOV_TOKEN'"
@@ -116,10 +107,8 @@ jobs:
           echo "📊 [View detailed HTML report in artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
 
           # Add Codecov status
-          if [ "${{ steps.check_codecov_token.outputs.codecov_token_exists }}" == "true" ] && [ "${{ inputs.upload_to_codecov }}" != "false" ]; then
+          if [ "${{ inputs.upload_to_codecov }}" != "false" ]; then
             echo "✅ Coverage uploaded to Codecov" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ steps.check_codecov_token.outputs.codecov_token_exists }}" == "false" ]; then
-            echo "⚠️ Codecov upload skipped (no token configured)" >> $GITHUB_STEP_SUMMARY
           else
             echo "ℹ️ Codecov upload disabled by user input" >> $GITHUB_STEP_SUMMARY
           fi
