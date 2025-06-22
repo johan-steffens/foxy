@@ -298,7 +298,7 @@ impl crate::core::Router for PredicateRouter {
         {
             let mut routes = self.routes.write().await;
             if routes.remove(route_id).is_none() {
-                return Err(ProxyError::RoutingError(format!("Route not found: {}", route_id)));
+                return Err(ProxyError::RoutingError(format!("Route not found: {route_id}")));
             }
         }
 
@@ -335,7 +335,7 @@ impl PredicateFactory {
                 let path_config: PathPredicateConfig = serde_json::from_value(config)
                     .map_err(|e| {
                         let err = ProxyError::RoutingError(
-                            format!("Invalid path predicate config: {}", e)
+                            format!("Invalid path predicate config: {e}")
                         );
                         error_fmt!("Router", "{}", err);
                         err
@@ -350,7 +350,7 @@ impl PredicateFactory {
                 let method_config: MethodPredicateConfig = serde_json::from_value(config)
                     .map_err(|e| {
                         let err = ProxyError::RoutingError(
-                            format!("Invalid method predicate config: {}", e)
+                            format!("Invalid method predicate config: {e}")
                         );
                         error_fmt!("Router", "{}", err);
                         err
@@ -361,7 +361,7 @@ impl PredicateFactory {
                 let header_config: HeaderPredicateConfig = serde_json::from_value(config)
                     .map_err(|e| {
                         let err = ProxyError::RoutingError(
-                            format!("Invalid header predicate config: {}", e)
+                            format!("Invalid header predicate config: {e}")
                         );
                         error_fmt!("Router", "{}", err);
                         err
@@ -372,7 +372,7 @@ impl PredicateFactory {
                 let query_config: QueryPredicateConfig = serde_json::from_value(config)
                     .map_err(|e| {
                         let err = ProxyError::RoutingError(
-                            format!("Invalid query predicate config: {}", e)
+                            format!("Invalid query predicate config: {e}")
                         );
                         error_fmt!("Router", "{}", err);
                         err
@@ -381,7 +381,7 @@ impl PredicateFactory {
             },
             _ => {
                 let err = ProxyError::RoutingError(
-                    format!("Unknown predicate type: {}", predicate_type)
+                    format!("Unknown predicate type: {predicate_type}")
                 );
                 error_fmt!("Router", "{}", err);
                 Err(err)

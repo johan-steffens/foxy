@@ -104,7 +104,7 @@ impl OidcProvider {
             .user_agent("foxy/oidc")
             .build()
             .map_err(|e| {
-                let err = ProxyError::SecurityError(format!("Failed to build HTTP client: {}", e));
+                let err = ProxyError::SecurityError(format!("Failed to build HTTP client: {e}"));
                 error_fmt!("OidcProvider", "{}", err);
                 err
             })?;
@@ -120,7 +120,7 @@ impl OidcProvider {
                             Ok(meta) => meta,
                             Err(e) => {
                                 let err = ProxyError::SecurityError(
-                                    format!("Failed to parse OIDC discovery response: {}", e)
+                                    format!("Failed to parse OIDC discovery response: {e}")
                                 );
                                 error_fmt!("OidcProvider", "{}", err);
                                 return Err(err);
@@ -129,7 +129,7 @@ impl OidcProvider {
                     },
                     Err(e) => {
                         let err = ProxyError::SecurityError(
-                            format!("OIDC discovery endpoint returned error: {}", e)
+                            format!("OIDC discovery endpoint returned error: {e}")
                         );
                         error_fmt!("OidcProvider", "{}", err);
                         return Err(err);
@@ -138,7 +138,7 @@ impl OidcProvider {
             },
             Err(e) => {
                 let err = ProxyError::SecurityError(
-                    format!("Failed to connect to OIDC discovery endpoint: {}", e)
+                    format!("Failed to connect to OIDC discovery endpoint: {e}")
                 );
                 error_fmt!("OidcProvider", "{}", err);
                 return Err(err);
@@ -171,7 +171,7 @@ impl OidcProvider {
                 },
                 Err(e) => {
                     let err = ProxyError::SecurityError(
-                        format!("Invalid glob pattern in bypass rule: {}", e)
+                        format!("Invalid glob pattern in bypass rule: {e}")
                     );
                     error_fmt!("OidcProvider", "{}", err);
                     return Err(err);
@@ -216,7 +216,7 @@ impl OidcProvider {
                             Ok(jwks) => jwks,
                             Err(e) => {
                                 let err = ProxyError::SecurityError(
-                                    format!("Failed to parse JWKS response: {}", e)
+                                    format!("Failed to parse JWKS response: {e}")
                                 );
                                 error_fmt!("OidcProvider", "{}", err);
                                 return Err(err);
@@ -225,7 +225,7 @@ impl OidcProvider {
                     },
                     Err(e) => {
                         let err = ProxyError::SecurityError(
-                            format!("JWKS endpoint returned error: {}", e)
+                            format!("JWKS endpoint returned error: {e}")
                         );
                         error_fmt!("OidcProvider", "{}", err);
                         return Err(err);
@@ -234,7 +234,7 @@ impl OidcProvider {
             },
             Err(e) => {
                 let err = ProxyError::SecurityError(
-                    format!("Failed to connect to JWKS endpoint: {}", e)
+                    format!("Failed to connect to JWKS endpoint: {e}")
                 );
                 error_fmt!("OidcProvider", "{}", err);
                 return Err(err);
@@ -262,7 +262,7 @@ impl OidcProvider {
                 trace_fmt!("OidcProvider", "Converting RSA JWK to decoding key");
                 DecodingKey::from_rsa_components(&params.n, &params.e)
                     .map_err(|e| {
-                        let err = ProxyError::SecurityError(format!("Invalid RSA key: {}", e));
+                        let err = ProxyError::SecurityError(format!("Invalid RSA key: {e}"));
                         error_fmt!("OidcProvider", "{}", err);
                         err
                     })
@@ -271,7 +271,7 @@ impl OidcProvider {
                 trace_fmt!("OidcProvider", "Converting EC JWK to decoding key");
                 DecodingKey::from_ec_components(&params.x, &params.y)
                     .map_err(|e| {
-                        let err = ProxyError::SecurityError(format!("Invalid EC key: {}", e));
+                        let err = ProxyError::SecurityError(format!("Invalid EC key: {e}"));
                         error_fmt!("OidcProvider", "{}", err);
                         err
                     })
@@ -284,7 +284,7 @@ impl OidcProvider {
                 trace_fmt!("OidcProvider", "Converting OKP JWK to decoding key");
                 DecodingKey::from_ed_components(&params.x)
                     .map_err(|e| {
-                        let err = ProxyError::SecurityError(format!("Invalid OKP key: {}", e));
+                        let err = ProxyError::SecurityError(format!("Invalid OKP key: {e}"));
                         error_fmt!("OidcProvider", "{}", err);
                         err
                     })
@@ -297,7 +297,7 @@ impl OidcProvider {
         let header = match decode_header(token) {
             Ok(h) => h,
             Err(e) => {
-                let err = ProxyError::SecurityError(format!("Invalid JWT header: {}", e));
+                let err = ProxyError::SecurityError(format!("Invalid JWT header: {e}"));
                 warn_fmt!("OidcProvider", "{}", err);
                 return Err(err);
             }
@@ -358,12 +358,12 @@ impl OidcProvider {
                                 trace_fmt!("OidcProvider", "Using shared secret for HS* algorithm");
                                 DecodingKey::from_secret(secret.as_bytes())
                             } else {
-                                let err = ProxyError::SecurityError(format!("Key ID {} not found in JWKS", kid));
+                                let err = ProxyError::SecurityError(format!("Key ID {kid} not found in JWKS"));
                                 warn_fmt!("OidcProvider", "{}", err);
                                 return Err(err);
                             }
                         } else {
-                            let err = ProxyError::SecurityError(format!("Key ID {} not found in JWKS", kid));
+                            let err = ProxyError::SecurityError(format!("Key ID {kid} not found in JWKS"));
                             warn_fmt!("OidcProvider", "{}", err);
                             return Err(err);
                         }
@@ -395,13 +395,14 @@ impl OidcProvider {
                 Ok(token_data.claims)
             }
             Err(e) => {
-                let err = ProxyError::SecurityError(format!("JWT validation failed: {}", e));
+                let err = ProxyError::SecurityError(format!("JWT validation failed: {e}"));
                 warn_fmt!("OidcProvider", "{}", err);
                 Err(err)
             }
         }
     }
 
+    #[allow(dead_code)]
     fn validate_std_claims(&self, claims: &serde_json::Value) -> Result<(), ProxyError> {
         // Check issuer
         if let Some(iss) = claims["iss"].as_str() {
@@ -430,7 +431,7 @@ impl OidcProvider {
             
             if !valid_audience {
                 let err = ProxyError::SecurityError(
-                    format!("Invalid audience: expected '{}'", expected_aud)
+                    format!("Invalid audience: expected '{expected_aud}'")
                 );
                 warn_fmt!("OidcProvider", "{}", err);
                 return Err(err);
@@ -446,7 +447,7 @@ impl OidcProvider {
                 
             if exp <= now {
                 let err = ProxyError::SecurityError(
-                    format!("Token expired at {}, current time is {}", exp, now)
+                    format!("Token expired at {exp}, current time is {now}")
                 );
                 warn_fmt!("OidcProvider", "{}", err);
                 return Err(err);
@@ -464,6 +465,1546 @@ impl OidcProvider {
             debug_fmt!("OidcProvider", "OIDC bypass for {} {}", method, path);
         }
         bypassed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::{ProxyRequest, HttpMethod, RequestContext};
+    use reqwest::header::HeaderMap;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::{method, path};
+    use base64::{Engine as _};
+
+    #[test]
+    fn test_route_rule_config_deserialization() {
+        let json = r#"{
+            "methods": ["GET", "POST"],
+            "path": "/api/*"
+        }"#;
+
+        let config: RouteRuleConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.methods, vec!["GET", "POST"]);
+        assert_eq!(config.path, "/api/*");
+    }
+
+    #[test]
+    fn test_route_rule_matches() {
+        let mut builder = GlobSetBuilder::new();
+        builder.add(Glob::new("/api/*").unwrap());
+        let paths = builder.build().unwrap();
+
+        let rule = RouteRule {
+            methods: vec!["GET".to_string(), "POST".to_string()],
+            paths,
+        };
+
+        // Test method and path matching
+        assert!(rule.matches("GET", "/api/users"));
+        assert!(rule.matches("POST", "/api/users"));
+        assert!(!rule.matches("DELETE", "/api/users"));
+        assert!(!rule.matches("GET", "/health"));
+
+        // Test case sensitive method matching (methods are stored in uppercase)
+        assert!(!rule.matches("get", "/api/users"));
+        assert!(!rule.matches("post", "/api/users"));
+    }
+
+    #[test]
+    fn test_route_rule_wildcard_methods() {
+        let mut builder = GlobSetBuilder::new();
+        builder.add(Glob::new("/health").unwrap());
+        let paths = builder.build().unwrap();
+
+        let rule = RouteRule {
+            methods: vec!["*".to_string()],
+            paths,
+        };
+
+        assert!(rule.matches("GET", "/health"));
+        assert!(rule.matches("POST", "/health"));
+        assert!(rule.matches("DELETE", "/health"));
+        assert!(!rule.matches("GET", "/api"));
+    }
+
+    #[test]
+    fn test_oidc_config_deserialization() {
+        let json = r#"{
+            "issuer-uri": "https://auth.example.com/.well-known/openid-configuration",
+            "aud": "my-app",
+            "shared-secret": "secret123",
+            "bypass": [
+                {
+                    "methods": ["GET"],
+                    "path": "/health"
+                }
+            ]
+        }"#;
+
+        let config: OidcConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.issuer_uri, "https://auth.example.com/.well-known/openid-configuration");
+        assert_eq!(config.aud, Some("my-app".to_string()));
+        assert_eq!(config.shared_secret, Some("secret123".to_string()));
+        assert_eq!(config.bypass.len(), 1);
+        assert_eq!(config.bypass[0].methods, vec!["GET"]);
+        assert_eq!(config.bypass[0].path, "/health");
+    }
+
+    #[test]
+    fn test_oidc_config_minimal() {
+        let json = r#"{
+            "issuer-uri": "https://auth.example.com"
+        }"#;
+
+        let config: OidcConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.issuer_uri, "https://auth.example.com");
+        assert_eq!(config.aud, None);
+        assert_eq!(config.shared_secret, None);
+        assert!(config.bypass.is_empty());
+    }
+
+    #[test]
+    fn test_oidc_config_empty_bypass() {
+        let json = r#"{
+            "issuer-uri": "https://auth.example.com",
+            "bypass": []
+        }"#;
+
+        let config: OidcConfig = serde_json::from_str(json).unwrap();
+        assert!(config.bypass.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_discover_success() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri()),
+                    "authorization_endpoint": format!("{}/auth", mock_server.uri()),
+                    "token_endpoint": format!("{}/token", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: Some("test-audience".to_string()),
+            shared_secret: Some("test-secret".to_string()),
+            bypass: vec![
+                RouteRuleConfig {
+                    methods: vec!["GET".to_string()],
+                    path: "/health".to_string(),
+                },
+                RouteRuleConfig {
+                    methods: vec!["*".to_string()],
+                    path: "/public/*".to_string(),
+                },
+            ],
+        };
+
+        let result = OidcProvider::discover(config.clone()).await;
+        assert!(result.is_ok());
+
+        let provider = result.unwrap();
+        assert_eq!(provider.issuer, mock_server.uri());
+        assert_eq!(provider.aud, Some("test-audience".to_string()));
+        assert_eq!(provider.shared_secret, Some("test-secret".to_string()));
+        assert_eq!(provider.jwks_uri, format!("{}/jwks", mock_server.uri()));
+        assert_eq!(provider.rules.len(), 2);
+
+        // Test bypass rules were compiled correctly
+        assert!(provider.is_bypassed("GET", "/health"));
+        assert!(provider.is_bypassed("POST", "/public/api"));
+        assert!(!provider.is_bypassed("POST", "/private/api"));
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_discover_success_minimal_config() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let result = OidcProvider::discover(config).await;
+        assert!(result.is_ok());
+
+        let provider = result.unwrap();
+        assert_eq!(provider.issuer, mock_server.uri());
+        assert_eq!(provider.aud, None);
+        assert_eq!(provider.shared_secret, None);
+        assert_eq!(provider.jwks_uri, format!("{}/jwks", mock_server.uri()));
+        assert!(provider.rules.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_discover_success_with_well_known_suffix() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/.well-known/openid-configuration"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: format!("{}/.well-known/openid-configuration", mock_server.uri()),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let result = OidcProvider::discover(config).await;
+        assert!(result.is_ok());
+
+        let provider = result.unwrap();
+        // Should strip the .well-known suffix from issuer
+        assert_eq!(provider.issuer, mock_server.uri());
+        assert_eq!(provider.jwks_uri, format!("{}/jwks", mock_server.uri()));
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_discover_invalid_url() {
+        let config = OidcConfig {
+            issuer_uri: "invalid-url".to_string(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let result = OidcProvider::discover(config).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Failed to connect to OIDC discovery endpoint"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_discover_http_error() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint to return 404
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let result = OidcProvider::discover(config).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("OIDC discovery endpoint returned error"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_discover_invalid_json() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint to return invalid JSON
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_string("invalid json"))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let result = OidcProvider::discover(config).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Failed to parse OIDC discovery response"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_discover_missing_jwks_uri() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint to return JSON without jwks_uri
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "authorization_endpoint": format!("{}/auth", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let result = OidcProvider::discover(config).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Failed to parse OIDC discovery response"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_discover_invalid_bypass_glob() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![
+                RouteRuleConfig {
+                    methods: vec!["GET".to_string()],
+                    path: "[invalid-glob".to_string(), // Invalid glob pattern
+                },
+            ],
+        };
+
+        let result = OidcProvider::discover(config).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Invalid glob pattern in bypass rule"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_discover_complex_bypass_rules() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![
+                RouteRuleConfig {
+                    methods: vec!["get".to_string(), "post".to_string()], // lowercase methods
+                    path: "/api/v*/health".to_string(),
+                },
+                RouteRuleConfig {
+                    methods: vec!["*".to_string()],
+                    path: "/static/**".to_string(),
+                },
+            ],
+        };
+
+        let result = OidcProvider::discover(config).await;
+        assert!(result.is_ok());
+
+        let provider = result.unwrap();
+        assert_eq!(provider.rules.len(), 2);
+
+        // Test that methods are converted to uppercase
+        assert!(provider.is_bypassed("GET", "/api/v1/health"));
+        assert!(provider.is_bypassed("POST", "/api/v2/health"));
+        assert!(provider.is_bypassed("DELETE", "/static/css/style.css"));
+        assert!(!provider.is_bypassed("GET", "/api/v1/users"));
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_cache_fresh() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Set last refresh to now (fresh cache)
+        {
+            let mut w = provider.last_refresh.write().await;
+            *w = tokio::time::Instant::now();
+        }
+
+        // Should not make HTTP request since cache is fresh
+        let result = provider.refresh_jwks().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_success() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "keys": [
+                        {
+                            "kty": "RSA",
+                            "kid": "test-key-1",
+                            "use": "sig",
+                            "alg": "RS256",
+                            "n": "test-modulus",
+                            "e": "AQAB"
+                        }
+                    ]
+                })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Force cache expiration
+        {
+            let mut w = provider.last_refresh.write().await;
+            *w = tokio::time::Instant::now() - std::time::Duration::from_secs(3600);
+        }
+
+        let result = provider.refresh_jwks().await;
+        assert!(result.is_ok());
+
+        // Verify JWKS was cached
+        let jwks = provider.jwks.read().await;
+        assert!(jwks.is_some());
+        let jwks = jwks.as_ref().unwrap();
+        assert_eq!(jwks.keys.len(), 1);
+        assert_eq!(jwks.keys[0].common.key_id, Some("test-key-1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_http_error() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint to return 500 error
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Force cache expiration
+        {
+            let mut w = provider.last_refresh.write().await;
+            *w = tokio::time::Instant::now() - std::time::Duration::from_secs(3600);
+        }
+
+        let result = provider.refresh_jwks().await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("JWKS endpoint returned error"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_invalid_json() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint to return invalid JSON
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_string("invalid json"))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Force cache expiration
+        {
+            let mut w = provider.last_refresh.write().await;
+            *w = tokio::time::Instant::now() - std::time::Duration::from_secs(3600);
+        }
+
+        let result = provider.refresh_jwks().await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Failed to parse JWKS response"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_connection_error() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "http://invalid-host-12345.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(
+                tokio::time::Instant::now() - std::time::Duration::from_secs(3600)
+            )),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        let result = provider.refresh_jwks().await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Failed to connect to JWKS endpoint"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_invalid_header() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        // Invalid JWT token (not base64 encoded)
+        let result = provider.validate_token("invalid.token.here").await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Invalid JWT header"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_unsupported_algorithm() {
+        use jsonwebtoken::Header;
+        use serde_json::json;
+
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        // Create a JWT with unsupported algorithm (none)
+
+
+        let mut _header = Header::new(jsonwebtoken::Algorithm::HS256);
+        _header.alg = jsonwebtoken::Algorithm::HS256; // This will be overridden
+
+        // We need to manually create a token with "none" algorithm
+        // Since jsonwebtoken doesn't support "none", we'll create a malformed token
+        let header_json = json!({"alg": "none", "typ": "JWT"});
+        let header_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(header_json.to_string().as_bytes());
+        let payload_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(json!({"sub": "test"}).to_string().as_bytes());
+        let token = format!("{}.{}.signature", header_b64, payload_b64);
+
+        let result = provider.validate_token(&token).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Invalid JWT header") || msg.contains("Algorithm not allowed"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_no_jwks_available() {
+        use jsonwebtoken::{Header, Algorithm};
+        use serde_json::json;
+
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)), // No JWKS available
+            last_refresh: Arc::new(RwLock::new(
+                tokio::time::Instant::now() - std::time::Duration::from_secs(3600)
+            )),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        // Create a valid JWT header with RS256
+
+        let _header = Header {
+            alg: Algorithm::RS256,
+            kid: Some("test-key".to_string()),
+            ..Default::default()
+        };
+
+        let header_json = json!({
+            "alg": "RS256",
+            "typ": "JWT",
+            "kid": "test-key"
+        });
+        let header_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(header_json.to_string().as_bytes());
+        let payload_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(json!({"sub": "test"}).to_string().as_bytes());
+        let token = format!("{}.{}.signature", header_b64, payload_b64);
+
+        let result = provider.validate_token(&token).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("No JWKS available") || msg.contains("Failed to connect"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_hmac_success() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: Some("test-audience".to_string()),
+            shared_secret: Some("test-secret-key".to_string()),
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        // Create a valid HMAC JWT token
+        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+
+        let header = Header::new(Algorithm::HS256);
+
+        #[derive(serde::Serialize)]
+        struct HmacTestClaims {
+            iss: String,
+            aud: String,
+            sub: String,
+            exp: i64,
+            iat: i64,
+        }
+
+        let claims = HmacTestClaims {
+            iss: "https://auth.example.com".to_string(),
+            aud: "test-audience".to_string(),
+            sub: "test-user".to_string(),
+            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
+            iat: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64,
+        };
+
+        let token = encode(
+            &header,
+            &claims,
+            &EncodingKey::from_secret("test-secret-key".as_ref())
+        ).unwrap();
+
+        let result = provider.validate_token(&token).await;
+        assert!(result.is_ok());
+
+        let validated_claims = result.unwrap();
+        assert_eq!(validated_claims["iss"], "https://auth.example.com");
+        assert_eq!(validated_claims["aud"], "test-audience");
+        assert_eq!(validated_claims["sub"], "test-user");
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_hmac_wrong_secret() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: Some("wrong-secret".to_string()),
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        // Create a JWT token with different secret
+        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+
+        let header = Header::new(Algorithm::HS256);
+
+        #[derive(serde::Serialize)]
+        struct WrongSecretClaims {
+            iss: String,
+            sub: String,
+            exp: i64,
+        }
+
+        let claims = WrongSecretClaims {
+            iss: "https://auth.example.com".to_string(),
+            sub: "test-user".to_string(),
+            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
+        };
+
+        let token = encode(
+            &header,
+            &claims,
+            &EncodingKey::from_secret("correct-secret".as_ref())
+        ).unwrap();
+
+        let result = provider.validate_token(&token).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("InvalidSignature"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_hmac_no_shared_secret() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None, // No shared secret configured
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        // Create a HMAC JWT token
+        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+
+        let header = Header::new(Algorithm::HS256);
+
+        #[derive(serde::Serialize)]
+        struct NoSecretClaims {
+            iss: String,
+            sub: String,
+            exp: i64,
+        }
+
+        let claims = NoSecretClaims {
+            iss: "https://auth.example.com".to_string(),
+            sub: "test-user".to_string(),
+            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
+        };
+
+        let token = encode(
+            &header,
+            &claims,
+            &EncodingKey::from_secret("test-secret".as_ref())
+        ).unwrap();
+
+        let result = provider.validate_token(&token).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("No key ID in token and no shared secret configured"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_claims_wrong_issuer() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: Some("test-secret".to_string()),
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        // Create a JWT token with wrong issuer
+        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+
+        let header = Header::new(Algorithm::HS256);
+
+        #[derive(serde::Serialize)]
+        struct WrongIssuerClaims {
+            iss: String,
+            sub: String,
+            exp: i64,
+        }
+
+        let claims = WrongIssuerClaims {
+            iss: "https://wrong-issuer.com".to_string(), // Wrong issuer
+            sub: "test-user".to_string(),
+            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
+        };
+
+        let token = encode(
+            &header,
+            &claims,
+            &EncodingKey::from_secret("test-secret".as_ref())
+        ).unwrap();
+
+        let result = provider.validate_token(&token).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("InvalidIssuer"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_claims_wrong_audience() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: Some("expected-audience".to_string()),
+            shared_secret: Some("test-secret".to_string()),
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        // Create a JWT token with wrong audience
+        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+
+        let header = Header::new(Algorithm::HS256);
+
+        #[derive(serde::Serialize)]
+        struct WrongAudClaims {
+            iss: String,
+            aud: String,
+            sub: String,
+            exp: i64,
+        }
+
+        let claims = WrongAudClaims {
+            iss: "https://auth.example.com".to_string(),
+            aud: "wrong-audience".to_string(), // Wrong audience
+            sub: "test-user".to_string(),
+            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
+        };
+
+        let token = encode(
+            &header,
+            &claims,
+            &EncodingKey::from_secret("test-secret".as_ref())
+        ).unwrap();
+
+        let result = provider.validate_token(&token).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("InvalidAudience"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_claims_expired_token() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: Some("test-secret".to_string()),
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        // Create an expired JWT token
+        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+
+        let header = Header::new(Algorithm::HS256);
+
+        #[derive(serde::Serialize)]
+        struct ExpiredClaims {
+            iss: String,
+            sub: String,
+            exp: i64,
+        }
+
+        let claims = ExpiredClaims {
+            iss: "https://auth.example.com".to_string(),
+            sub: "test-user".to_string(),
+            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() - 3600) as i64, // Expired 1 hour ago
+        };
+
+        let token = encode(
+            &header,
+            &claims,
+            &EncodingKey::from_secret("test-secret".as_ref())
+        ).unwrap();
+
+        let result = provider.validate_token(&token).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("ExpiredSignature"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_claims_long_expiration() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: Some("test-secret".to_string()),
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        // Create a JWT token with very long expiration (effectively no expiration)
+        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+
+
+        let header = Header::new(Algorithm::HS256);
+
+        // Create claims with very long expiration (100 years from now)
+        #[derive(serde::Serialize)]
+        struct TestClaimsLongExp {
+            iss: String,
+            sub: String,
+            exp: i64,
+        }
+
+        let claims = TestClaimsLongExp {
+            iss: "https://auth.example.com".to_string(),
+            sub: "test-user".to_string(),
+            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + (100 * 365 * 24 * 3600)) as i64, // 100 years
+        };
+
+        let token = encode(
+            &header,
+            &claims,
+            &EncodingKey::from_secret("test-secret".as_ref())
+        ).unwrap();
+
+        let result = provider.validate_token(&token).await;
+        if result.is_err() {
+            println!("Long expiration test error: {:?}", result);
+        }
+        assert!(result.is_ok()); // Should succeed with very long expiration
+
+        let validated_claims = result.unwrap();
+        assert_eq!(validated_claims["iss"], "https://auth.example.com");
+        assert_eq!(validated_claims["sub"], "test-user");
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_missing_key_id() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "keys": [
+                        {
+                            "kty": "RSA",
+                            "kid": "test-key-1",
+                            "use": "sig",
+                            "alg": "RS256",
+                            "n": "test-modulus",
+                            "e": "AQAB"
+                        }
+                    ]
+                })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Create a JWT header without kid
+        use serde_json::json;
+        let header_json = json!({
+            "alg": "RS256",
+            "typ": "JWT"
+            // No kid
+        });
+        let header_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(header_json.to_string().as_bytes());
+        let payload_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(json!({"sub": "test"}).to_string().as_bytes());
+        let token = format!("{}.{}.signature", header_b64, payload_b64);
+
+        let result = provider.validate_token(&token).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("No key ID in token and no shared secret configured"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_token_key_not_found() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "keys": [
+                        {
+                            "kty": "RSA",
+                            "kid": "different-key",
+                            "use": "sig",
+                            "alg": "RS256",
+                            "n": "test-modulus",
+                            "e": "AQAB"
+                        }
+                    ]
+                })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Create a JWT header with non-existent kid
+        use serde_json::json;
+        let header_json = json!({
+            "alg": "RS256",
+            "typ": "JWT",
+            "kid": "missing-key"
+        });
+        let header_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(header_json.to_string().as_bytes());
+        let payload_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(json!({"sub": "test"}).to_string().as_bytes());
+        let token = format!("{}.{}.signature", header_b64, payload_b64);
+
+        let result = provider.validate_token(&token).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("not found in JWKS"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_integration_full_oidc_flow_with_bypass() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: Some("test-app".to_string()),
+            shared_secret: Some("integration-secret".to_string()),
+            bypass: vec![
+                RouteRuleConfig {
+                    methods: vec!["GET".to_string()],
+                    path: "/health".to_string(),
+                },
+                RouteRuleConfig {
+                    methods: vec!["*".to_string()],
+                    path: "/public/*".to_string(),
+                },
+            ],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Test 1: Bypass should work
+        let bypass_request = ProxyRequest {
+            method: HttpMethod::Get,
+            path: "/health".to_string(),
+            query: None,
+            headers: HeaderMap::new(),
+            body: reqwest::Body::from(Vec::new()),
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: Some("http://test.example.com".to_string()),
+        };
+
+        let result = provider.pre(bypass_request).await;
+        assert!(result.is_ok());
+
+        // Test 2: Test that non-bypassed requests require authentication
+        let auth_request = ProxyRequest {
+            method: HttpMethod::Post,
+            path: "/api/users".to_string(),
+            query: None,
+            headers: HeaderMap::new(), // No authorization header
+            body: reqwest::Body::from(Vec::new()),
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: Some("http://test.example.com".to_string()),
+        };
+
+        let result = provider.pre(auth_request).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Missing authorization header"));
+        } else {
+            panic!("Expected SecurityError for missing auth header");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_integration_full_oidc_flow_auth_failure() {
+        // Setup mock server
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "issuer": mock_server.uri(),
+                    "jwks_uri": format!("{}/jwks", mock_server.uri())
+                })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: Some("test-secret".to_string()),
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Test with missing authorization header
+        let request = ProxyRequest {
+            method: HttpMethod::Post,
+            path: "/api/users".to_string(),
+            query: None,
+            headers: HeaderMap::new(),
+            body: reqwest::Body::from(Vec::new()),
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: Some("http://test.example.com".to_string()),
+        };
+
+        let result = provider.pre(request).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Missing authorization header"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[test]
+    fn test_oidc_provider_is_bypassed() {
+        let mut builder1 = GlobSetBuilder::new();
+        builder1.add(Glob::new("/health").unwrap());
+        let paths1 = builder1.build().unwrap();
+
+        let mut builder2 = GlobSetBuilder::new();
+        builder2.add(Glob::new("/public/*").unwrap());
+        let paths2 = builder2.build().unwrap();
+
+        let rules = vec![
+            RouteRule {
+                methods: vec!["GET".to_string()],
+                paths: paths1,
+            },
+            RouteRule {
+                methods: vec!["*".to_string()],
+                paths: paths2,
+            },
+        ];
+
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules,
+        };
+
+        // Test bypass rules
+        assert!(provider.is_bypassed("GET", "/health"));
+        assert!(!provider.is_bypassed("POST", "/health"));
+        assert!(provider.is_bypassed("GET", "/public/api"));
+        assert!(provider.is_bypassed("POST", "/public/api"));
+        assert!(!provider.is_bypassed("GET", "/private/api"));
+    }
+
+    #[test]
+    fn test_security_provider_trait_implementation() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        assert_eq!(provider.name(), "OidcProvider");
+        assert_eq!(provider.stage(), SecurityStage::Pre);
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_pre_bypass() {
+        let mut builder = GlobSetBuilder::new();
+        builder.add(Glob::new("/health").unwrap());
+        let paths = builder.build().unwrap();
+
+        let rules = vec![
+            RouteRule {
+                methods: vec!["GET".to_string()],
+                paths,
+            },
+        ];
+
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules,
+        };
+
+        let headers = HeaderMap::new();
+        let request = ProxyRequest {
+            method: HttpMethod::Get,
+            path: "/health".to_string(),
+            query: None,
+            headers,
+            body: reqwest::Body::from(""),
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: None,
+        };
+
+        let result = provider.pre(request).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_pre_missing_auth_header() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        let headers = HeaderMap::new();
+        let request = ProxyRequest {
+            method: HttpMethod::Get,
+            path: "/api/users".to_string(),
+            query: None,
+            headers,
+            body: reqwest::Body::from(""),
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: None,
+        };
+
+        let result = provider.pre(request).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert_eq!(msg, "Missing authorization header");
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_pre_invalid_auth_scheme() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Basic dXNlcjpwYXNz".parse().unwrap());
+
+        let request = ProxyRequest {
+            method: HttpMethod::Get,
+            path: "/api/users".to_string(),
+            query: None,
+            headers,
+            body: reqwest::Body::from(""),
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: None,
+        };
+
+        let result = provider.pre(request).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Invalid authorization scheme"));
+            assert!(msg.contains("expected 'Bearer'"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_pre_empty_bearer_token() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer ".parse().unwrap());
+
+        let request = ProxyRequest {
+            method: HttpMethod::Get,
+            path: "/api/users".to_string(),
+            query: None,
+            headers,
+            body: reqwest::Body::from(""),
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: None,
+        };
+
+        let result = provider.pre(request).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert_eq!(msg, "Empty bearer token");
+        } else {
+            panic!("Expected SecurityError");
+        }
     }
 }
 
@@ -488,7 +2029,7 @@ impl SecurityProvider for OidcProvider {
                 Ok(s) => s.to_lowercase(),
                 Err(e) => {
                     let err = ProxyError::SecurityError(
-                        format!("Invalid authorization header: {}", e)
+                        format!("Invalid authorization header: {e}")
                     );
                     warn_fmt!("OidcProvider", "{}", err);
                     return Err(err);

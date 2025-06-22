@@ -190,5 +190,194 @@ pub fn init(config: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::erro
 
 /// No‑op version when the feature is disabled.
 #[cfg(not(feature = "opentelemetry"))]
-pub fn init(_cfg: Option<&serde_json::Value>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> { Ok(()) }
+pub fn init(_cfg: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> { Ok(()) }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_opentelemetry_config_default() {
+        let config = OpenTelemetryConfig::default();
+
+        assert_eq!(config.endpoint, "http://localhost:4317");
+        assert_eq!(config.service_name, "foxy-proxy");
+        assert!(config.include_headers);
+        assert!(!config.include_bodies);
+        assert_eq!(config.max_body_size, 1024);
+        assert!(config.span_annotations.is_empty());
+        assert!(config.collector_headers.is_empty());
+        assert!(config.resource_attributes.is_empty());
+    }
+
+    #[test]
+    fn test_opentelemetry_config_custom() {
+        let mut span_annotations = HashMap::new();
+        span_annotations.insert("custom.key".to_string(), "custom.value".to_string());
+
+        let mut collector_headers = HashMap::new();
+        collector_headers.insert("X-API-Key".to_string(), "secret-key".to_string());
+
+        let mut resource_attributes = HashMap::new();
+        resource_attributes.insert("service.version".to_string(), "1.0.0".to_string());
+
+        let config = OpenTelemetryConfig {
+            endpoint: "http://custom-collector:4317".to_string(),
+            service_name: "custom-service".to_string(),
+            include_headers: false,
+            include_bodies: true,
+            max_body_size: 2048,
+            span_annotations,
+            collector_headers,
+            resource_attributes,
+        };
+
+        assert_eq!(config.endpoint, "http://custom-collector:4317");
+        assert_eq!(config.service_name, "custom-service");
+        assert!(!config.include_headers);
+        assert!(config.include_bodies);
+        assert_eq!(config.max_body_size, 2048);
+        assert_eq!(config.span_annotations.get("custom.key"), Some(&"custom.value".to_string()));
+        assert_eq!(config.collector_headers.get("X-API-Key"), Some(&"secret-key".to_string()));
+        assert_eq!(config.resource_attributes.get("service.version"), Some(&"1.0.0".to_string()));
+    }
+
+    #[test]
+    fn test_opentelemetry_config_display() {
+        let config = OpenTelemetryConfig::default();
+        let display_str = format!("{}", config);
+
+        assert!(display_str.contains("endpoint: http://localhost:4317"));
+        assert!(display_str.contains("service_name: foxy-proxy"));
+        assert!(display_str.contains("include_headers: true"));
+        assert!(display_str.contains("include_bodies: false"));
+        assert!(display_str.contains("max_body_size: 1024"));
+    }
+
+    #[test]
+    fn test_opentelemetry_config_serialization() {
+        let config = OpenTelemetryConfig::default();
+
+        // Test serialization
+        let serialized = serde_json::to_string(&config).expect("Failed to serialize config");
+        assert!(serialized.contains("\"endpoint\":\"http://localhost:4317\""));
+        assert!(serialized.contains("\"service_name\":\"foxy-proxy\""));
+
+        // Test deserialization
+        let deserialized: OpenTelemetryConfig = serde_json::from_str(&serialized)
+            .expect("Failed to deserialize config");
+        assert_eq!(deserialized.endpoint, config.endpoint);
+        assert_eq!(deserialized.service_name, config.service_name);
+        assert_eq!(deserialized.include_headers, config.include_headers);
+        assert_eq!(deserialized.include_bodies, config.include_bodies);
+        assert_eq!(deserialized.max_body_size, config.max_body_size);
+    }
+
+    #[test]
+    fn test_opentelemetry_config_partial_deserialization() {
+        // Test that partial JSON can be deserialized with defaults
+        let partial_json = r#"{"endpoint": "http://custom:4317"}"#;
+        let config: OpenTelemetryConfig = serde_json::from_str(partial_json)
+            .expect("Failed to deserialize partial config");
+
+        assert_eq!(config.endpoint, "http://custom:4317");
+        assert_eq!(config.service_name, "foxy-proxy"); // default
+        assert!(config.include_headers); // default
+        assert!(!config.include_bodies); // default
+        assert_eq!(config.max_body_size, 1024); // default
+    }
+
+    #[test]
+    fn test_opentelemetry_error_display() {
+        let config_error = crate::config::error::ConfigError::ParseError("test error".to_string());
+        let otel_error = OpenTelemetryError::ConfigError(config_error);
+
+        let error_str = format!("{}", otel_error);
+        assert!(error_str.contains("configuration error"));
+        assert!(error_str.contains("test error"));
+    }
+
+    #[test]
+    fn test_opentelemetry_init_error() {
+        let init_error = OpenTelemetryError::InitError("initialization failed".to_string());
+
+        let error_str = format!("{}", init_error);
+        assert!(error_str.contains("OpenTelemetry initialization error"));
+        assert!(error_str.contains("initialization failed"));
+    }
+
+    #[test]
+    fn test_default_functions() {
+        assert_eq!(default_endpoint(), "http://localhost:4317");
+        assert_eq!(default_service_name(), "foxy-proxy");
+        assert!(default_include_headers());
+        assert!(!default_include_bodies());
+        assert_eq!(default_max_body_size(), 1024);
+    }
+
+    // Test the no-op version when feature is disabled
+    #[cfg(not(feature = "opentelemetry"))]
+    #[test]
+    fn test_init_noop() {
+        let config = OpenTelemetryConfig::default();
+        let result = init(Some(config));
+        assert!(result.is_ok());
+    }
+
+    // Test the actual init function when feature is enabled
+    #[cfg(feature = "opentelemetry")]
+    #[test]
+    fn test_init_with_empty_endpoint() {
+        let mut config = OpenTelemetryConfig::default();
+        config.endpoint = "".to_string();
+
+        let result = init(Some(config));
+        assert!(result.is_ok());
+    }
+
+    #[cfg(feature = "opentelemetry")]
+    #[test]
+    fn test_init_with_none_config() {
+        let result = init(None);
+        assert!(result.is_ok());
+    }
+
+    #[cfg(feature = "opentelemetry")]
+    #[test]
+    fn test_init_with_custom_headers() {
+        let mut config = OpenTelemetryConfig::default();
+        config.endpoint = "http://localhost:4317".to_string();
+        config.collector_headers.insert("x-api-key".to_string(), "test-key".to_string());
+        config.collector_headers.insert("authorization".to_string(), "Bearer token".to_string());
+
+        let result = init(Some(config));
+        assert!(result.is_ok());
+    }
+
+    #[cfg(feature = "opentelemetry")]
+    #[test]
+    fn test_init_with_custom_resource_attributes() {
+        let mut config = OpenTelemetryConfig::default();
+        config.endpoint = "http://localhost:4317".to_string();
+        config.resource_attributes.insert("service.version".to_string(), "1.0.0".to_string());
+        config.resource_attributes.insert("deployment.environment".to_string(), "test".to_string());
+
+        let result = init(Some(config));
+        assert!(result.is_ok());
+    }
+
+    #[cfg(feature = "opentelemetry")]
+    #[test]
+    fn test_init_with_invalid_headers() {
+        let mut config = OpenTelemetryConfig::default();
+        config.endpoint = "http://localhost:4317".to_string();
+        // Add headers with invalid characters that should be filtered out
+        config.collector_headers.insert("invalid\nheader".to_string(), "value".to_string());
+        config.collector_headers.insert("valid-header".to_string(), "valid-value".to_string());
+
+        let result = init(Some(config));
+        assert!(result.is_ok());
+    }
+}
 

@@ -25,6 +25,7 @@ pub struct PathPredicateConfig {
 #[derive(Debug)]
 pub struct PathPredicate {
     /// The configuration for this predicate
+    #[allow(dead_code)]
     config: PathPredicateConfig,
     /// Compiled regex for path matching
     regex: Regex,
@@ -62,7 +63,7 @@ impl PathPredicate {
                     }
 
                     // Add a capturing group for the parameter
-                    regex_pattern.push_str(&format!("([^/]+)"));
+                    regex_pattern.push_str("([^/]+)");
                 },
                 // Handle wildcards like *
                 '*' => {

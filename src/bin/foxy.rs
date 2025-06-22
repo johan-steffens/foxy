@@ -9,7 +9,7 @@
 
 use std::env;
 use std::error::Error;
-use foxy::{error_fmt, info_fmt, trace_fmt, Foxy};
+use foxy::{info_fmt, Foxy};
 #[cfg(feature = "opentelemetry")]
 use foxy::opentelemetry::OpenTelemetryConfig;
 
@@ -24,15 +24,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Base loader always pulls env vars; file path is optional.
     let mut loader = Foxy::loader().with_env_vars();
     if let Some(ref path) = file_from_env {
-        println!("Using configuration from {}", path);
+        println!("Using configuration from {path}");
         loader = loader.with_config_file(path);
     } else {
         // Conventional default inside the image
         let fallback_path = "/etc/foxy/config.toml";
-        println!("No FOXY_CONFIG_FILE env var found. Attempting to use default configuration path: {}", fallback_path);
+        println!("No FOXY_CONFIG_FILE env var found. Attempting to use default configuration path: {fallback_path}");
 
         if !std::path::Path::new(fallback_path).exists() {
-            println!("Default configuration file {} does not exist.", fallback_path);
+            println!("Default configuration file {fallback_path} does not exist.");
             return Err(Box::from("No configuration file found."));
         }
         
@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let proxy = match loader.build().await {
         Ok(p) => p,
         Err(e) => {
-            println!("Failed to build proxy: {}", e);
+            println!("Failed to build proxy: {e}");
             return Err(e.into());
         }
     };

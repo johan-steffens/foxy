@@ -16,6 +16,9 @@ pub mod config;
 pub mod wrapper;
 pub mod middleware;
 
+#[cfg(test)]
+mod tests;
+
 use log::{debug, error, info, trace, warn, LevelFilter};
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -66,7 +69,7 @@ pub fn log_error<E: std::fmt::Display>(context: &str, err: E) -> E {
     if is_structured_logging() {
         slog_scope::error!("{}", err; "context" => context);
     } else {
-        error!("{}: {}", context, err);
+        error!("{context}: {err}");
     }
     err
 }
@@ -76,7 +79,7 @@ pub fn log_warning<E: std::fmt::Display>(context: &str, err: E) {
     if is_structured_logging() {
         slog_scope::warn!("{}", err; "context" => context);
     } else {
-        warn!("{}: {}", context, err);
+        warn!("{context}: {err}");
     }
 }
 
@@ -85,7 +88,7 @@ pub fn log_debug<M: std::fmt::Display>(context: &str, msg: M) {
     if is_structured_logging() {
         slog_scope::debug!("{}", msg; "context" => context);
     } else {
-        debug!("{}: {}", context, msg);
+        debug!("{context}: {msg}");
     }
 }
 
@@ -94,7 +97,7 @@ pub fn log_trace<M: std::fmt::Display>(context: &str, msg: M) {
     if is_structured_logging() {
         slog_scope::trace!("{}", msg; "context" => context);
     } else {
-        trace!("{}: {}", context, msg);
+        trace!("{context}: {msg}");
     }
 }
 
@@ -103,7 +106,7 @@ pub fn log_info<M: std::fmt::Display>(context: &str, msg: M) {
     if is_structured_logging() {
         slog_scope::info!("{}", msg; "context" => context);
     } else {
-        info!("{}: {}", context, msg);
+        info!("{context}: {msg}");
     }
 }
 

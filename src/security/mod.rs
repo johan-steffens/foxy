@@ -22,7 +22,7 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::sync::RwLock as StdRwLock;
 use crate::core::{ProxyError, ProxyRequest, ProxyResponse};
-use crate::{debug_fmt, error_fmt, info_fmt, trace_fmt};
+use crate::{debug_fmt, error_fmt, trace_fmt};
 use crate::security::oidc::{OidcConfig, OidcProvider};
 use crate::security::basic::{BasicAuthConfig, BasicAuthProvider};
 
@@ -71,6 +71,12 @@ pub trait SecurityProvider: fmt::Debug + Send + Sync {
 #[derive(Debug)]
 pub struct SecurityChain {
     providers: Vec<Arc<dyn SecurityProvider>>,
+}
+
+impl Default for SecurityChain {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SecurityChain {
@@ -198,17 +204,17 @@ impl SecurityProviderFactory {
         match provider_type {
             "oidc" => {
                 let oidc_config: OidcConfig = serde_json::from_value(config)
-                    .map_err(|e| ProxyError::SecurityError(format!("Invalid OIDC provider config: {}", e)))?;
+                    .map_err(|e| ProxyError::SecurityError(format!("Invalid OIDC provider config: {e}")))?;
                 let provider = OidcProvider::discover(oidc_config).await?;
                 Ok(Arc::new(provider))
             },
             "basic" => {
                 let basic_auth_config: BasicAuthConfig = serde_json::from_value(config)
-                    .map_err(|e| ProxyError::SecurityError(format!("Invalid Basic Auth provider config: {}", e)))?;
+                    .map_err(|e| ProxyError::SecurityError(format!("Invalid Basic Auth provider config: {e}")))?;
                 let provider = BasicAuthProvider::new(basic_auth_config)?;
                 Ok(Arc::new(provider))
             },
-            _ => Err(ProxyError::SecurityError(format!("Unknown security provider type: {}", provider_type))),
+            _ => Err(ProxyError::SecurityError(format!("Unknown security provider type: {provider_type}"))),
         }
     }
 }

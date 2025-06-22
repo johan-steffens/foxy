@@ -63,6 +63,27 @@ export FOXY_CONFIG_FILE=$(pwd)/config/example.json
 cargo run --bin foxy
 ```
 
+### Building from Source
+
+Foxy uses platform-specific TLS backends to optimize for different build environments and avoid dependency issues.
+
+#### Prerequisites
+- Rust 1.70+
+- Platform-specific TLS dependencies handled automatically
+
+#### Build
+```bash
+git clone https://github.com/johan-steffens/foxy.git
+cd foxy
+cargo build --release
+```
+
+#### TLS Backend Strategy
+- **Windows**: Uses `rustls-tls` (pure Rust) to avoid OpenSSL build issues completely
+- **Unix/Linux**: Uses `native-tls` with **vendored OpenSSL** for Docker builds
+- **Docker**: Vendored SSL eliminates build-time dependency issues - no need to install OpenSSL at build time
+- **Cross-compilation**: Platform detection ensures correct TLS backend automatically
+
 ### Run with Docker
 
 > **Prerequisites:** Docker 20.10+ installed  
