@@ -28,9 +28,9 @@ use opentelemetry::{
     trace::Tracer,
     KeyValue,
     Context,
-    context::FutureExt,
     trace::{Span, SpanBuilder, SpanKind, TraceContextExt, Status}
 };
+use std::borrow::Cow;
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_http::HeaderInjector;
 #[cfg(feature = "opentelemetry")]

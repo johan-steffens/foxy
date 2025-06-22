@@ -9,7 +9,8 @@ use std::time::Duration;
 use tokio::time::timeout;
 use serial_test::serial;
 use serde_json::json;
-use warp::Filter;
+use warp::{Filter, http::HeaderMap};
+use bytes::Bytes;
 
 mod common;
 use common::{TestConfigProvider, init_test_logging};
@@ -43,7 +44,9 @@ async fn start_mock_server() -> (tokio::task::JoinHandle<()>, u16) {
 
     let post_route = warp::path("post")
         .and(warp::post())
-        .map(|| {
+        .and(warp::body::bytes())
+        .map(|_body: bytes::Bytes| {
+            println!("🔍 Mock server received POST /post request");
             warp::reply::json(&json!({
                 "args": {},
                 "data": "",
@@ -61,7 +64,9 @@ async fn start_mock_server() -> (tokio::task::JoinHandle<()>, u16) {
 
     let put_route = warp::path("put")
         .and(warp::put())
-        .map(|| {
+        .and(warp::body::bytes())
+        .map(|_body: bytes::Bytes| {
+            println!("🔍 Mock server received PUT /put request");
             warp::reply::json(&json!({
                 "args": {},
                 "data": "",
@@ -79,7 +84,9 @@ async fn start_mock_server() -> (tokio::task::JoinHandle<()>, u16) {
 
     let delete_route = warp::path("delete")
         .and(warp::delete())
-        .map(|| {
+        .and(warp::body::bytes())
+        .map(|_body: bytes::Bytes| {
+            println!("🔍 Mock server received DELETE /delete request");
             warp::reply::json(&json!({
                 "args": {},
                 "data": "",
@@ -143,7 +150,7 @@ fn create_test_config(mock_server_port: u16) -> serde_json::Value {
     json!({
         "server": {
             "host": "127.0.0.1",
-            "port": 8080
+            "port": 6868
         },
         "proxy": {
             "timeout": 30,

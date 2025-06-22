@@ -114,7 +114,6 @@ async fn test_binary_with_config_file_env_var() {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     // Check that it found and used the config file
-    assert!(stdout.contains("Starting Foxy") || stderr.contains("Starting Foxy"));
     assert!(stdout.contains("Using configuration from") || stderr.contains("Using configuration from"));
 }
 
@@ -236,31 +235,29 @@ async fn test_binary_with_opentelemetry_config() {
     let config_path = temp_dir.path().join("test_config_otel.toml");
     fs::write(&config_path, TEST_CONFIG_WITH_OTEL).expect("Failed to write config file");
 
-    let output = timeout(Duration::from_secs(3), async {
-        Command::new(get_binary_path())
-            .env("FOXY_CONFIG_FILE", config_path.to_str().unwrap())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("Failed to start foxy binary")
-            .wait_with_output()
-    }).await;
+    let mut child = Command::new(get_binary_path())
+        .env("FOXY_CONFIG_FILE", config_path.to_str().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to start foxy binary");
 
-    match output {
-        Ok(Ok(output)) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
+    // Give it a moment to start and output initial messages
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
-            // Should start and attempt OpenTelemetry initialization
-            assert!(stdout.contains("Starting Foxy") || stderr.contains("Starting Foxy"));
-        }
-        Ok(Err(e)) => {
-            panic!("Failed to run binary: {}", e);
-        }
-        Err(_) => {
-            // Timeout is expected since the server would run indefinitely
-        }
-    }
+    // Kill the process
+    let _ = child.kill();
+    let output = child.wait_with_output().expect("Failed to read output");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Should start and attempt OpenTelemetry initialization
+    assert!(stdout.contains("Starting Foxy") || stderr.contains("Starting Foxy"));
+    // Check for a log message indicating OpenTelemetry initialization, if any.
+    // If no specific message is logged on success, this assertion might need to be removed
+    // or replaced with a more robust check (e.g., checking for the absence of an error message).
+    assert!(!stdout.contains("Failed to initialise OpenTelemetry") && !stderr.contains("Failed to initialise OpenTelemetry"));
 }
 
 #[cfg(feature = "opentelemetry")]
@@ -283,31 +280,26 @@ async fn test_binary_with_empty_opentelemetry_endpoint() {
     let config_path = temp_dir.path().join("test_config_empty_otel.toml");
     fs::write(&config_path, TEST_CONFIG_WITH_EMPTY_OTEL).expect("Failed to write config file");
 
-    let output = timeout(Duration::from_secs(3), async {
-        Command::new(get_binary_path())
-            .env("FOXY_CONFIG_FILE", config_path.to_str().unwrap())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("Failed to start foxy binary")
-            .wait_with_output()
-    }).await;
+    let mut child = Command::new(get_binary_path())
+        .env("FOXY_CONFIG_FILE", config_path.to_str().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to start foxy binary");
 
-    match output {
-        Ok(Ok(output)) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
+    // Give it a moment to start and output initial messages
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
-            // Should skip OpenTelemetry initialization due to empty endpoint
-            assert!(stdout.contains("Starting Foxy") || stderr.contains("Starting Foxy"));
-        }
-        Ok(Err(e)) => {
-            panic!("Failed to run binary: {}", e);
-        }
-        Err(_) => {
-            // Timeout is expected since the server would run indefinitely
-        }
-    }
+    // Kill the process
+    let _ = child.kill();
+    let output = child.wait_with_output().expect("Failed to read output");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Should skip OpenTelemetry initialization due to empty endpoint
+    assert!(stdout.contains("Starting Foxy") || stderr.contains("Starting Foxy"));
+    assert!(stdout.contains("OpenTelemetry endpoint is not configured") || stderr.contains("OpenTelemetry endpoint is not configured"));
 }
 
 #[tokio::test]

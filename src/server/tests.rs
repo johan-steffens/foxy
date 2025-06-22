@@ -455,7 +455,7 @@ mod tests {
         let config = SwaggerUIConfig {
             enabled: true,
             path: "/swagger".to_string(),
-            spec_url: "/api-docs".to_string(),
+            sources: vec![],
         };
 
         assert!(config.enabled);

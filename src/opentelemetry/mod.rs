@@ -344,8 +344,8 @@ mod tests {
     }
 
     #[cfg(feature = "opentelemetry")]
-    #[test]
-    fn test_init_with_custom_headers() {
+    #[tokio::test]
+    async fn test_init_with_custom_headers() {
         let mut config = OpenTelemetryConfig::default();
         config.endpoint = "http://localhost:4317".to_string();
         config.collector_headers.insert("x-api-key".to_string(), "test-key".to_string());
@@ -356,8 +356,8 @@ mod tests {
     }
 
     #[cfg(feature = "opentelemetry")]
-    #[test]
-    fn test_init_with_custom_resource_attributes() {
+    #[tokio::test]
+    async fn test_init_with_custom_resource_attributes() {
         let mut config = OpenTelemetryConfig::default();
         config.endpoint = "http://localhost:4317".to_string();
         config.resource_attributes.insert("service.version".to_string(), "1.0.0".to_string());
@@ -368,8 +368,8 @@ mod tests {
     }
 
     #[cfg(feature = "opentelemetry")]
-    #[test]
-    fn test_init_with_invalid_headers() {
+    #[tokio::test]
+    async fn test_init_with_invalid_headers() {
         let mut config = OpenTelemetryConfig::default();
         config.endpoint = "http://localhost:4317".to_string();
         // Add headers with invalid characters that should be filtered out

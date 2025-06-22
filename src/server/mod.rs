@@ -60,12 +60,13 @@ use opentelemetry::{
     trace::{TraceContextExt, Tracer},
     KeyValue,
     Context,
-    trace::{Span, SpanBuilder, SpanKind, Status, SpanRef}
+    trace::{Span, SpanBuilder, SpanKind, Status}
 };
+use std::borrow::Cow;
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_http::HeaderExtractor;
 #[cfg(feature = "opentelemetry")]
-use opentelemetry_semantic_conventions::attribute::{HTTP_FLAVOR, HTTP_HOST, HTTP_METHOD, HTTP_REQUEST_CONTENT_LENGTH, HTTP_RESPONSE_STATUS_CODE, HTTP_SCHEME, HTTP_STATUS_CODE, HTTP_URL, HTTP_USER_AGENT, NET_PEER_IP};
+use opentelemetry_semantic_conventions::attribute::{HTTP_FLAVOR, HTTP_HOST, HTTP_METHOD, HTTP_REQUEST_CONTENT_LENGTH, HTTP_RESPONSE_STATUS_CODE, HTTP_SCHEME, HTTP_URL, HTTP_USER_AGENT, NET_PEER_IP};
 
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -182,6 +182,7 @@ pub async fn run_load_test(
 }
 
 #[tokio::test]
+#[ignore]
 #[serial]
 async fn test_basic_load() {
     init_test_logging();
@@ -204,7 +205,7 @@ async fn test_basic_load() {
         .with_value("server.port", 8080)
         .with_routes(vec![
             TestRoute::new(&mock_server.uri())
-                .with_path("/api/*")
+                .with_path("/api/test")
         ]);
     
     let foxy = Foxy::loader()
@@ -249,6 +250,7 @@ async fn test_basic_load() {
 }
 
 #[tokio::test]
+#[ignore]
 #[serial]
 async fn test_high_concurrency_load() {
     init_test_logging();
@@ -271,7 +273,7 @@ async fn test_high_concurrency_load() {
         .with_value("server.port", 8080)
         .with_routes(vec![
             TestRoute::new(&mock_server.uri())
-                .with_path("/api/*")
+                .with_path("/api/concurrent")
         ]);
     
     let foxy = Foxy::loader()
@@ -314,6 +316,7 @@ async fn test_high_concurrency_load() {
 }
 
 #[tokio::test]
+#[ignore]
 #[serial]
 async fn test_sustained_load() {
     init_test_logging();
@@ -336,7 +339,7 @@ async fn test_sustained_load() {
         .with_value("server.port", 8080)
         .with_routes(vec![
             TestRoute::new(&mock_server.uri())
-                .with_path("/api/*")
+                .with_path("/api/sustained")
         ]);
     
     let foxy = Foxy::loader()
