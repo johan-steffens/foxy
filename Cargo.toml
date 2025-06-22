@@ -110,11 +110,6 @@ reqwest = { version = "0.12.15", default-features = false, features = ["json", "
 [features]
 default = []
 swagger-ui = []
-
-# TLS backend features - automatically selected based on platform
-# Windows: rustls-tls (avoids OpenSSL build issues)
-# Unix/Linux: native-tls with vendored OpenSSL (for Docker builds)
-
 opentelemetry = [
     "dep:tracing",
     "dep:tracing-subscriber",

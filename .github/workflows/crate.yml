@@ -73,7 +73,7 @@ jobs:
 
       - uses: taiki-e/install-action@nextest
       - name: "Build and test"
-        run: cargo test run --workspace --all-features
+        run: cargo test run --all-features
 
   crates_io_publish:
     name: Publish (crates.io)
