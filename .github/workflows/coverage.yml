@@ -86,7 +86,7 @@ jobs:
         fail_ci_if_error: false
 
     - name: Codecov upload skipped
-      if: ${{ inputs.upload_to_codecov  }}
+      if: ${{ !inputs.upload_to_codecov  }}
       run: |
         echo "⚠️ Codecov upload skipped: CODECOV_TOKEN secret not configured"
         echo "To enable Codecov uploads, add your Codecov token as a repository secret named 'CODECOV_TOKEN'"

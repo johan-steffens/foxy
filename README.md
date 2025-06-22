@@ -2,6 +2,7 @@
 
 [![CI-Crate](https://img.shields.io/github/actions/workflow/status/johan-steffens/foxy/crate.yml?label=crate-build)](https://github.com/johan-steffens/foxy/actions/workflows/crate.yml)
 [![CI-Docker](https://img.shields.io/github/actions/workflow/status/johan-steffens/foxy/docker.yml?label=docker-build)](https://github.com/johan-steffens/foxy/actions/workflows/docker.yml)
+[![codecov](https://codecov.io/github/johan-steffens/foxy/graph/badge.svg?token=3L37Q54F17)](https://codecov.io/github/johan-steffens/foxy)
 [![Crates.io Version](https://img.shields.io/crates/v/foxy-io)](https://crates.io/crates/foxy-io)
 [![Crates.io Downloads](https://img.shields.io/crates/d/foxy-io)](https://crates.io/crates/foxy-io)
 [![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue)](https://blog.rust-lang.org/2023/06/01/Rust-1.70.0.html)
@@ -11,6 +12,16 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/johan-steffens/foxy)
 
 A minimal, configuration-driven, hyper-extensible Rust HTTP proxy library.
+
+## Use Cases
+
+**Foxy is ideal for:**
+
+- **API Gateway**: Centralize routing, security, and observability for your microservices.
+- **Edge Proxy**: Secure and control traffic at the edge of your network.
+- **Backend for Frontend (BFF)**: Tailor API responses for specific client applications.
+- **Protocol Translation**: Transform requests and responses between different protocols.
+- **Load Balancing**: Distribute incoming traffic across multiple upstream services.
 
 ## Features
 
