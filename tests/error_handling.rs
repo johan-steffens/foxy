@@ -136,7 +136,7 @@ async fn test_invalid_configuration_values() {
     
     // Test with invalid timeout value
     let config = TestConfigProvider::new("invalid_test")
-        .with_value("proxy.timeout", "not-a-number")
+        .with_value("proxy.timeout", "not-a-number") 
         .with_value("server.port", -1); // Invalid port
     
     let result = Foxy::loader()
@@ -167,7 +167,7 @@ async fn test_network_timeout_error() {
     
     // Configure proxy with very short timeout
     let config = TestConfigProvider::new("timeout_test")
-        .with_value("proxy.timeout", 1) // 1 second timeout
+        .with_value("proxy.client.timeout", 1) // 1 second timeout
         .with_value("server.port", 0)
         .with_routes(vec![
             TestRoute::new(&mock_server.uri())

@@ -409,7 +409,7 @@ async fn test_stateful_rate_limiting() {
             "id": "rate-limited-route",
             "target": "http://api.example.com",
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/api/*"
                 }
@@ -491,7 +491,7 @@ async fn test_connection_pooling_behavior() {
             "id": "pooled-route",
             "target": "http://backend.example.com",
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/api/*"
                 }

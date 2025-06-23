@@ -39,7 +39,7 @@ async fn test_real_httpbin_integration() {
             "id": "httpbin-get",
             "target": "https://httpbin.org",
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/get"
                 }
@@ -57,12 +57,12 @@ async fn test_real_httpbin_integration() {
             "id": "httpbin-post",
             "target": "https://httpbin.org",
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/post"
                 }
             }, {
-                "type": "method",
+                "type_": "method",
                 "config": {
                     "methods": ["POST"]
                 }
@@ -71,7 +71,7 @@ async fn test_real_httpbin_integration() {
             "id": "httpbin-status",
             "target": "https://httpbin.org",
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/status/*"
                 }
@@ -237,7 +237,7 @@ async fn test_real_https_integration() {
             "id": "https-test",
             "target": "https://api.github.com",
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/zen"
                 }
@@ -331,7 +331,7 @@ async fn test_real_dns_resolution() {
             "id": "dns-test",
             "target": "http://example.com",  // Well-known domain
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/"
                 }
@@ -403,12 +403,12 @@ async fn test_real_websocket_proxying() {
             "id": "websocket-test",
             "target": "wss://echo.websocket.org",  // Public WebSocket echo service
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/"
                 }
             }, {
-                "type": "header",
+                "type_": "header",
                 "config": {
                     "name": "Upgrade",
                     "value": "websocket"
@@ -489,7 +489,7 @@ async fn test_real_load_balancing() {
             "id": "load-balance-test",
             "target": "https://httpbin.org",
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/status/200"
                 }
@@ -571,7 +571,7 @@ async fn test_real_certificate_validation() {
             "id": "cert-valid-test",
             "target": "https://www.google.com",  // Known good certificate
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/valid"
                 }
@@ -580,7 +580,7 @@ async fn test_real_certificate_validation() {
             "id": "cert-invalid-test",
             "target": "https://self-signed.badssl.com",  // Known bad certificate
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/invalid"
                 }
@@ -666,7 +666,7 @@ async fn test_real_rate_limiting() {
             "id": "rate-limit-test",
             "target": "https://httpbin.org",
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/get"
                 }
@@ -765,7 +765,7 @@ async fn test_real_http2_support() {
             "id": "http2-test",
             "target": "https://example.com",  // Valid HTTP/2 endpoint
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/"
                 }
@@ -848,7 +848,7 @@ async fn test_real_network_edge_cases() {
             "id": "slow-response-test",
             "target": "https://httpbin.org",
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/delay/*"
                 }
@@ -857,7 +857,7 @@ async fn test_real_network_edge_cases() {
             "id": "large-response-test",
             "target": "https://httpbin.org",
             "predicates": [{
-                "type": "path",
+                "type_": "path",
                 "config": {
                     "pattern": "/bytes/*"
                 }
