@@ -53,9 +53,31 @@ jobs:
           sudo apt-get install -y protobuf-compiler
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: taiki-e/install-action@nextest
+      - name: Cache cargo registry restore
+        id: cargo_cache_restore_linux
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: "Build and test"
-        run: cargo test run --all-features
+        run: cargo test --all-features
+
+      - name: Cache cargo registry save
+        id: cargo_cache_save_linux
+        uses: actions/cache/save@v4
+        if: always() && steps.cargo_cache_restore_linux.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
   build_and_test_windows:
     name: Build and Test (Windows)
@@ -71,9 +93,37 @@ jobs:
         shell: powershell
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache cargo registry restore
+        id: cargo_cache_restore_windows
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Clean and update dependencies
+        run: |
+          cargo clean
+          cargo update
+
       - uses: taiki-e/install-action@nextest
       - name: "Build and test"
-        run: cargo test run --all-features
+        run: cargo test --all-features
+
+      - name: Cache cargo registry save
+        id: cargo_cache_save_windows
+        uses: actions/cache/save@v4
+        if: always() && steps.cargo_cache_restore_windows.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
   crates_io_publish:
     name: Publish (crates.io)
