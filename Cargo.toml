@@ -80,32 +80,11 @@ hostname = { version = "0.4.1", optional = true }
 
 [dev-dependencies]
 # Testing frameworks and utilities
-tokio-test = "0.4"
 wiremock = "0.6"
-httpmock = "0.7"
-criterion = { version = "0.5", features = ["html_reports"] }
-proptest = "1.4"
-rstest = "0.21"
 serial_test = "3.1"
-test-log = "0.2"
 tempfile = "3.6"
-
-# Mocking and test doubles
-mockall = "0.12"
-mockito = "1.4"
-
-# HTTP testing utilities
 hyper = { version = "1.6.0", features = ["server", "http1", "http2"] }
-tower = { version = "0.4", features = ["util"] }
-tower-test = "0.4"
 warp = "0.3"
-
-# Target-specific TLS for dev dependencies
-[target.'cfg(windows)'.dev-dependencies]
-reqwest = { version = "0.12.15", default-features = false, features = ["json", "stream", "rustls-tls"] }
-
-[target.'cfg(unix)'.dev-dependencies]
-reqwest = { version = "0.12.15", default-features = false, features = ["json", "stream", "native-tls"] }
 
 [features]
 default = []
