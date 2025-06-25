@@ -109,7 +109,8 @@ jobs:
       - name: "Build and test"
         run: |
           type Cargo.toml
-          cargo build test --all-features
+          cargo build --all-features
+          cargo test --all-features
 
       # - name: Cache cargo registry save
       #   id: cargo_cache_save_windows
