@@ -12,6 +12,7 @@ categories = ["web-programming", "network-programming"]
 
 [dependencies]
 # General
+openssl = { version = "0.10.72", features = ["vendored"] }
 uuid = { version = "1.7.0", features = ["v4", "fast-rng"] }
 globset = "0.4"
 
@@ -65,17 +66,6 @@ opentelemetry-http = { version = "0.29", optional = true }
 opentelemetry_sdk = { version = "0.29", optional = true }
 tonic = { version = "0.12.3", optional = true }
 hostname = { version = "0.4.1", optional = true }
-
-# TLS backend configuration - platform specific to avoid build-time dependency hell
-# Target-specific TLS dependencies
-# Windows: Use rustls to avoid OpenSSL build issues
-[target.'cfg(windows)'.dependencies]
-reqwest = { version = "0.12.15", default-features = false, features = ["stream", "json", "rustls-tls"] }
-
-# Unix/Linux: Use vendored OpenSSL for Docker builds to avoid build-time dependency issues
-[target.'cfg(unix)'.dependencies]
-reqwest = { version = "0.12.15", default-features = false, features = ["stream", "json", "native-tls"] }
-openssl = { version = "0.10.72", features = ["vendored"] }
 
 [dev-dependencies]
 # Testing frameworks and utilities

@@ -107,7 +107,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
       - name: "Build and test"
-        run: cargo test --all-features
+        run: cargo test --all-features -- --test-threads=1
 
       - name: Cache cargo registry save
         id: cargo_cache_save_windows
