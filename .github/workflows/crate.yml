@@ -108,9 +108,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: "Build and test"
-        run: |
-          cargo update
-          cargo test --all-features
+        run: cargo test --all-features
 
       - name: Cache cargo registry save
         id: cargo_cache_save_windows
