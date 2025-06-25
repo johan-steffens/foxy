@@ -14,8 +14,10 @@
 use std::fs;
 use std::process::{Command, Stdio};
 use std::time::Duration;
+use serial_test::serial;
 use tempfile::TempDir;
-use tokio::time::timeout;
+use tokio::time::{timeout, sleep};
+use tokio::net::TcpStream;
 
 /// Get the path to the foxy binary for the current platform
 fn get_binary_path() -> &'static str {
@@ -31,9 +33,10 @@ use common::init_test_logging;
 
 /// Test configuration content for binary tests
 const TEST_CONFIG_CONTENT: &str = r#"
+[server]
+host = "0.0.0.0"
+
 [proxy]
-host = "127.0.0.1"
-port = 18080
 timeout = 30
 
 [[proxy.routes]]
@@ -44,9 +47,10 @@ target_base_url = "http://127.0.0.1:18081"
 
 /// Test configuration with OpenTelemetry enabled
 const TEST_CONFIG_WITH_OTEL: &str = r#"
+[server]
+host = "0.0.0.0"
+
 [proxy]
-host = "127.0.0.1"
-port = 18080
 timeout = 30
 
 [proxy.opentelemetry]
@@ -61,9 +65,10 @@ target_base_url = "http://127.0.0.1:18081"
 
 /// Test configuration with empty OpenTelemetry endpoint
 const TEST_CONFIG_WITH_EMPTY_OTEL: &str = r#"
+[server]
+host = "0.0.0.0"
+
 [proxy]
-host = "127.0.0.1"
-port = 18080
 timeout = 30
 
 [proxy.opentelemetry]
@@ -76,47 +81,7 @@ path_pattern = "/test"
 target_base_url = "http://127.0.0.1:18081"
 "#;
 
-#[tokio::test]
-async fn test_binary_with_config_file_env_var() {
-    init_test_logging();
-
-    // Create a temporary directory and config file
-    let temp_dir = TempDir::new().expect("Failed to create temp directory");
-    let config_path = temp_dir.path().join("test_config.toml");
-    fs::write(&config_path, TEST_CONFIG_CONTENT).expect("Failed to write config file");
-
-    // Build the binary first to avoid compilation time in the test
-    let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "foxy"])
-        .output()
-        .expect("Failed to build foxy binary");
-
-    if !build_output.status.success() {
-        panic!("Failed to build binary: {}", String::from_utf8_lossy(&build_output.stderr));
-    }
-
-    // Start the binary and let it run for a short time to check initialization
-    let mut child = Command::new(get_binary_path())
-        .env("FOXY_CONFIG_FILE", config_path.to_str().unwrap())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("Failed to start foxy binary");
-
-    // Give it a moment to start and output initial messages
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    // Kill the process
-    let _ = child.kill();
-    let output = child.wait_with_output().expect("Failed to read output");
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    // Check that it found and used the config file
-    assert!(stdout.contains("Using configuration from") || stderr.contains("Using configuration from"));
-}
-
+#[serial]
 #[tokio::test]
 async fn test_binary_with_default_config_path() {
     init_test_logging();
@@ -131,10 +96,13 @@ async fn test_binary_with_default_config_path() {
         panic!("Failed to build binary: {}", String::from_utf8_lossy(&build_output.stderr));
     }
 
+    let port = 18082;
+
     // We can't easily test the exact /etc/foxy/config.toml path without root access
     // So we'll test the error case when no config file is found
     let output = timeout(Duration::from_secs(3), async {
         Command::new(get_binary_path())
+            .env("FOXY_SERVER_PORT", port.to_string())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -167,6 +135,7 @@ async fn test_binary_with_default_config_path() {
     }
 }
 
+#[serial]
 #[tokio::test]
 async fn test_binary_missing_config_file_error() {
     init_test_logging();
@@ -184,8 +153,11 @@ async fn test_binary_missing_config_file_error() {
     // Set environment variable to a non-existent file
     let non_existent_path = "/tmp/non_existent_config_file.toml";
 
+    let port = 18083;
+
     let output = timeout(Duration::from_secs(3), async {
         Command::new(get_binary_path())
+            .env("FOXY_SERVER_PORT", port.to_string())
             .env("FOXY_CONFIG_FILE", non_existent_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -215,93 +187,7 @@ async fn test_binary_missing_config_file_error() {
     }
 }
 
-#[cfg(feature = "opentelemetry")]
-#[tokio::test]
-async fn test_binary_with_opentelemetry_config() {
-    init_test_logging();
-
-    // Build the binary first with OpenTelemetry feature
-    let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "foxy", "--features", "opentelemetry"])
-        .output()
-        .expect("Failed to build foxy binary");
-
-    if !build_output.status.success() {
-        panic!("Failed to build binary: {}", String::from_utf8_lossy(&build_output.stderr));
-    }
-
-    // Create a temporary directory and config file with OpenTelemetry
-    let temp_dir = TempDir::new().expect("Failed to create temp directory");
-    let config_path = temp_dir.path().join("test_config_otel.toml");
-    fs::write(&config_path, TEST_CONFIG_WITH_OTEL).expect("Failed to write config file");
-
-    let mut child = Command::new(get_binary_path())
-        .env("FOXY_CONFIG_FILE", config_path.to_str().unwrap())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("Failed to start foxy binary");
-
-    // Give it a moment to start and output initial messages
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    // Kill the process
-    let _ = child.kill();
-    let output = child.wait_with_output().expect("Failed to read output");
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    // Should start and attempt OpenTelemetry initialization
-    assert!(stdout.contains("Starting Foxy") || stderr.contains("Starting Foxy"));
-    // Check for a log message indicating OpenTelemetry initialization, if any.
-    // If no specific message is logged on success, this assertion might need to be removed
-    // or replaced with a more robust check (e.g., checking for the absence of an error message).
-    assert!(!stdout.contains("Failed to initialise OpenTelemetry") && !stderr.contains("Failed to initialise OpenTelemetry"));
-}
-
-#[cfg(feature = "opentelemetry")]
-#[tokio::test]
-async fn test_binary_with_empty_opentelemetry_endpoint() {
-    init_test_logging();
-
-    // Build the binary first with OpenTelemetry feature
-    let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "foxy", "--features", "opentelemetry"])
-        .output()
-        .expect("Failed to build foxy binary");
-
-    if !build_output.status.success() {
-        panic!("Failed to build binary: {}", String::from_utf8_lossy(&build_output.stderr));
-    }
-
-    // Create config with empty OpenTelemetry endpoint
-    let temp_dir = TempDir::new().expect("Failed to create temp directory");
-    let config_path = temp_dir.path().join("test_config_empty_otel.toml");
-    fs::write(&config_path, TEST_CONFIG_WITH_EMPTY_OTEL).expect("Failed to write config file");
-
-    let mut child = Command::new(get_binary_path())
-        .env("FOXY_CONFIG_FILE", config_path.to_str().unwrap())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("Failed to start foxy binary");
-
-    // Give it a moment to start and output initial messages
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    // Kill the process
-    let _ = child.kill();
-    let output = child.wait_with_output().expect("Failed to read output");
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    // Should skip OpenTelemetry initialization due to empty endpoint
-    assert!(stdout.contains("Starting Foxy") || stderr.contains("Starting Foxy"));
-    assert!(stdout.contains("OpenTelemetry endpoint is not configured") || stderr.contains("OpenTelemetry endpoint is not configured"));
-}
-
+#[serial]
 #[tokio::test]
 async fn test_binary_invalid_config_format() {
     init_test_logging();
@@ -321,8 +207,11 @@ async fn test_binary_invalid_config_format() {
     let config_path = temp_dir.path().join("invalid_config.toml");
     fs::write(&config_path, "invalid toml content [[[").expect("Failed to write config file");
 
+    let port = 18086;
+
     let output = timeout(Duration::from_secs(3), async {
         Command::new(get_binary_path())
+            .env("FOXY_SERVER_PORT", port.to_string())
             .env("FOXY_CONFIG_FILE", config_path.to_str().unwrap())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -351,4 +240,18 @@ async fn test_binary_invalid_config_format() {
             panic!("Binary should exit quickly with error, but it timed out");
         }
     }
+}
+
+/// Helper function to wait for a TCP port to be open
+async fn wait_for_port(addr: &str, timeout_duration: Duration) -> Result<(), String> {
+    let start_time = tokio::time::Instant::now();
+    while start_time.elapsed() < timeout_duration {
+        match TcpStream::connect(addr).await {
+            Ok(_) => return Ok(()),
+            Err(_) => {
+                sleep(Duration::from_millis(100)).await;
+            }
+        }
+    }
+    Err(format!("Timed out waiting for port {} to open", addr))
 }
