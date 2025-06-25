@@ -110,7 +110,6 @@ jobs:
           cargo clean
           cargo update
 
-      - uses: taiki-e/install-action@nextest
       - name: "Build and test"
         run: cargo test --all-features
 
