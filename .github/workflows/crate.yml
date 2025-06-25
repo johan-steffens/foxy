@@ -93,34 +93,32 @@ jobs:
         run: choco install protoc --no-progress -y
         shell: powershell
 
-      # - name: Cache cargo registry restore
-      #   id: cargo_cache_restore_windows
-      #   uses: actions/cache/restore@v4
-      #   with:
-      #     path: |
-      #       ~/.cargo/registry
-      #       ~/.cargo/git
-      #       target
-      #     key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      #     restore-keys: |
-      #       ${{ runner.os }}-cargo-
+      - name: Cache cargo registry restore
+        id: cargo_cache_restore_windows
+        uses: actions/cache/restore@v4
+        with:
+         path: |
+           ~/.cargo/registry
+           ~/.cargo/git
+           target
+         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+         restore-keys: |
+           ${{ runner.os }}-cargo-
 
       - uses: dtolnay/rust-toolchain@stable
       - name: "Build and test"
-        run: |
-          type Cargo.toml
-          cargo build test --all-features
+        run: cargo test --all-features
 
-      # - name: Cache cargo registry save
-      #   id: cargo_cache_save_windows
-      #   uses: actions/cache/save@v4
-      #   if: always() && steps.cargo_cache_restore_windows.outputs.cache-hit != 'true'
-      #   with:
-      #     path: |
-      #       ~/.cargo/registry
-      #       ~/.cargo/git
-      #       target
-      #     key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo registry save
+        id: cargo_cache_save_windows
+        uses: actions/cache/save@v4
+        if: always() && steps.cargo_cache_restore_windows.outputs.cache-hit != 'true'
+        with:
+         path: |
+           ~/.cargo/registry
+           ~/.cargo/git
+           target
+         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
   crates_io_publish:
     if: startsWith(github.ref, 'refs/tags/') && endsWith(github.ref, '-crate')
