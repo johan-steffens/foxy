@@ -8,6 +8,7 @@
 mod tests {
     use super::super::*;
     use crate::logging::config::LoggingConfig;
+    use crate::logging::test_logger;
     use log::LevelFilter;
     use std::sync::atomic::Ordering;
 
@@ -115,7 +116,7 @@ mod tests {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, slog::o!());
-        let _guard = slog_scope::set_global_logger(logger);
+        test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
 
@@ -144,7 +145,7 @@ mod tests {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, slog::o!());
-        let _guard = slog_scope::set_global_logger(logger);
+        test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
 
@@ -171,7 +172,7 @@ mod tests {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, slog::o!());
-        let _guard = slog_scope::set_global_logger(logger);
+        test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
 
@@ -198,7 +199,7 @@ mod tests {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, slog::o!());
-        let _guard = slog_scope::set_global_logger(logger);
+        test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
 
@@ -225,7 +226,7 @@ mod tests {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, slog::o!());
-        let _guard = slog_scope::set_global_logger(logger);
+        test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
 
@@ -252,7 +253,7 @@ mod tests {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, slog::o!());
-        let _guard = slog_scope::set_global_logger(logger);
+        test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
 
@@ -317,7 +318,7 @@ mod tests {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, slog::o!());
-        let _guard = slog_scope::set_global_logger(logger);
+        test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
 
@@ -437,7 +438,7 @@ mod tests {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, slog::o!());
-        let _guard = slog_scope::set_global_logger(logger);
+        test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
 
