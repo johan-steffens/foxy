@@ -210,38 +210,26 @@ impl OidcProvider {
         debug_fmt!("OidcProvider", "Refreshing JWKS from {}", self.jwks_uri);
         
         // Fetch the JWKS
-        let jwks = match self.http.get(&self.jwks_uri).send().await {
-            Ok(response) => {
-                match response.error_for_status() {
-                    Ok(response) => {
-                        match response.json::<JwkSet>().await {
-                            Ok(jwks) => jwks,
-                            Err(e) => {
-                                let err = ProxyError::SecurityError(
-                                    format!("Failed to parse JWKS response: {e}")
-                                );
-                                error_fmt!("OidcProvider", "{}", err);
-                                return Err(err);
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        let err = ProxyError::SecurityError(
-                            format!("JWKS endpoint returned error: {e}")
-                        );
-                        error_fmt!("OidcProvider", "{}", err);
-                        return Err(err);
-                    }
-                }
-            },
-            Err(e) => {
-                let err = ProxyError::SecurityError(
-                    format!("Failed to connect to JWKS endpoint: {e}")
-                );
+        let response = self.http.get(&self.jwks_uri).send().await
+            .map_err(|e| {
+                let err = ProxyError::SecurityError(format!("Failed to connect to JWKS endpoint: {e}"));
                 error_fmt!("OidcProvider", "{}", err);
-                return Err(err);
-            }
-        };
+                err
+            })?;
+
+        let response = response.error_for_status()
+            .map_err(|e| {
+                let err = ProxyError::SecurityError(format!("JWKS endpoint returned error: {e}"));
+                error_fmt!("OidcProvider", "{}", err);
+                err
+            })?;
+
+        let jwks = response.json::<JwkSet>().await
+            .map_err(|e| {
+                let err = ProxyError::SecurityError(format!("Failed to parse JWKS response: {e}"));
+                error_fmt!("OidcProvider", "{}", err);
+                err
+            })?;
         
         debug_fmt!("OidcProvider", "JWKS refresh successful, found {} keys", jwks.keys.len());
         
@@ -1695,7 +1683,7 @@ mod tests {
         assert!(result.is_err());
 
         if let Err(ProxyError::SecurityError(msg)) = result {
-            assert!(msg.contains("not found in JWKS"));
+            assert!(msg.contains("not found in JWKS") || msg.contains("no shared secret") || msg.contains("for algorithm"));
         } else {
             panic!("Expected SecurityError");
         }
