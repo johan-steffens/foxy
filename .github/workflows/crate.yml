@@ -88,7 +88,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Protobuf compiler
         run: choco install protoc --no-progress -y
         shell: powershell
@@ -107,7 +107,9 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
       - name: "Build and test"
-        run: cargo test --all-features
+        run: |
+          type Cargo.toml
+          cargo build test --all-features
 
       # - name: Cache cargo registry save
       #   id: cargo_cache_save_windows
