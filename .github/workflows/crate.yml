@@ -2,6 +2,8 @@ on:
   push:
     tags:
       - "*-crate"
+    branches:
+      - develop
 
 permissions:
   contents: read
@@ -105,13 +107,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Clean and update dependencies
-        run: |
-          cargo clean
-          cargo update
-
       - name: "Build and test"
-        run: cargo test --all-features
+        run: |
+          cargo update
+          cargo test --all-features
 
       - name: Cache cargo registry save
         id: cargo_cache_save_windows
@@ -125,6 +124,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
   crates_io_publish:
+    if: startsWith(github.ref, 'refs/tags/') && endsWith(github.ref, '-crate')
     name: Publish (crates.io)
     needs:
       - audit
