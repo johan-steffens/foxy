@@ -189,7 +189,9 @@ impl OidcProvider {
             jwks_uri: meta.jwks_uri,
             jwks: Arc::new(RwLock::new(None)),
             last_refresh: Arc::new(RwLock::new(
-                tokio::time::Instant::now() - JWKS_REFRESH,
+                tokio::time::Instant::now()
+                    .checked_sub(JWKS_REFRESH)
+                    .unwrap_or_else(|| tokio::time::Instant::now()),
             )),
             http: client,
             rules,
@@ -970,7 +972,9 @@ mod tests {
         // Force cache expiration
         {
             let mut w = provider.last_refresh.write().await;
-            *w = tokio::time::Instant::now() - std::time::Duration::from_secs(3600);
+            *w = tokio::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(3600))
+                .unwrap_or_else(tokio::time::Instant::now);
         }
 
         let result = provider.refresh_jwks().await;
@@ -1019,7 +1023,9 @@ mod tests {
         // Force cache expiration
         {
             let mut w = provider.last_refresh.write().await;
-            *w = tokio::time::Instant::now() - std::time::Duration::from_secs(3600);
+            *w = tokio::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(3600))
+                .unwrap_or_else(tokio::time::Instant::now);
         }
 
         let result = provider.refresh_jwks().await;
@@ -1068,7 +1074,9 @@ mod tests {
         // Force cache expiration
         {
             let mut w = provider.last_refresh.write().await;
-            *w = tokio::time::Instant::now() - std::time::Duration::from_secs(3600);
+            *w = tokio::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(3600))
+                .unwrap_or_else(tokio::time::Instant::now);
         }
 
         let result = provider.refresh_jwks().await;
@@ -1090,7 +1098,9 @@ mod tests {
             jwks_uri: "http://invalid-host-12345.example.com/jwks".to_string(),
             jwks: Arc::new(RwLock::new(None)),
             last_refresh: Arc::new(RwLock::new(
-                tokio::time::Instant::now() - std::time::Duration::from_secs(3600)
+                tokio::time::Instant::now()
+                    .checked_sub(std::time::Duration::from_secs(3600))
+                    .unwrap_or_else(tokio::time::Instant::now)
             )),
             http: reqwest::Client::new(),
             rules: vec![],
@@ -1183,7 +1193,9 @@ mod tests {
             jwks_uri: "https://auth.example.com/jwks".to_string(),
             jwks: Arc::new(RwLock::new(None)), // No JWKS available
             last_refresh: Arc::new(RwLock::new(
-                tokio::time::Instant::now() - std::time::Duration::from_secs(3600)
+                tokio::time::Instant::now()
+                    .checked_sub(std::time::Duration::from_secs(3600))
+                    .unwrap_or_else(tokio::time::Instant::now)
             )),
             http: reqwest::Client::new(),
             rules: vec![],
