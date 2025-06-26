@@ -1121,8 +1121,8 @@ mod tests {
             issuer: "https://auth.example.com".to_string(),
             aud: None,
             shared_secret: None,
-            // Use a well-known non-listening port on localhost to reliably get a connection refused error
-            jwks_uri: "http://127.0.0.1:1/jwks".to_string(),
+            // Use a non-routable IP address to reliably get a connection error
+            jwks_uri: "http://192.0.2.1:80/jwks".to_string(),
             jwks: Arc::new(RwLock::new(None)),
             last_refresh: Arc::new(RwLock::new(
                 tokio::time::Instant::now()
@@ -1141,9 +1141,15 @@ mod tests {
 
         if let Err(ProxyError::SecurityError(msg)) = result {
             println!("Actual connection error message: {}", msg); // Print the actual message
-            // On Windows, this might be "Connection refused" or "No connection could be made"
-            // On Linux/macOS, it's typically "Connection refused"
-            assert!(msg.contains("Failed to connect to JWKS endpoint") || msg.contains("Connection refused") || msg.contains("Connection reset by peer") || msg.contains("No connection could be made because the target machine actively refused it") || msg.contains("Connection refused (os error 61)"));
+            // The error message can vary depending on the underlying network stack and OS.
+            // Common errors include "Failed to connect", "Connection refused", "timed out", "No route to host".
+            assert!(msg.contains("Failed to connect to JWKS endpoint") ||
+                    msg.contains("Connection refused") ||
+                    msg.contains("timed out") ||
+                    msg.contains("No route to host") ||
+                    msg.contains("No connection could be made because the target machine actively refused it") || // Windows specific
+                    msg.contains("A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond") // Windows specific timeout
+            );
         } else {
             panic!("Expected SecurityError");
         }
