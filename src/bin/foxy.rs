@@ -9,7 +9,7 @@
 
 use std::env;
 use std::error::Error;
-use foxy::{info_fmt, error_fmt, Foxy};
+use foxy::{info_fmt, error_fmt, warn_fmt, Foxy};
 #[cfg(feature = "opentelemetry")]
 use foxy::opentelemetry::OpenTelemetryConfig;
 
@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut loader = Foxy::loader().with_env_vars();
     if let Some(ref path) = file_from_env {
         println!("Using configuration from {path}");
-        loader = loader.with_config_file(path);
+        loader = loader.with_env_vars().with_config_file(path);
     } else {
         // Conventional default inside the image
         let fallback_path = "/etc/foxy/config.toml";
@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             return Err(Box::from("No configuration file found."));
         }
         
-        loader = loader.with_config_file(fallback_path);
+        loader = loader.with_env_vars().with_config_file(fallback_path);
     }
 
     // Build
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         error_fmt!("Startup", "Failed to initialise OpenTelemetry: {}", err);
                     });
                 } else {
-                    info_fmt!("Startup", "OpenTelemetry endpoint is not configured. Skipping initialization.");
+                    warn_fmt!("Startup", "OpenTelemetry endpoint is not configured. Skipping initialization.");
                 }
             }
             Ok(None) => {

@@ -46,12 +46,14 @@ pub mod core;
 pub mod filters;
 pub mod loader;
 pub mod logging;
+#[cfg(feature = "opentelemetry")]
 pub mod opentelemetry;
 pub mod router;
 pub mod security;
 pub mod server;
 
 // Re-export key types at the crate root for convenience
+#[cfg(feature = "opentelemetry")]
 pub use crate::opentelemetry::init;
 pub use config::{ConfigError, ConfigProvider, ConfigProviderExt};
 pub use core::{
