@@ -1117,12 +1117,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_jwks_refresh_connection_error() {
+        // Setup a mock server that never responds to simulate a timeout
+        let mock_server = MockServer::start().await;
+        let jwks_uri = format!("{}/jwks", mock_server.uri());
+        
+        // Configure the mock to never respond (effectively a hang/timeout)
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(60))) // Longer than client timeout
+            .mount(&mock_server)
+            .await;
+
         let provider = OidcProvider {
             issuer: "https://auth.example.com".to_string(),
             aud: None,
             shared_secret: None,
-            // Use a non-routable IP address to reliably get a connection error
-            jwks_uri: "http://192.0.2.1:80/jwks".to_string(),
+            jwks_uri,
             jwks: Arc::new(RwLock::new(None)),
             last_refresh: Arc::new(RwLock::new(
                 tokio::time::Instant::now()
@@ -1130,26 +1140,19 @@ mod tests {
                     .unwrap_or_else(tokio::time::Instant::now)
             )),
             http: reqwest::Client::builder()
-                .timeout(Duration::from_secs(5)) // Shorter timeout for connection error
+                .timeout(Duration::from_secs(1)) // Short client timeout to trigger failure
                 .build()
                 .unwrap(),
             rules: vec![],
         };
 
         let result = provider.refresh_jwks().await;
-        assert!(result.is_err(), "Expected connection error, but got: {:?}", result);
+        assert!(result.is_err(), "Expected connection error (timeout), but got: {:?}", result);
 
         if let Err(ProxyError::SecurityError(msg)) = result {
             println!("Actual connection error message: {}", msg); // Print the actual message
-            // The error message can vary depending on the underlying network stack and OS.
-            // Common errors include "Failed to connect", "Connection refused", "timed out", "No route to host".
-            assert!(msg.contains("Failed to connect to JWKS endpoint") ||
-                    msg.contains("Connection refused") ||
-                    msg.contains("timed out") ||
-                    msg.contains("No route to host") ||
-                    msg.contains("No connection could be made because the target machine actively refused it") || // Windows specific
-                    msg.contains("A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond") // Windows specific timeout
-            );
+            // The error message should indicate a timeout
+            assert!(msg.contains("timed out") || msg.contains("operation timed out") || msg.contains("TimedOut"));
         } else {
             panic!("Expected SecurityError");
         }
