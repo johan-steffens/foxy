@@ -15,6 +15,7 @@ pub mod structured;
 pub mod config;
 pub mod wrapper;
 pub mod middleware;
+pub mod test_logger;
 
 #[cfg(test)]
 mod tests;

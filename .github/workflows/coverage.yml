@@ -1,4 +1,4 @@
-name: Coverage Report
+name: Coverage Report Workflow
 
 on:
   workflow_dispatch:
