@@ -214,8 +214,8 @@ impl OidcProvider {
         let response = match self.http.get(&self.jwks_uri).send().await {
             Ok(res) => res,
             Err(e) => {
-                let err = ProxyError::SecurityError(format!("Failed to connect to JWKS endpoint: {e}"));
-                error_fmt!("OidcProvider", "{}", err);
+                let err = ProxyError::SecurityError(format!("Failed to connect to JWKS endpoint: {e:?}"));
+                error_fmt!("OidcProvider", "Failed to connect to JWKS endpoint: {:?}", e);
                 // Explicitly set JWKS to None on connection error
                 {
                     let mut w = self.jwks.write().await;
@@ -228,8 +228,8 @@ impl OidcProvider {
         let response = match response.error_for_status() {
             Ok(res) => res,
             Err(e) => {
-                let err = ProxyError::SecurityError(format!("JWKS endpoint returned error: {e}"));
-                error_fmt!("OidcProvider", "{}", err);
+                let err = ProxyError::SecurityError(format!("JWKS endpoint returned error: {e:?}"));
+                error_fmt!("OidcProvider", "JWKS endpoint returned error: {:?}", e);
                 // Explicitly set JWKS to None on HTTP error
                 {
                     let mut w = self.jwks.write().await;
@@ -242,8 +242,8 @@ impl OidcProvider {
         let jwks = match response.json::<JwkSet>().await {
             Ok(j) => j,
             Err(e) => {
-                let err = ProxyError::SecurityError(format!("Failed to parse JWKS response: {e}"));
-                error_fmt!("OidcProvider", "{}", err);
+                let err = ProxyError::SecurityError(format!("Failed to parse JWKS response: {e:?}"));
+                error_fmt!("OidcProvider", "Failed to parse JWKS response: {:?}", e);
                 // Explicitly set JWKS to None on JSON parsing error
                 {
                     let mut w = self.jwks.write().await;
