@@ -1134,7 +1134,7 @@ mod tests {
 
         let result = provider.refresh_jwks().await;
         tokio::time::sleep(Duration::from_secs(1)).await; // Give time for connection error to propagate
-        assert!(result.is_err());
+        assert!(result.is_err(), "Expected connection error, but got: {:?}", result);
 
         if let Err(ProxyError::SecurityError(msg)) = result {
             assert!(msg.contains("Failed to connect to JWKS endpoint"));
