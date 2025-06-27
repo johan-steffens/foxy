@@ -3048,5 +3048,3 @@ mod tests {
         assert!(!rule.matches("*", "/health"));
     }
 }
-
-

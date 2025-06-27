@@ -790,8 +790,7 @@ mod router_tests {
             HttpMethod::Head,
             HttpMethod::Options,
         ] {
-            let request =
-                create_test_request(*method, "/api", None, vec![], "http://test.co.za");
+            let request = create_test_request(*method, "/api", None, vec![], "http://test.co.za");
             assert!(predicate.matches(&request).await);
         }
     }

@@ -30,8 +30,6 @@ use crate::logging::middleware::LoggingMiddleware;
 #[cfg(feature = "swagger-ui")]
 use crate::server::swagger::SwaggerUIConfig;
 use crate::{debug_fmt, error_fmt, info_fmt, trace_fmt, warn_fmt};
-#[cfg(feature = "opentelemetry")]
-use std::borrow::Cow;
 use bytes::Bytes;
 use futures_util::TryStreamExt;
 use health::HealthServer;
@@ -44,6 +42,8 @@ use hyper_util::rt::TokioIo;
 use hyper_util::server::conn::auto::Builder as AutoBuilder;
 use reqwest::Body;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "opentelemetry")]
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -70,7 +70,6 @@ use opentelemetry_semantic_conventions::attribute::{
     HTTP_FLAVOR, HTTP_HOST, HTTP_METHOD, HTTP_REQUEST_CONTENT_LENGTH, HTTP_RESPONSE_STATUS_CODE,
     HTTP_SCHEME, HTTP_URL, HTTP_USER_AGENT, NET_PEER_IP,
 };
-
 
 /// Configuration for the HTTP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]

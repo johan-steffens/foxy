@@ -183,11 +183,11 @@ mod tests {
 
         for error in errors {
             match error {
-                ConfigError::NotFound => {},
-                ConfigError::ParseError(_) => {},
-                ConfigError::IoError(_) => {},
-                ConfigError::ProviderError { .. } => {},
-                ConfigError::Other(_) => {},
+                ConfigError::NotFound => {}
+                ConfigError::ParseError(_) => {}
+                ConfigError::IoError(_) => {}
+                ConfigError::ProviderError { .. } => {}
+                ConfigError::Other(_) => {}
             }
         }
     }

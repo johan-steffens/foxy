@@ -24,8 +24,6 @@ use crate::config::Config;
 
 use crate::{debug_fmt, error_fmt, info_fmt, trace_fmt, warn_fmt};
 #[cfg(feature = "opentelemetry")]
-use std::borrow::Cow;
-#[cfg(feature = "opentelemetry")]
 use opentelemetry::{
     Context, KeyValue, global,
     trace::Tracer,
@@ -35,7 +33,8 @@ use opentelemetry::{
 use opentelemetry_http::HeaderInjector;
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_semantic_conventions::attribute::HTTP_RESPONSE_STATUS_CODE;
-
+#[cfg(feature = "opentelemetry")]
+use std::borrow::Cow;
 
 /// Errors that can occur during proxy operations.
 #[derive(Error, Debug)]

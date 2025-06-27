@@ -369,8 +369,7 @@ impl From<TestFilter> for Value {
                     Value::Object(add_headers),
                 );
 
-                let remove_headers: Vec<Value> =
-                    remove.into_iter().map(Value::String).collect();
+                let remove_headers: Vec<Value> = remove.into_iter().map(Value::String).collect();
                 config.insert(
                     "remove_request_headers".to_string(),
                     Value::Array(remove_headers),
