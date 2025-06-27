@@ -407,3 +407,15 @@ For a detailed guide on adding extension points, see the [Extension Guide](docs/
 ## License
 
 This project is licensed under the [Mozilla Public License Version 2.0](LICENSE.md).
+
+## Contributions
+
+We welcome and appreciate contributions to Foxy! Please see our [Contribution Guide](docs/CONTRIBUTING.md) for details on how to get involved, including our development workflow, code style, and testing procedures.
+
+### Contributors
+
+A big thank you to all the individuals who have contributed to Foxy!
+
+[Johan Steffens](https://github.com/johan-steffens)
+[Armand Eicker](https://github.com/Armand-Eicker-Dev)
+[Ohan Smit](https://github.com/Psynosaur)

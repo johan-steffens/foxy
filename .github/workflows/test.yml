@@ -13,6 +13,30 @@ permissions:
 name: Test and Audit Workflow
 
 jobs:
+  check_format:
+    name: Check Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --check
+
+  check_clippy:
+    name: Check Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: clippy
+      - name: Run Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
   audit:
     name: Audit
     runs-on: ubuntu-latest
