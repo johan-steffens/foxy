@@ -1,12 +1,18 @@
-use std::{net::SocketAddr, sync::{Arc, atomic::{AtomicBool, Ordering}}};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
+use hyper::body::Incoming as IncomingBody;
+use hyper::service::service_fn;
+use hyper::{Request, Response};
+use hyper_util::rt::TokioIo;
+use std::{
+    net::SocketAddr,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
-use hyper::{Request, Response};
-use hyper::service::{service_fn};
-use hyper::body::Incoming as IncomingBody;
-use hyper_util::rt::TokioIo;
 
 #[derive(Debug)]
 pub struct HealthServer {
@@ -41,24 +47,28 @@ impl HealthServer {
                     let service = service_fn(move |req: Request<IncomingBody>| {
                         let ready = ready.clone();
                         async move {
-                            let map_err = |_: std::convert::Infallible| {
-                                std::io::Error::other("error")
-                            };
-                            
+                            let map_err =
+                                |_: std::convert::Infallible| std::io::Error::other("error");
+
                             let response = match req.uri().path() {
-                                "/health" => Response::new(
-                                    Full::new(Bytes::from("OK")).map_err(map_err)
-                                ),
+                                "/health" => {
+                                    Response::new(Full::new(Bytes::from("OK")).map_err(map_err))
+                                }
                                 "/ready" => {
                                     if ready.load(Ordering::Relaxed) {
-                                        Response::new(Full::new(Bytes::from("READY")).map_err(map_err))
+                                        Response::new(
+                                            Full::new(Bytes::from("READY")).map_err(map_err),
+                                        )
                                     } else {
                                         Response::builder()
                                             .status(503)
-                                            .body(Full::new(Bytes::from("NOT READY")).map_err(map_err))
+                                            .body(
+                                                Full::new(Bytes::from("NOT READY"))
+                                                    .map_err(map_err),
+                                            )
                                             .unwrap()
                                     }
-                                },
+                                }
                                 _ => Response::builder()
                                     .status(404)
                                     .body(Full::new(Bytes::from("Not Found")).map_err(map_err))
@@ -68,7 +78,9 @@ impl HealthServer {
                         }
                     });
 
-                    let builder = hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+                    let builder = hyper_util::server::conn::auto::Builder::new(
+                        hyper_util::rt::TokioExecutor::new(),
+                    );
                     let conn = builder.serve_connection(io, service);
 
                     if let Err(err) = conn.await {
@@ -103,7 +115,10 @@ mod tests {
         port
     }
 
-    async fn make_request(port: u16, path: &str) -> Result<(u16, String), Box<dyn std::error::Error + Send + Sync>> {
+    async fn make_request(
+        port: u16,
+        path: &str,
+    ) -> Result<(u16, String), Box<dyn std::error::Error + Send + Sync>> {
         let url = format!("http://127.0.0.1:{}{}", port, path);
         let response = reqwest::get(&url).await?;
         let status = response.status().as_u16();
@@ -208,26 +223,34 @@ mod tests {
 
         // Test health endpoint
         let (status, body) = timeout(Duration::from_secs(5), make_request(port, "/health"))
-            .await.unwrap().unwrap();
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(status, 200);
         assert_eq!(body, "OK");
 
         // Test ready endpoint (not ready)
         let (status, body) = timeout(Duration::from_secs(5), make_request(port, "/ready"))
-            .await.unwrap().unwrap();
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(status, 503);
         assert_eq!(body, "NOT READY");
 
         // Set ready and test again
         health_server.set_ready();
         let (status, body) = timeout(Duration::from_secs(5), make_request(port, "/ready"))
-            .await.unwrap().unwrap();
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(status, 200);
         assert_eq!(body, "READY");
 
         // Test health endpoint again
         let (status, body) = timeout(Duration::from_secs(5), make_request(port, "/health"))
-            .await.unwrap().unwrap();
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(status, 200);
         assert_eq!(body, "OK");
     }
@@ -244,9 +267,7 @@ mod tests {
         let mut handles = vec![];
 
         for _ in 0..5 {
-            let handle = tokio::spawn(async move {
-                make_request(port, "/health").await
-            });
+            let handle = tokio::spawn(async move { make_request(port, "/health").await });
             handles.push(handle);
         }
 
@@ -264,9 +285,7 @@ mod tests {
 
         let mut ready_handles = vec![];
         for _ in 0..3 {
-            let handle = tokio::spawn(async move {
-                make_request(port, "/ready").await
-            });
+            let handle = tokio::spawn(async move { make_request(port, "/ready").await });
             ready_handles.push(handle);
         }
 

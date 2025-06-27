@@ -17,21 +17,21 @@
 
 #![allow(clippy::single_match)]
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Display;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 #[cfg(feature = "opentelemetry")]
 use {
-    opentelemetry_otlp::{WithTonicConfig},
-    opentelemetry::{global, KeyValue},
-    opentelemetry_sdk::{trace::SdkTracerProvider, Resource},
+    opentelemetry::{KeyValue, global},
+    opentelemetry_otlp::WithTonicConfig,
     opentelemetry_otlp::{SpanExporter, WithExportConfig},
-    tonic::metadata::{MetadataMap, MetadataValue},
     opentelemetry_sdk::propagation::TraceContextPropagator,
+    opentelemetry_sdk::{Resource, trace::SdkTracerProvider},
     opentelemetry_semantic_conventions::attribute::{
-        SERVICE_VERSION, SERVICE_INSTANCE_ID, DEPLOYMENT_ENVIRONMENT
-    }
+        DEPLOYMENT_ENVIRONMENT, SERVICE_INSTANCE_ID, SERVICE_VERSION,
+    },
+    tonic::metadata::{MetadataMap, MetadataValue},
 };
 
 /// Errors that can occur during OpenTelemetry operations.
@@ -124,15 +124,27 @@ impl Default for OpenTelemetryConfig {
 
 impl Display for OpenTelemetryConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "OpenTelemetryConfig {{ endpoint: {}, service_name: {}, include_headers: {}, include_bodies: {}, max_body_size: {}, span_annotations: {:?}, collector_headers: {:?}, resource_attributes: {:?} }}", self.endpoint, self.service_name, self.include_headers, self.include_bodies, self.max_body_size, self.span_annotations, self.collector_headers, self.resource_attributes)
+        write!(
+            f,
+            "OpenTelemetryConfig {{ endpoint: {}, service_name: {}, include_headers: {}, include_bodies: {}, max_body_size: {}, span_annotations: {:?}, collector_headers: {:?}, resource_attributes: {:?} }}",
+            self.endpoint,
+            self.service_name,
+            self.include_headers,
+            self.include_bodies,
+            self.max_body_size,
+            self.span_annotations,
+            self.collector_headers,
+            self.resource_attributes
+        )
     }
 }
 
 /// Initialise tracing + OpenTelemetry. Safe to call once.
 #[cfg(feature = "opentelemetry")]
-pub fn init(config: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    
-    if config.is_some() && ! config.as_ref().unwrap().endpoint.is_empty() {
+pub fn init(
+    config: Option<OpenTelemetryConfig>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if config.is_some() && !config.as_ref().unwrap().endpoint.is_empty() {
         let config_ref = config.as_ref().unwrap();
 
         global::set_text_map_propagator(TraceContextPropagator::new());
@@ -154,27 +166,32 @@ pub fn init(config: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::erro
             }
             exporter_builder = exporter_builder.with_metadata(meta);
         }
-        let exporter = exporter_builder.build().expect("An error occurred building the OpenTelemetry exporter");
+        let exporter = exporter_builder
+            .build()
+            .expect("An error occurred building the OpenTelemetry exporter");
 
         // ── resource ───────────────────────────────────────────────
-        let svc_version   = env!("CARGO_PKG_VERSION");
-        let deploy_env    = std::env::var("FOXY_DEPLOY_ENV").unwrap_or_else(|_| "local".into());
-        let instance_id   = hostname::get()
+        let svc_version = env!("CARGO_PKG_VERSION");
+        let deploy_env = std::env::var("FOXY_DEPLOY_ENV").unwrap_or_else(|_| "local".into());
+        let instance_id = hostname::get()
             .ok()
             .and_then(|h| h.into_string().ok())
             .unwrap_or_else(|| "unknown-host".into());
-        
-        let mut res_builder = Resource::builder().with_service_name(config_ref.service_name.clone())
+
+        let mut res_builder = Resource::builder()
+            .with_service_name(config_ref.service_name.clone())
             .with_attribute(KeyValue::new(SERVICE_VERSION, svc_version))
             .with_attribute(KeyValue::new(DEPLOYMENT_ENVIRONMENT, deploy_env))
             .with_attribute(KeyValue::new(SERVICE_INSTANCE_ID, instance_id));
-        
-        
+
         if !config_ref.resource_attributes.is_empty() {
-            let attrs = config_ref.resource_attributes.iter().map(|(k, v)| KeyValue::new(k.clone(), v.clone()));
+            let attrs = config_ref
+                .resource_attributes
+                .iter()
+                .map(|(k, v)| KeyValue::new(k.clone(), v.clone()));
             res_builder = res_builder.with_attributes(attrs);
         };
-        
+
         let resource = res_builder.build();
 
         // ── tracer provider ────────────────────────────────────────
@@ -190,7 +207,11 @@ pub fn init(config: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::erro
 
 /// No‑op version when the feature is disabled.
 #[cfg(not(feature = "opentelemetry"))]
-pub fn init(_cfg: Option<OpenTelemetryConfig>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> { Ok(()) }
+pub fn init(
+    _cfg: Option<OpenTelemetryConfig>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
@@ -238,9 +259,18 @@ mod tests {
         assert!(!config.include_headers);
         assert!(config.include_bodies);
         assert_eq!(config.max_body_size, 2048);
-        assert_eq!(config.span_annotations.get("custom.key"), Some(&"custom.value".to_string()));
-        assert_eq!(config.collector_headers.get("X-API-Key"), Some(&"secret-key".to_string()));
-        assert_eq!(config.resource_attributes.get("service.version"), Some(&"1.0.0".to_string()));
+        assert_eq!(
+            config.span_annotations.get("custom.key"),
+            Some(&"custom.value".to_string())
+        );
+        assert_eq!(
+            config.collector_headers.get("X-API-Key"),
+            Some(&"secret-key".to_string())
+        );
+        assert_eq!(
+            config.resource_attributes.get("service.version"),
+            Some(&"1.0.0".to_string())
+        );
     }
 
     #[test]
@@ -265,8 +295,8 @@ mod tests {
         assert!(serialized.contains("\"service_name\":\"foxy-proxy\""));
 
         // Test deserialization
-        let deserialized: OpenTelemetryConfig = serde_json::from_str(&serialized)
-            .expect("Failed to deserialize config");
+        let deserialized: OpenTelemetryConfig =
+            serde_json::from_str(&serialized).expect("Failed to deserialize config");
         assert_eq!(deserialized.endpoint, config.endpoint);
         assert_eq!(deserialized.service_name, config.service_name);
         assert_eq!(deserialized.include_headers, config.include_headers);
@@ -278,8 +308,8 @@ mod tests {
     fn test_opentelemetry_config_partial_deserialization() {
         // Test that partial JSON can be deserialized with defaults
         let partial_json = r#"{"endpoint": "http://custom:4317"}"#;
-        let config: OpenTelemetryConfig = serde_json::from_str(partial_json)
-            .expect("Failed to deserialize partial config");
+        let config: OpenTelemetryConfig =
+            serde_json::from_str(partial_json).expect("Failed to deserialize partial config");
 
         assert_eq!(config.endpoint, "http://custom:4317");
         assert_eq!(config.service_name, "foxy-proxy"); // default
@@ -348,8 +378,12 @@ mod tests {
     async fn test_init_with_custom_headers() {
         let mut config = OpenTelemetryConfig::default();
         config.endpoint = "http://localhost:4317".to_string();
-        config.collector_headers.insert("x-api-key".to_string(), "test-key".to_string());
-        config.collector_headers.insert("authorization".to_string(), "Bearer token".to_string());
+        config
+            .collector_headers
+            .insert("x-api-key".to_string(), "test-key".to_string());
+        config
+            .collector_headers
+            .insert("authorization".to_string(), "Bearer token".to_string());
 
         let result = init(Some(config));
         assert!(result.is_ok());
@@ -360,8 +394,12 @@ mod tests {
     async fn test_init_with_custom_resource_attributes() {
         let mut config = OpenTelemetryConfig::default();
         config.endpoint = "http://localhost:4317".to_string();
-        config.resource_attributes.insert("service.version".to_string(), "1.0.0".to_string());
-        config.resource_attributes.insert("deployment.environment".to_string(), "test".to_string());
+        config
+            .resource_attributes
+            .insert("service.version".to_string(), "1.0.0".to_string());
+        config
+            .resource_attributes
+            .insert("deployment.environment".to_string(), "test".to_string());
 
         let result = init(Some(config));
         assert!(result.is_ok());
@@ -373,11 +411,14 @@ mod tests {
         let mut config = OpenTelemetryConfig::default();
         config.endpoint = "http://localhost:4317".to_string();
         // Add headers with invalid characters that should be filtered out
-        config.collector_headers.insert("invalid\nheader".to_string(), "value".to_string());
-        config.collector_headers.insert("valid-header".to_string(), "valid-value".to_string());
+        config
+            .collector_headers
+            .insert("invalid\nheader".to_string(), "value".to_string());
+        config
+            .collector_headers
+            .insert("valid-header".to_string(), "valid-value".to_string());
 
         let result = init(Some(config));
         assert!(result.is_ok());
     }
 }
-

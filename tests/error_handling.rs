@@ -4,19 +4,16 @@
 
 //! Error handling integration tests for Foxy API Gateway
 
-use foxy::{
-    Foxy, ProxyError, ConfigError, LoaderError,
-    Filter, FilterType, Router, Route, ProxyRequest, ProxyResponse
-};
-use foxy::config::{Config, ConfigProvider};
 use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use std::collections::HashMap;
+use foxy::config::ConfigProvider;
+use foxy::{
+    ConfigError, Filter, FilterType, Foxy, LoaderError, ProxyError, ProxyRequest, ProxyResponse,
+    Route, Router,
+};
 use serde_json::Value;
 use std::time::Duration;
-use wiremock::{MockServer, Mock, ResponseTemplate};
 use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 mod common;
 use common::{TestConfigProvider, TestRoute, init_test_logging};
@@ -35,11 +32,14 @@ impl ConfigProvider for FailingConfigProvider {
     }
 
     fn get_raw(&self, _key: &str) -> Result<Option<Value>, ConfigError> {
-        Err(ConfigError::ParseError("Simulated config error".to_string()))
+        Err(ConfigError::ParseError(
+            "Simulated config error".to_string(),
+        ))
     }
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct FailingRouter;
 
 #[async_trait]
@@ -62,12 +62,14 @@ impl Router for FailingRouter {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct FailingFilter {
     name: String,
     fail_pre: bool,
     fail_post: bool,
 }
 
+#[allow(dead_code)]
 impl FailingFilter {
     fn new(name: &str, fail_pre: bool, fail_post: bool) -> Self {
         Self {
@@ -90,15 +92,25 @@ impl Filter for FailingFilter {
 
     async fn pre_filter(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
         if self.fail_pre {
-            Err(ProxyError::FilterError(format!("Pre-filter {} failed", self.name)))
+            Err(ProxyError::FilterError(format!(
+                "Pre-filter {} failed",
+                self.name
+            )))
         } else {
             Ok(request)
         }
     }
 
-    async fn post_filter(&self, _request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
+    async fn post_filter(
+        &self,
+        _request: ProxyRequest,
+        response: ProxyResponse,
+    ) -> Result<ProxyResponse, ProxyError> {
         if self.fail_post {
-            Err(ProxyError::FilterError(format!("Post-filter {} failed", self.name)))
+            Err(ProxyError::FilterError(format!(
+                "Post-filter {} failed",
+                self.name
+            )))
         } else {
             Ok(response)
         }
@@ -110,8 +122,7 @@ async fn test_config_error_handling() {
     init_test_logging();
 
     // Test with failing config provider
-    let loader = Foxy::loader()
-        .with_provider(FailingConfigProvider);
+    let loader = Foxy::loader().with_provider(FailingConfigProvider);
 
     let result = loader.build().await;
     assert!(result.is_err());
@@ -120,12 +131,15 @@ async fn test_config_error_handling() {
     match result {
         Err(LoaderError::ConfigError(_)) => {
             // Direct config error - expected
-        },
+        }
         Err(LoaderError::ProxyError(ProxyError::ConfigError(_))) => {
             // Config error wrapped in ProxyError - also expected
-        },
+        }
         other => {
-            panic!("Expected ConfigError or ProxyError(ConfigError), got: {:?}", other);
+            panic!(
+                "Expected ConfigError or ProxyError(ConfigError), got: {:?}",
+                other
+            );
         }
     }
 }
@@ -133,17 +147,14 @@ async fn test_config_error_handling() {
 #[tokio::test]
 async fn test_invalid_configuration_values() {
     init_test_logging();
-    
+
     // Test with invalid timeout value
     let config = TestConfigProvider::new("invalid_test")
         .with_value("proxy.timeout", "not-a-number")
         .with_value("server.port", -1); // Invalid port
-    
-    let result = Foxy::loader()
-        .with_provider(config)
-        .build()
-        .await;
-    
+
+    let result = Foxy::loader().with_provider(config).build().await;
+
     // Should handle invalid configuration gracefully
     assert!(result.is_err());
 }
@@ -151,64 +162,56 @@ async fn test_invalid_configuration_values() {
 #[tokio::test]
 async fn test_network_timeout_error() {
     init_test_logging();
-    
+
     // Start a mock server that will delay responses
     let mock_server = MockServer::start().await;
-    
+
     Mock::given(method("GET"))
         .and(path("/slow"))
         .respond_with(
             ResponseTemplate::new(200)
                 .set_delay(Duration::from_secs(5)) // 5 second delay
-                .set_body_string("Slow response")
+                .set_body_string("Slow response"),
         )
         .mount(&mock_server)
         .await;
-    
+
     // Configure proxy with very short timeout
     let config = TestConfigProvider::new("timeout_test")
         .with_value("proxy.timeout", 1) // 1 second timeout
         .with_value("server.port", 0)
-        .with_routes(vec![
-            TestRoute::new(&mock_server.uri())
-                .with_path("/slow")
-        ]);
-    
+        .with_routes(vec![TestRoute::new(&mock_server.uri()).with_path("/slow")]);
+
     let foxy = Foxy::loader()
         .with_provider(config)
         .build()
         .await
         .expect("Failed to build Foxy instance");
-    
-    let server_handle = tokio::spawn(async move {
-        foxy.start().await
-    });
-    
+
+    let server_handle = tokio::spawn(async move { foxy.start().await });
+
     tokio::time::sleep(Duration::from_millis(100)).await;
-    
+
     // Make request that should timeout
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
         .unwrap();
-    
-    let response = client
-        .get("http://127.0.0.1:8080/slow")
-        .send()
-        .await;
-    
+
+    let response = client.get("http://127.0.0.1:8080/slow").send().await;
+
     // Should get a timeout or error response
     match response {
         Ok(resp) => {
             // If we get a response, it should be an error status
             assert!(resp.status().is_server_error() || resp.status().is_client_error());
-        },
+        }
         Err(e) => {
             // Network error is also acceptable
             println!("Expected network error: {}", e);
         }
     }
-    
+
     server_handle.abort();
 }
 
@@ -221,7 +224,7 @@ async fn test_upstream_server_unavailable() {
         .with_value("server.port", 0)
         .with_routes(vec![
             TestRoute::new("http://localhost:99999") // Non-existent server
-                .with_path("/api/*")
+                .with_path("/api/*"),
         ]);
 
     let foxy = Foxy::loader()
@@ -230,18 +233,13 @@ async fn test_upstream_server_unavailable() {
         .await
         .expect("Failed to build Foxy instance");
 
-    let server_handle = tokio::spawn(async move {
-        foxy.start().await
-    });
+    let server_handle = tokio::spawn(async move { foxy.start().await });
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Make request to unavailable upstream
     let client = reqwest::Client::new();
-    let response = client
-        .get("http://127.0.0.1:8080/api/test")
-        .send()
-        .await;
+    let response = client.get("http://127.0.0.1:8080/api/test").send().await;
 
     match response {
         Ok(resp) => {
@@ -250,7 +248,7 @@ async fn test_upstream_server_unavailable() {
             // Accept both server errors (5xx) and client errors (4xx) since connection failures
             // can be reported as either depending on the specific error
             assert!(resp.status().is_server_error() || resp.status().is_client_error());
-        },
+        }
         Err(e) => {
             // Connection error is also acceptable
             println!("Expected connection error: {}", e);
@@ -263,92 +261,84 @@ async fn test_upstream_server_unavailable() {
 #[tokio::test]
 async fn test_malformed_request_handling() {
     init_test_logging();
-    
+
     // Start a mock upstream server
     let mock_server = MockServer::start().await;
-    
+
     Mock::given(method("GET"))
         .and(path("/api/test"))
         .respond_with(ResponseTemplate::new(200).set_body_string("OK"))
         .mount(&mock_server)
         .await;
-    
+
     let config = TestConfigProvider::new("malformed_test")
         .with_value("server.port", 0)
-        .with_routes(vec![
-            TestRoute::new(&mock_server.uri())
-                .with_path("/api/*")
-        ]);
-    
+        .with_routes(vec![TestRoute::new(&mock_server.uri()).with_path("/api/*")]);
+
     let foxy = Foxy::loader()
         .with_provider(config)
         .build()
         .await
         .expect("Failed to build Foxy instance");
-    
-    let server_handle = tokio::spawn(async move {
-        foxy.start().await
-    });
-    
+
+    let server_handle = tokio::spawn(async move { foxy.start().await });
+
     tokio::time::sleep(Duration::from_millis(100)).await;
-    
+
     // Test with invalid HTTP method (this is handled by the HTTP client/server)
     let client = reqwest::Client::new();
-    
+
     // Test with extremely long URL
     let long_path = "/api/".to_string() + &"x".repeat(10000);
     let response = client
-        .get(&format!("http://127.0.0.1:8080{}", long_path))
+        .get(format!("http://127.0.0.1:8080{}", long_path))
         .send()
         .await;
-    
+
     match response {
         Ok(resp) => {
             // Should handle long URLs gracefully
             println!("Response status for long URL: {}", resp.status());
-        },
+        }
         Err(e) => {
             // URL too long error is acceptable
             println!("Expected URL error: {}", e);
         }
     }
-    
+
     server_handle.abort();
 }
 
 #[tokio::test]
 async fn test_large_request_body_handling() {
     init_test_logging();
-    
+
     // Start a mock upstream server
     let mock_server = MockServer::start().await;
-    
+
     Mock::given(method("POST"))
         .and(path("/upload"))
         .respond_with(ResponseTemplate::new(200).set_body_string("Uploaded"))
         .mount(&mock_server)
         .await;
-    
+
     let config = TestConfigProvider::new("large_body_test")
         .with_value("server.port", 0)
         .with_value("server.body_limit", 1024) // 1KB limit
         .with_routes(vec![
-            TestRoute::new(&mock_server.uri())
-                .with_path("/upload")
+            TestRoute::new(&mock_server.uri()).with_path("/upload"),
         ]);
-    
+
     let foxy = Foxy::loader()
         .with_provider(config)
         .build()
         .await
         .expect("Failed to build Foxy instance");
-    
-    let server_handle = tokio::spawn(async move {
-        foxy.start().await
-    });
-    
+
+    let server_handle = tokio::spawn(async move { foxy.start().await });
+
     tokio::time::sleep(Duration::from_millis(100)).await;
-    
+
     // Send a large request body (2KB)
     let large_body = vec![b'x'; 2048];
     let client = reqwest::Client::new();
@@ -357,18 +347,18 @@ async fn test_large_request_body_handling() {
         .body(large_body)
         .send()
         .await;
-    
+
     match response {
         Ok(resp) => {
             // Should either accept it or reject with appropriate status
             println!("Response status for large body: {}", resp.status());
-        },
+        }
         Err(e) => {
             // Request too large error is acceptable
             println!("Expected body size error: {}", e);
         }
     }
-    
+
     server_handle.abort();
 }
 
@@ -378,31 +368,35 @@ fn test_proxy_error_types() {
     // Create a reqwest error by making a request to an invalid URL
     let client = reqwest::Client::new();
     let result = tokio::runtime::Runtime::new().unwrap().block_on(async {
-        client.get("http://invalid-url-that-does-not-exist.invalid").send().await
+        client
+            .get("http://invalid-url-that-does-not-exist.invalid")
+            .send()
+            .await
     });
     let client_error = ProxyError::ClientError(result.unwrap_err());
     assert!(client_error.to_string().contains("HTTP client error"));
-    
-    let io_error = ProxyError::IoError(
-        std::io::Error::new(std::io::ErrorKind::NotFound, "File not found")
-    );
+
+    let io_error = ProxyError::IoError(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "File not found",
+    ));
     assert!(io_error.to_string().contains("IO error"));
-    
+
     let timeout_error = ProxyError::Timeout(Duration::from_secs(30));
     assert!(timeout_error.to_string().contains("timed out"));
-    
+
     let routing_error = ProxyError::RoutingError("No route".to_string());
     assert!(routing_error.to_string().contains("routing error"));
-    
+
     let filter_error = ProxyError::FilterError("Filter failed".to_string());
     assert!(filter_error.to_string().contains("filter error"));
-    
+
     let config_error = ProxyError::ConfigError("Bad config".to_string());
     assert!(config_error.to_string().contains("configuration error"));
-    
+
     let security_error = ProxyError::SecurityError("Auth failed".to_string());
     assert!(security_error.to_string().contains("security error"));
-    
+
     let other_error = ProxyError::Other("Generic".to_string());
     assert_eq!(other_error.to_string(), "Generic");
 }

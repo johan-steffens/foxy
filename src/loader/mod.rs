@@ -11,16 +11,18 @@
 #[cfg(test)]
 mod tests;
 
+use log::LevelFilter;
 use std::env;
 use std::sync::Arc;
-use log::LevelFilter;
 use thiserror::Error;
 
 use crate::config::{Config, ConfigError, ConfigProvider, EnvConfigProvider, FileConfigProvider};
-use crate::router::{FilterConfig, PredicateRouter};
-use crate::{info_fmt, init_with_config, Filter, FilterFactory, ProxyError, ProxyServer, ServerConfig};
 use crate::core::ProxyCore;
 use crate::logging::config::LoggingConfig;
+use crate::router::{FilterConfig, PredicateRouter};
+use crate::{
+    Filter, FilterFactory, ProxyError, ProxyServer, ServerConfig, info_fmt, init_with_config,
+};
 
 /// Errors that can occur during Foxy initialization.
 #[derive(Error, Debug)]
@@ -51,8 +53,6 @@ pub struct FoxyLoader {
     env_prefix: Option<String>,
     custom_filters: Vec<Arc<dyn Filter>>,
 }
-
-
 
 impl FoxyLoader {
     /// Create a new Foxy loader with default settings.
@@ -126,7 +126,7 @@ impl FoxyLoader {
                 match FileConfigProvider::new(&file_path) {
                     Ok(file_provider) => {
                         config_builder = config_builder.with_provider(file_provider);
-                    },
+                    }
                     Err(e) => {
                         return Err(LoaderError::ConfigError(e));
                     }
@@ -139,14 +139,19 @@ impl FoxyLoader {
         let config_arc = Arc::new(config);
 
         // Get the full logging config from the file, or use a default if it's missing.
-        let mut logging_config: LoggingConfig = config_arc.get("proxy.logging")
+        let mut logging_config: LoggingConfig = config_arc
+            .get("proxy.logging")
             .unwrap_or(None)
             .unwrap_or_default();
 
         // Determine the final log level, giving precedence to the RUST_LOG environment variable.
         let level_str_from_env = env::var("RUST_LOG").ok();
-        let final_level_str = level_str_from_env.as_deref().unwrap_or(&logging_config.level);
-        let final_level_filter = final_level_str.parse::<LevelFilter>().unwrap_or(LevelFilter::Info);
+        let final_level_str = level_str_from_env
+            .as_deref()
+            .unwrap_or(&logging_config.level);
+        let final_level_filter = final_level_str
+            .parse::<LevelFilter>()
+            .unwrap_or(LevelFilter::Info);
 
         // Update the config object with the final, resolved level.
         // This ensures to_logger_config() gets the correct string later.
@@ -156,12 +161,18 @@ impl FoxyLoader {
         init_with_config(final_level_filter, &logging_config);
 
         info_fmt!("Loader", "Foxy starting up");
-        
+
         #[cfg(feature = "opentelemetry")]
         {
-            if let Ok(Some(otel_config)) = config_arc.get::<crate::opentelemetry::OpenTelemetryConfig>("proxy.opentelemetry") {
-                info_fmt!("Loader", "OpenTelemetry initialized with endpoint: {} and service name: {}",
-                          otel_config.endpoint, otel_config.service_name);
+            if let Ok(Some(otel_config)) =
+                config_arc.get::<crate::opentelemetry::OpenTelemetryConfig>("proxy.opentelemetry")
+            {
+                info_fmt!(
+                    "Loader",
+                    "OpenTelemetry initialized with endpoint: {} and service name: {}",
+                    otel_config.endpoint,
+                    otel_config.service_name
+                );
             }
         }
 
@@ -172,7 +183,8 @@ impl FoxyLoader {
         let proxy_core = ProxyCore::new(config_arc.clone(), Arc::new(router)).await?;
 
         // Load global filters from configuration
-        let global_filters_config: Option<Vec<FilterConfig>> = config_arc.get("proxy.global_filters")?;
+        let global_filters_config: Option<Vec<FilterConfig>> =
+            config_arc.get("proxy.global_filters")?;
 
         if let Some(global_filters) = global_filters_config {
             for filter_config in global_filters {
@@ -192,7 +204,8 @@ impl FoxyLoader {
         }
 
         // Get server configuration
-        let server_config: ServerConfig = config_arc.get_or_default("server", ServerConfig::default())?;
+        let server_config: ServerConfig =
+            config_arc.get_or_default("server", ServerConfig::default())?;
 
         // Create the proxy server
         let proxy_server = ProxyServer::new(server_config, Arc::new(proxy_core));

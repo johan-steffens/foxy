@@ -25,10 +25,7 @@ pub enum ConfigError {
 
     /// An error related to a specific configuration provider.
     #[error("provider error: {provider}: {message}")]
-    ProviderError {
-        provider: String,
-        message: String,
-    },
+    ProviderError { provider: String, message: String },
 
     /// A generic error.
     #[error("{0}")]
@@ -60,7 +57,10 @@ mod tests {
     #[test]
     fn test_config_error_parse_error() {
         let error = ConfigError::ParseError("invalid JSON".to_string());
-        assert_eq!(error.to_string(), "failed to parse configuration: invalid JSON");
+        assert_eq!(
+            error.to_string(),
+            "failed to parse configuration: invalid JSON"
+        );
     }
 
     #[test]
@@ -183,11 +183,11 @@ mod tests {
 
         for error in errors {
             match error {
-                ConfigError::NotFound => assert!(true),
-                ConfigError::ParseError(_) => assert!(true),
-                ConfigError::IoError(_) => assert!(true),
-                ConfigError::ProviderError { .. } => assert!(true),
-                ConfigError::Other(_) => assert!(true),
+                ConfigError::NotFound => {},
+                ConfigError::ParseError(_) => {},
+                ConfigError::IoError(_) => {},
+                ConfigError::ProviderError { .. } => {},
+                ConfigError::Other(_) => {},
             }
         }
     }

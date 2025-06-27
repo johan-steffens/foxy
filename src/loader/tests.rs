@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #[cfg(test)]
-mod tests {
+mod loader_tests {
     use crate::FoxyLoader;
-    use crate::config::{ConfigProvider, ConfigError};
+    use crate::config::{ConfigError, ConfigProvider};
     use serde_json::Value;
     use std::collections::HashMap;
 
@@ -42,42 +42,49 @@ mod tests {
     async fn test_loader_with_config_file() {
         // Skip logger initialization to avoid conflicts with other tests
         let provider = MockConfigProvider::new();
-        
+
         // Create a loader with our mock provider
-        let loader = FoxyLoader::new()
-            .with_provider(provider);
-        
+        let loader = FoxyLoader::new().with_provider(provider);
+
         // Build the Foxy instance
         let foxy = loader.build().await.unwrap();
         let config = foxy.config();
-        
+
         // Verify the configuration was loaded correctly
         assert_eq!(config.get::<u64>("server.port").unwrap().unwrap(), 8080);
-        assert_eq!(config.get::<String>("server.host").unwrap().unwrap(), "127.0.0.1");
+        assert_eq!(
+            config.get::<String>("server.host").unwrap().unwrap(),
+            "127.0.0.1"
+        );
     }
 
     #[tokio::test]
     async fn test_loader_with_layered_config() {
         // Skip logger initialization to avoid conflicts with other tests
         // by directly creating the Config object instead of using the loader's build method
-        
+
         // Create first provider with default values
         let provider1 = MockConfigProvider::new();
-        
+
         // Create second provider with overridden port
         let mut provider2_values = HashMap::new();
         provider2_values.insert("server.port".to_string(), serde_json::json!(9000));
-        let provider2 = MockConfigProvider { values: provider2_values };
-        
+        let provider2 = MockConfigProvider {
+            values: provider2_values,
+        };
+
         // Create config directly to avoid logger initialization
         let config = crate::config::Config::builder()
             .with_provider(provider1)
             .with_provider(provider2)
             .build();
-        
+
         // Check layered configuration priority
         assert_eq!(config.get::<u64>("server.port").unwrap().unwrap(), 9000); // From provider2
-        assert_eq!(config.get::<String>("server.host").unwrap().unwrap(), "127.0.0.1"); // From provider1
+        assert_eq!(
+            config.get::<String>("server.host").unwrap().unwrap(),
+            "127.0.0.1"
+        ); // From provider1
     }
 
     #[tokio::test]
@@ -167,7 +174,10 @@ mod tests {
             crate::FilterType::Pre
         }
 
-        async fn pre_filter(&self, request: crate::ProxyRequest) -> Result<crate::ProxyRequest, crate::ProxyError> {
+        async fn pre_filter(
+            &self,
+            request: crate::ProxyRequest,
+        ) -> Result<crate::ProxyRequest, crate::ProxyError> {
             Ok(request)
         }
 
@@ -191,9 +201,7 @@ mod tests {
     async fn test_loader_with_multiple_filters() {
         let filter1 = MockFilter::new("filter1");
         let filter2 = MockFilter::new("filter2");
-        let loader = FoxyLoader::new()
-            .with_filter(filter1)
-            .with_filter(filter2);
+        let loader = FoxyLoader::new().with_filter(filter1).with_filter(filter2);
         assert_eq!(loader.custom_filters.len(), 2);
     }
 
@@ -210,7 +218,10 @@ mod tests {
         let config = foxy.config();
 
         // Check that environment variables were loaded
-        let host: String = config.get("server.host").unwrap().unwrap_or_else(|| "127.0.0.1".to_string());
+        let host: String = config
+            .get("server.host")
+            .unwrap()
+            .unwrap_or_else(|| "127.0.0.1".to_string());
         let port: u16 = config.get("server.port").unwrap().unwrap_or(8080);
 
         // Clean up
@@ -264,7 +275,7 @@ mod tests {
         match result {
             Err(crate::loader::LoaderError::ConfigError(_)) => {
                 // Expected error type
-            },
+            }
             other => {
                 panic!("Expected ConfigError, got: {:?}", other);
             }
@@ -289,7 +300,10 @@ mod tests {
 
         let config = foxy.config();
         assert_eq!(config.get::<u64>("server.port").unwrap().unwrap(), 8080);
-        assert_eq!(config.get::<String>("server.host").unwrap().unwrap(), "127.0.0.1");
+        assert_eq!(
+            config.get::<String>("server.host").unwrap().unwrap(),
+            "127.0.0.1"
+        );
     }
 
     #[tokio::test]
@@ -346,7 +360,11 @@ mod tests {
         // Both instances should have the same configuration
         assert_eq!(
             foxy.config().get::<u64>("server.port").unwrap().unwrap(),
-            cloned_foxy.config().get::<u64>("server.port").unwrap().unwrap()
+            cloned_foxy
+                .config()
+                .get::<u64>("server.port")
+                .unwrap()
+                .unwrap()
         );
     }
 }

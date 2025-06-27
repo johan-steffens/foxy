@@ -4,9 +4,9 @@
 
 //! Configuration for logging.
 
+use crate::logging::structured::{LogFormat, LoggerConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::logging::structured::{LoggerConfig, LogFormat};
 
 /// Logging configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,35 +14,35 @@ pub struct LoggingConfig {
     /// Whether to use structured logging
     #[serde(default = "default_false")]
     pub structured: bool,
-    
+
     /// Log format (terminal or json)
     #[serde(default = "default_format")]
     pub format: String,
-    
+
     /// Log level
     #[serde(default = "default_level")]
     pub level: String,
-    
+
     /// Include source code location
     #[serde(default = "default_true")]
     pub include_location: bool,
-    
+
     /// Include thread ID
     #[serde(default = "default_true")]
     pub include_thread_id: bool,
-    
+
     /// Include trace ID in logs
     #[serde(default = "default_true")]
     pub include_trace_id: bool,
-    
+
     /// Propagate trace ID from request headers
     #[serde(default = "default_true")]
     pub propagate_trace_id: bool,
-    
+
     /// Header name for trace ID
     #[serde(default = "default_trace_header")]
     pub trace_id_header: String,
-    
+
     /// Static fields to include in all logs
     #[serde(default)]
     pub static_fields: HashMap<String, String>,

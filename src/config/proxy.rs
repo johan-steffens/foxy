@@ -4,8 +4,8 @@
 
 //! Proxy configuration module.
 
-use serde::{Deserialize, Serialize};
 use crate::logging::config::LoggingConfig;
+use serde::{Deserialize, Serialize};
 
 /// Main proxy configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -13,11 +13,10 @@ pub struct ProxyConfig {
     /// Server configuration
     #[serde(default)]
     pub server: ServerConfig,
-    
+
     /// Logging configuration
     #[serde(default)]
     pub logging: LoggingConfig,
-    
     // Other proxy configuration fields can be added here
 }
 
@@ -27,11 +26,11 @@ pub struct ServerConfig {
     /// Address to listen on
     #[serde(default = "default_listen")]
     pub listen: String,
-    
+
     /// Maximum body size in bytes
     #[serde(default = "default_body_limit")]
     pub body_limit: usize,
-    
+
     /// Maximum header size in bytes
     #[serde(default = "default_header_limit")]
     pub header_limit: usize,
@@ -59,8 +58,6 @@ impl Default for ServerConfig {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,7 +77,7 @@ mod tests {
         let config = ServerConfig {
             listen: "127.0.0.1:9000".to_string(),
             body_limit: 10 * 1024 * 1024, // 10MB
-            header_limit: 512 * 1024, // 512KB
+            header_limit: 512 * 1024,     // 512KB
         };
 
         assert_eq!(config.listen, "127.0.0.1:9000");
@@ -109,8 +106,8 @@ mod tests {
         assert!(serialized.contains("\"header_limit\":262144")); // 256KB in bytes
 
         // Test deserialization
-        let deserialized: ServerConfig = serde_json::from_str(&serialized)
-            .expect("Failed to deserialize ServerConfig");
+        let deserialized: ServerConfig =
+            serde_json::from_str(&serialized).expect("Failed to deserialize ServerConfig");
         assert_eq!(deserialized.listen, config.listen);
         assert_eq!(deserialized.body_limit, config.body_limit);
         assert_eq!(deserialized.header_limit, config.header_limit);
@@ -126,8 +123,8 @@ mod tests {
         assert!(serialized.contains("\"logging\""));
 
         // Test deserialization
-        let deserialized: ProxyConfig = serde_json::from_str(&serialized)
-            .expect("Failed to deserialize ProxyConfig");
+        let deserialized: ProxyConfig =
+            serde_json::from_str(&serialized).expect("Failed to deserialize ProxyConfig");
         assert_eq!(deserialized.server.listen, config.server.listen);
         assert_eq!(deserialized.server.body_limit, config.server.body_limit);
         assert_eq!(deserialized.server.header_limit, config.server.header_limit);
@@ -137,8 +134,8 @@ mod tests {
     fn test_server_config_partial_deserialization() {
         // Test that partial JSON can be deserialized with defaults
         let partial_json = r#"{"listen": "0.0.0.0:3000"}"#;
-        let config: ServerConfig = serde_json::from_str(partial_json)
-            .expect("Failed to deserialize partial ServerConfig");
+        let config: ServerConfig =
+            serde_json::from_str(partial_json).expect("Failed to deserialize partial ServerConfig");
 
         assert_eq!(config.listen, "0.0.0.0:3000");
         assert_eq!(config.body_limit, 5 * 1024 * 1024); // default
@@ -152,8 +149,8 @@ mod tests {
             "body_limit": 1048576,
             "header_limit": 131072
         }"#;
-        let config: ServerConfig = serde_json::from_str(full_json)
-            .expect("Failed to deserialize full ServerConfig");
+        let config: ServerConfig =
+            serde_json::from_str(full_json).expect("Failed to deserialize full ServerConfig");
 
         assert_eq!(config.listen, "192.168.1.100:8888");
         assert_eq!(config.body_limit, 1048576); // 1MB
@@ -167,8 +164,8 @@ mod tests {
                 "listen": "localhost:4000"
             }
         }"#;
-        let config: ProxyConfig = serde_json::from_str(partial_json)
-            .expect("Failed to deserialize partial ProxyConfig");
+        let config: ProxyConfig =
+            serde_json::from_str(partial_json).expect("Failed to deserialize partial ProxyConfig");
 
         assert_eq!(config.server.listen, "localhost:4000");
         assert_eq!(config.server.body_limit, 5 * 1024 * 1024); // default
@@ -237,9 +234,10 @@ mod tests {
         assert_eq!(config.header_limit, 0);
 
         // Test serialization/deserialization of edge cases
-        let serialized = serde_json::to_string(&config).expect("Failed to serialize edge case config");
-        let deserialized: ServerConfig = serde_json::from_str(&serialized)
-            .expect("Failed to deserialize edge case config");
+        let serialized =
+            serde_json::to_string(&config).expect("Failed to serialize edge case config");
+        let deserialized: ServerConfig =
+            serde_json::from_str(&serialized).expect("Failed to deserialize edge case config");
 
         assert_eq!(deserialized.listen, config.listen);
         assert_eq!(deserialized.body_limit, config.body_limit);
@@ -270,8 +268,8 @@ mod tests {
     #[test]
     fn test_empty_json_deserialization() {
         let empty_json = "{}";
-        let config: ServerConfig = serde_json::from_str(empty_json)
-            .expect("Failed to deserialize empty JSON");
+        let config: ServerConfig =
+            serde_json::from_str(empty_json).expect("Failed to deserialize empty JSON");
 
         // Should use all defaults
         assert_eq!(config.listen, "[::]:8080");

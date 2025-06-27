@@ -3,23 +3,28 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #[cfg(test)]
-mod tests {
-    use crate::{
-        HttpMethod, ProxyRequest,
-        PathPredicate, MethodPredicate, HeaderPredicate, QueryPredicate
-    };
-    use crate::router::predicates::{
-        PathPredicateConfig, MethodPredicateConfig, HeaderPredicateConfig, QueryPredicateConfig
-    };
-    use crate::router::Predicate;
+mod router_tests {
     use crate::core::RequestContext;
+    use crate::router::Predicate;
+    use crate::router::predicates::{
+        HeaderPredicateConfig, MethodPredicateConfig, PathPredicateConfig, QueryPredicateConfig,
+    };
+    use crate::{
+        HeaderPredicate, HttpMethod, MethodPredicate, PathPredicate, ProxyRequest, QueryPredicate,
+    };
     use reqwest::Body;
+    use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::RwLock;
-    use std::collections::HashMap;
 
     // Helper function to create a test request
-    fn create_test_request(method: HttpMethod, path: &str, query: Option<&str>, headers: Vec<(&'static str, &'static str)>, target: &str) -> ProxyRequest {
+    fn create_test_request(
+        method: HttpMethod,
+        path: &str,
+        query: Option<&str>,
+        headers: Vec<(&'static str, &'static str)>,
+        target: &str,
+    ) -> ProxyRequest {
         let mut header_map = reqwest::header::HeaderMap::new();
         for (name, value) in headers {
             header_map.insert(
@@ -47,17 +52,31 @@ mod tests {
         let predicate = PathPredicate::new(config).unwrap();
 
         // Test matching paths
-        let request = create_test_request(HttpMethod::Get, "/api/users", None, vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api/users",
+            None,
+            vec![],
+            "http://test.co.za",
+        );
         assert!(predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api/products", None, vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api/products",
+            None,
+            vec![],
+            "http://test.co.za",
+        );
         assert!(predicate.matches(&request).await);
 
         // Test non-matching paths
-        let request = create_test_request(HttpMethod::Get, "/users", None, vec![], "http://test.co.za");
+        let request =
+            create_test_request(HttpMethod::Get, "/users", None, vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
+        let request =
+            create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
     }
 
@@ -69,17 +88,26 @@ mod tests {
         let predicate = MethodPredicate::new(config);
 
         // Test matching methods
-        let request = create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
+        let request =
+            create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
         assert!(predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Post, "/api", None, vec![], "http://test.co.za");
+        let request =
+            create_test_request(HttpMethod::Post, "/api", None, vec![], "http://test.co.za");
         assert!(predicate.matches(&request).await);
 
         // Test non-matching methods
-        let request = create_test_request(HttpMethod::Put, "/api", None, vec![], "http://test.co.za");
+        let request =
+            create_test_request(HttpMethod::Put, "/api", None, vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Delete, "/api", None, vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Delete,
+            "/api",
+            None,
+            vec![],
+            "http://test.co.za",
+        );
         assert!(!predicate.matches(&request).await);
     }
 
@@ -114,7 +142,8 @@ mod tests {
         );
         assert!(!predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
+        let request =
+            create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
     }
 
@@ -130,17 +159,36 @@ mod tests {
         let predicate = QueryPredicate::new(config);
 
         // Test matching query parameters
-        let request = create_test_request(HttpMethod::Get, "/api", Some("version=v1"), vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api",
+            Some("version=v1"),
+            vec![],
+            "http://test.co.za",
+        );
         assert!(predicate.matches(&request).await);
 
         // Test non-matching query parameters
-        let request = create_test_request(HttpMethod::Get, "/api", Some("version=v2"), vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api",
+            Some("version=v2"),
+            vec![],
+            "http://test.co.za",
+        );
         assert!(!predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api", Some("other=value"), vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api",
+            Some("other=value"),
+            vec![],
+            "http://test.co.za",
+        );
         assert!(!predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api", None, vec![],"http://test.co.za");
+        let request =
+            create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
     }
 
@@ -164,7 +212,10 @@ mod tests {
                 "mock"
             }
 
-            fn get_raw(&self, _key: &str) -> Result<Option<serde_json::Value>, crate::config::ConfigError> {
+            fn get_raw(
+                &self,
+                _key: &str,
+            ) -> Result<Option<serde_json::Value>, crate::config::ConfigError> {
                 Ok(None)
             }
         }
@@ -177,8 +228,8 @@ mod tests {
     #[tokio::test]
     async fn test_predicate_router_add_route() {
         use crate::config::{Config, ConfigProvider};
+        use crate::core::{Route, Router};
         use crate::router::PredicateRouter;
-        use crate::core::{Router, Route};
         use std::sync::Arc;
 
         #[derive(Debug)]
@@ -193,7 +244,10 @@ mod tests {
                 "mock"
             }
 
-            fn get_raw(&self, _key: &str) -> Result<Option<serde_json::Value>, crate::config::ConfigError> {
+            fn get_raw(
+                &self,
+                _key: &str,
+            ) -> Result<Option<serde_json::Value>, crate::config::ConfigError> {
                 Ok(None)
             }
         }
@@ -219,8 +273,8 @@ mod tests {
     #[tokio::test]
     async fn test_predicate_router_remove_route() {
         use crate::config::{Config, ConfigProvider};
+        use crate::core::{Route, Router};
         use crate::router::PredicateRouter;
-        use crate::core::{Router, Route};
         use std::sync::Arc;
 
         #[derive(Debug)]
@@ -235,7 +289,10 @@ mod tests {
                 "mock"
             }
 
-            fn get_raw(&self, _key: &str) -> Result<Option<serde_json::Value>, crate::config::ConfigError> {
+            fn get_raw(
+                &self,
+                _key: &str,
+            ) -> Result<Option<serde_json::Value>, crate::config::ConfigError> {
                 Ok(None)
             }
         }
@@ -267,8 +324,8 @@ mod tests {
     #[tokio::test]
     async fn test_predicate_router_route_no_match() {
         use crate::config::{Config, ConfigProvider};
-        use crate::router::PredicateRouter;
         use crate::core::Router;
+        use crate::router::PredicateRouter;
         use std::sync::Arc;
 
         #[derive(Debug)]
@@ -283,7 +340,10 @@ mod tests {
                 "mock"
             }
 
-            fn get_raw(&self, _key: &str) -> Result<Option<serde_json::Value>, crate::config::ConfigError> {
+            fn get_raw(
+                &self,
+                _key: &str,
+            ) -> Result<Option<serde_json::Value>, crate::config::ConfigError> {
                 Ok(None)
             }
         }
@@ -291,7 +351,13 @@ mod tests {
         let config = Arc::new(Config::builder().with_provider(MockConfigProvider).build());
         let router = PredicateRouter::new(config).await.unwrap();
 
-        let request = create_test_request(HttpMethod::Get, "/api/users", None, vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api/users",
+            None,
+            vec![],
+            "http://test.co.za",
+        );
         let result = router.route(&request).await;
         assert!(result.is_err());
     }
@@ -309,7 +375,13 @@ mod tests {
         let predicate = PredicateFactory::create_predicate("path", config).unwrap();
         assert_eq!(predicate.predicate_type(), "path");
 
-        let request = create_test_request(HttpMethod::Get, "/api/users", None, vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api/users",
+            None,
+            vec![],
+            "http://test.co.za",
+        );
         assert!(predicate.matches(&request).await);
     }
 
@@ -325,7 +397,8 @@ mod tests {
         let predicate = PredicateFactory::create_predicate("method", config).unwrap();
         assert_eq!(predicate.predicate_type(), "method");
 
-        let request = create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
+        let request =
+            create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
         assert!(predicate.matches(&request).await);
     }
 
@@ -369,7 +442,13 @@ mod tests {
         let predicate = PredicateFactory::create_predicate("query", config).unwrap();
         assert_eq!(predicate.predicate_type(), "query");
 
-        let request = create_test_request(HttpMethod::Get, "/api", Some("version=v1"), vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api",
+            Some("version=v1"),
+            vec![],
+            "http://test.co.za",
+        );
         assert!(predicate.matches(&request).await);
     }
 
@@ -425,10 +504,22 @@ mod tests {
         };
         let predicate = PathPredicate::new(config).unwrap();
 
-        let request = create_test_request(HttpMethod::Get, "/api/users", None, vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api/users",
+            None,
+            vec![],
+            "http://test.co.za",
+        );
         assert!(predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api/users/123", None, vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api/users/123",
+            None,
+            vec![],
+            "http://test.co.za",
+        );
         assert!(!predicate.matches(&request).await);
 
         // Test wildcard pattern
@@ -437,10 +528,22 @@ mod tests {
         };
         let predicate = PathPredicate::new(config).unwrap();
 
-        let request = create_test_request(HttpMethod::Get, "/api/users/details", None, vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api/users/details",
+            None,
+            vec![],
+            "http://test.co.za",
+        );
         assert!(predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api/products/details", None, vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api/products/details",
+            None,
+            vec![],
+            "http://test.co.za",
+        );
         assert!(predicate.matches(&request).await);
     }
 
@@ -524,11 +627,23 @@ mod tests {
         let predicate = QueryPredicate::new(config);
 
         // Test contains match
-        let request = create_test_request(HttpMethod::Get, "/api", Some("search=username"), vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api",
+            Some("search=username"),
+            vec![],
+            "http://test.co.za",
+        );
         assert!(predicate.matches(&request).await);
 
         // Test non-matching parameter
-        let request = create_test_request(HttpMethod::Get, "/api", Some("search=product"), vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api",
+            Some("search=product"),
+            vec![],
+            "http://test.co.za",
+        );
         assert!(!predicate.matches(&request).await);
     }
 
@@ -545,15 +660,33 @@ mod tests {
         let predicate = QueryPredicate::new(config);
 
         // Test all parameters match
-        let request = create_test_request(HttpMethod::Get, "/api", Some("version=v1&format=json"), vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api",
+            Some("version=v1&format=json"),
+            vec![],
+            "http://test.co.za",
+        );
         assert!(predicate.matches(&request).await);
 
         // Test missing one parameter
-        let request = create_test_request(HttpMethod::Get, "/api", Some("version=v1"), vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api",
+            Some("version=v1"),
+            vec![],
+            "http://test.co.za",
+        );
         assert!(!predicate.matches(&request).await);
 
         // Test wrong parameter value
-        let request = create_test_request(HttpMethod::Get, "/api", Some("version=v2&format=json"), vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api",
+            Some("version=v2&format=json"),
+            vec![],
+            "http://test.co.za",
+        );
         assert!(!predicate.matches(&request).await);
     }
 
@@ -566,10 +699,17 @@ mod tests {
         let predicate = QueryPredicate::new(config);
 
         // Empty params should always match
-        let request = create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
+        let request =
+            create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
         assert!(predicate.matches(&request).await);
 
-        let request = create_test_request(HttpMethod::Get, "/api", Some("any=value"), vec![], "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/api",
+            Some("any=value"),
+            vec![],
+            "http://test.co.za",
+        );
         assert!(predicate.matches(&request).await);
     }
 
@@ -578,8 +718,8 @@ mod tests {
     // Tests for predicate registration
     #[tokio::test]
     async fn test_register_predicate() {
-        use crate::router::{register_predicate, PredicateFactory};
         use crate::core::ProxyRequest;
+        use crate::router::{PredicateFactory, register_predicate};
         use serde_json::json;
         use std::sync::Arc;
 
@@ -599,16 +739,15 @@ mod tests {
         }
 
         // Register the custom predicate
-        register_predicate("custom_test", |_config| {
-            Ok(Arc::new(CustomPredicate))
-        });
+        register_predicate("custom_test", |_config| Ok(Arc::new(CustomPredicate)));
 
         // Create the predicate using the factory
         let config = json!({});
         let predicate = PredicateFactory::create_predicate("custom_test", config).unwrap();
         assert_eq!(predicate.predicate_type(), "custom");
 
-        let request = create_test_request(HttpMethod::Get, "/test", None, vec![], "http://test.co.za");
+        let request =
+            create_test_request(HttpMethod::Get, "/test", None, vec![], "http://test.co.za");
         assert!(predicate.matches(&request).await);
     }
 
@@ -617,13 +756,12 @@ mod tests {
     // Tests for method predicate edge cases
     #[tokio::test]
     async fn test_method_predicate_empty_methods() {
-        let config = MethodPredicateConfig {
-            methods: vec![],
-        };
+        let config = MethodPredicateConfig { methods: vec![] };
         let predicate = MethodPredicate::new(config);
 
         // Empty methods should not match anything
-        let request = create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
+        let request =
+            create_test_request(HttpMethod::Get, "/api", None, vec![], "http://test.co.za");
         assert!(!predicate.matches(&request).await);
     }
 
@@ -652,7 +790,8 @@ mod tests {
             HttpMethod::Head,
             HttpMethod::Options,
         ] {
-            let request = create_test_request(method.clone(), "/api", None, vec![], "http://test.co.za");
+            let request =
+                create_test_request(*method, "/api", None, vec![], "http://test.co.za");
             assert!(predicate.matches(&request).await);
         }
     }

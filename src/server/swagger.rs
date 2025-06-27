@@ -9,11 +9,11 @@
 //! and is configured dynamically based on the `swagger_ui` section in the
 //! configuration file.
 
-use std::convert::Infallible;
 use bytes::Bytes;
+use std::convert::Infallible;
 
-use hyper::{header, Request, Response, StatusCode};
 use hyper::body::Incoming;
+use hyper::{Request, Response, StatusCode, header};
 use reqwest::Body;
 use serde::{Deserialize, Serialize};
 
@@ -76,7 +76,7 @@ fn generate_urls_config(sources: &[SwaggerSource]) -> String {
 /// Generates the full HTML page for the Swagger UI.
 fn generate_html(config: &SwaggerUIConfig) -> String {
     let urls_config = generate_urls_config(&config.sources);
-    
+
     // Set the `url` parameter to the first source to ensure a default is loaded.
     let default_url = config.sources.get(0).map_or("", |s| &s.url);
 
@@ -129,11 +129,9 @@ pub async fn handle_swagger_request(
     let path = req.uri().path();
     let root_path = &config.path;
     let index_path = format!("{}/index.html", root_path);
-    
+
     // Serve the main HTML file for the root index path (with trailing slash) or index.html
-    if path == format!("{}", root_path)
-        || path == format!("{}/", root_path)
-        || path == index_path {
+    if path == format!("{}", root_path) || path == format!("{}/", root_path) || path == index_path {
         let html = generate_html(config);
         return Ok(Response::builder()
             .status(StatusCode::OK)

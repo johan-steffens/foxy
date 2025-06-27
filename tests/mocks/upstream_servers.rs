@@ -4,10 +4,10 @@
 
 //! Mock upstream servers for testing Foxy API Gateway
 
-use wiremock::{MockServer, Mock, ResponseTemplate, Request};
-use wiremock::matchers::{method, path, header, query_param, query_param_is_missing, body_json};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::Duration;
+use wiremock::matchers::{body_json, header, method, path, query_param, query_param_is_missing};
+use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 /// A builder for creating mock upstream servers with various behaviors
 pub struct MockUpstreamBuilder {
@@ -38,7 +38,7 @@ impl MockUpstreamBuilder {
             .respond_with(
                 ResponseTemplate::new(status)
                     .set_body_json(response_body)
-                    .insert_header("content-type", "application/json")
+                    .insert_header("content-type", "application/json"),
             )
             .mount(&self.server)
             .await;
@@ -58,7 +58,7 @@ impl MockUpstreamBuilder {
             .respond_with(
                 ResponseTemplate::new(status)
                     .set_body_string(response_body)
-                    .insert_header("content-type", "text/plain")
+                    .insert_header("content-type", "text/plain"),
             )
             .mount(&self.server)
             .await;
@@ -70,9 +70,14 @@ impl MockUpstreamBuilder {
         Mock::given(method("GET"))
             .and(path(path_str))
             .respond_with(|req: &Request| {
-                let headers: Value = req.headers.iter()
+                let headers: Value = req
+                    .headers
+                    .iter()
                     .map(|(name, value)| {
-                        (name.to_string(), Value::String(value.to_str().unwrap_or("").to_string()))
+                        (
+                            name.to_string(),
+                            Value::String(value.to_str().unwrap_or("").to_string()),
+                        )
                     })
                     .collect::<serde_json::Map<String, Value>>()
                     .into();
@@ -116,7 +121,7 @@ impl MockUpstreamBuilder {
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_json(success_response)
-                    .insert_header("content-type", "application/json")
+                    .insert_header("content-type", "application/json"),
             )
             .mount(&self.server)
             .await;
@@ -129,7 +134,7 @@ impl MockUpstreamBuilder {
                     .set_body_json(json!({
                         "error": format!("Missing required header: {}", required_header)
                     }))
-                    .insert_header("content-type", "application/json")
+                    .insert_header("content-type", "application/json"),
             )
             .mount(&self.server)
             .await;
@@ -152,7 +157,7 @@ impl MockUpstreamBuilder {
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_json(success_response)
-                    .insert_header("content-type", "application/json")
+                    .insert_header("content-type", "application/json"),
             )
             .mount(&self.server)
             .await;
@@ -166,7 +171,7 @@ impl MockUpstreamBuilder {
                     .set_body_json(json!({
                         "error": format!("Missing required query parameter: {}", required_param)
                     }))
-                    .insert_header("content-type", "application/json")
+                    .insert_header("content-type", "application/json"),
             )
             .mount(&self.server)
             .await;
@@ -187,7 +192,7 @@ impl MockUpstreamBuilder {
                 ResponseTemplate::new(200)
                     .set_delay(delay)
                     .set_body_json(response_body)
-                    .insert_header("content-type", "application/json")
+                    .insert_header("content-type", "application/json"),
             )
             .mount(&self.server)
             .await;
@@ -210,7 +215,7 @@ impl MockUpstreamBuilder {
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_json(json!({ "status": "success", "attempt": "retry" }))
-                    .insert_header("content-type", "application/json")
+                    .insert_header("content-type", "application/json"),
             )
             .mount(&self.server)
             .await;
@@ -232,7 +237,7 @@ impl MockUpstreamBuilder {
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_json(success_response)
-                    .insert_header("content-type", "application/json")
+                    .insert_header("content-type", "application/json"),
             )
             .mount(&self.server)
             .await;
@@ -245,7 +250,7 @@ impl MockUpstreamBuilder {
                     .set_body_json(json!({
                         "error": "Invalid JSON body"
                     }))
-                    .insert_header("content-type", "application/json")
+                    .insert_header("content-type", "application/json"),
             )
             .mount(&self.server)
             .await;
@@ -265,7 +270,7 @@ impl MockUpstreamBuilder {
                         "data": large_data,
                         "size_kb": size_kb
                     }))
-                    .insert_header("content-type", "application/json")
+                    .insert_header("content-type", "application/json"),
             )
             .mount(&self.server)
             .await;
@@ -286,7 +291,7 @@ impl MockUpstreamBuilder {
             .respond_with(
                 ResponseTemplate::new(status)
                     .set_body_json(response_body)
-                    .insert_header("content-type", "application/json")
+                    .insert_header("content-type", "application/json"),
             )
             .mount(&self.server)
             .await;
@@ -301,9 +306,15 @@ impl MockUpstreamBuilder {
             .respond_with(
                 ResponseTemplate::new(200)
                     .insert_header("access-control-allow-origin", "*")
-                    .insert_header("access-control-allow-methods", "GET, POST, PUT, DELETE, OPTIONS")
-                    .insert_header("access-control-allow-headers", "content-type, authorization")
-                    .insert_header("access-control-max-age", "86400")
+                    .insert_header(
+                        "access-control-allow-methods",
+                        "GET, POST, PUT, DELETE, OPTIONS",
+                    )
+                    .insert_header(
+                        "access-control-allow-headers",
+                        "content-type, authorization",
+                    )
+                    .insert_header("access-control-max-age", "86400"),
             )
             .mount(&self.server)
             .await;
@@ -315,7 +326,7 @@ impl MockUpstreamBuilder {
                 ResponseTemplate::new(200)
                     .set_body_json(response_body)
                     .insert_header("content-type", "application/json")
-                    .insert_header("access-control-allow-origin", "*")
+                    .insert_header("access-control-allow-origin", "*"),
             )
             .mount(&self.server)
             .await;
@@ -324,6 +335,7 @@ impl MockUpstreamBuilder {
     }
 
     /// Get the underlying MockServer for advanced usage
+    #[allow(dead_code)]
     pub fn server(&self) -> &MockServer {
         &self.server
     }
@@ -336,23 +348,27 @@ impl MockServerPresets {
     /// Create a mock REST API server with CRUD endpoints
     pub async fn rest_api() -> MockUpstreamBuilder {
         let builder = MockUpstreamBuilder::new().await;
-        
+
         // GET /users - list users
-        builder.with_json_endpoint(
-            "/users",
-            200,
-            json!([
-                {"id": 1, "name": "Alice", "email": "alice@example.com"},
-                {"id": 2, "name": "Bob", "email": "bob@example.com"}
-            ])
-        ).await;
+        builder
+            .with_json_endpoint(
+                "/users",
+                200,
+                json!([
+                    {"id": 1, "name": "Alice", "email": "alice@example.com"},
+                    {"id": 2, "name": "Bob", "email": "bob@example.com"}
+                ]),
+            )
+            .await;
 
         // GET /users/:id - get user by id
-        builder.with_json_endpoint(
-            "/users/1",
-            200,
-            json!({"id": 1, "name": "Alice", "email": "alice@example.com"})
-        ).await;
+        builder
+            .with_json_endpoint(
+                "/users/1",
+                200,
+                json!({"id": 1, "name": "Alice", "email": "alice@example.com"}),
+            )
+            .await;
 
         // POST /users - create user (echo body)
         builder.with_body_echo_endpoint("/users").await;
@@ -363,21 +379,25 @@ impl MockServerPresets {
     /// Create a mock server that simulates authentication
     pub async fn auth_server() -> MockUpstreamBuilder {
         let builder = MockUpstreamBuilder::new().await;
-        
+
         // Protected endpoint requiring authorization header
-        builder.with_header_requirement(
-            "/protected",
-            "authorization",
-            "Bearer valid-token",
-            json!({"message": "Access granted", "user": "authenticated"})
-        ).await;
+        builder
+            .with_header_requirement(
+                "/protected",
+                "authorization",
+                "Bearer valid-token",
+                json!({"message": "Access granted", "user": "authenticated"}),
+            )
+            .await;
 
         // Login endpoint
-        builder.with_json_validation_endpoint(
-            "/login",
-            json!({"username": "admin", "password": "secret"}),
-            json!({"token": "valid-token", "expires_in": 3600})
-        ).await;
+        builder
+            .with_json_validation_endpoint(
+                "/login",
+                json!({"username": "admin", "password": "secret"}),
+                json!({"token": "valid-token", "expires_in": 3600}),
+            )
+            .await;
 
         builder
     }
@@ -385,7 +405,7 @@ impl MockServerPresets {
     /// Create a mock server with various error scenarios
     pub async fn error_server() -> MockUpstreamBuilder {
         let builder = MockUpstreamBuilder::new().await;
-        
+
         // Various HTTP status codes
         for status in [400, 401, 403, 404, 429, 500, 502, 503] {
             let path = format!("/status/{}", status);
@@ -393,11 +413,13 @@ impl MockServerPresets {
         }
 
         // Slow endpoint
-        builder.with_slow_endpoint(
-            "/slow",
-            Duration::from_secs(2),
-            json!({"message": "This was slow"})
-        ).await;
+        builder
+            .with_slow_endpoint(
+                "/slow",
+                Duration::from_secs(2),
+                json!({"message": "This was slow"}),
+            )
+            .await;
 
         // Flaky endpoint
         builder.with_flaky_endpoint("/flaky").await;

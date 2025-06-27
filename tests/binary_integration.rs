@@ -11,13 +11,13 @@
 //! - OpenTelemetry initialization
 //! - Graceful startup and shutdown
 
+use serial_test::serial;
 use std::fs;
 use std::process::{Command, Stdio};
 use std::time::Duration;
-use serial_test::serial;
 use tempfile::TempDir;
-use tokio::time::{timeout, sleep};
 use tokio::net::TcpStream;
+use tokio::time::{sleep, timeout};
 
 /// Get the path to the foxy binary for the current platform
 fn get_binary_path() -> &'static str {
@@ -32,6 +32,7 @@ mod common;
 use common::init_test_logging;
 
 /// Test configuration content for binary tests
+#[allow(dead_code)]
 const TEST_CONFIG_CONTENT: &str = r#"
 [server]
 host = "0.0.0.0"
@@ -46,6 +47,7 @@ target_base_url = "http://127.0.0.1:18081"
 "#;
 
 /// Test configuration with OpenTelemetry enabled
+#[allow(dead_code)]
 const TEST_CONFIG_WITH_OTEL: &str = r#"
 [server]
 host = "0.0.0.0"
@@ -64,6 +66,7 @@ target_base_url = "http://127.0.0.1:18081"
 "#;
 
 /// Test configuration with empty OpenTelemetry endpoint
+#[allow(dead_code)]
 const TEST_CONFIG_WITH_EMPTY_OTEL: &str = r#"
 [server]
 host = "0.0.0.0"
@@ -88,12 +91,15 @@ async fn test_binary_with_default_config_path() {
 
     // Build the binary first to avoid compilation time in the test
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "foxy"])
+        .args(["build", "--bin", "foxy"])
         .output()
         .expect("Failed to build foxy binary");
 
     if !build_output.status.success() {
-        panic!("Failed to build binary: {}", String::from_utf8_lossy(&build_output.stderr));
+        panic!(
+            "Failed to build binary: {}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
     }
 
     let port = 18082;
@@ -108,7 +114,8 @@ async fn test_binary_with_default_config_path() {
             .spawn()
             .expect("Failed to start foxy binary")
             .wait_with_output()
-    }).await;
+    })
+    .await;
 
     match output {
         Ok(Ok(output)) => {
@@ -117,10 +124,10 @@ async fn test_binary_with_default_config_path() {
 
             // Should indicate it's looking for default config and then exit with error
             assert!(
-                stdout.contains("No FOXY_CONFIG_FILE env var found") ||
-                stderr.contains("No FOXY_CONFIG_FILE env var found") ||
-                stdout.contains("Default configuration file") ||
-                stderr.contains("Default configuration file")
+                stdout.contains("No FOXY_CONFIG_FILE env var found")
+                    || stderr.contains("No FOXY_CONFIG_FILE env var found")
+                    || stdout.contains("Default configuration file")
+                    || stderr.contains("Default configuration file")
             );
 
             // Should exit with error code since no config file exists
@@ -142,12 +149,15 @@ async fn test_binary_missing_config_file_error() {
 
     // Build the binary first to avoid compilation time in the test
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "foxy"])
+        .args(["build", "--bin", "foxy"])
         .output()
         .expect("Failed to build foxy binary");
 
     if !build_output.status.success() {
-        panic!("Failed to build binary: {}", String::from_utf8_lossy(&build_output.stderr));
+        panic!(
+            "Failed to build binary: {}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
     }
 
     // Set environment variable to a non-existent file
@@ -164,7 +174,8 @@ async fn test_binary_missing_config_file_error() {
             .spawn()
             .expect("Failed to start foxy binary")
             .wait_with_output()
-    }).await;
+    })
+    .await;
 
     match output {
         Ok(Ok(output)) => {
@@ -173,9 +184,9 @@ async fn test_binary_missing_config_file_error() {
 
             // Should indicate configuration file error
             assert!(
-                stdout.contains("Failed to build proxy") ||
-                stderr.contains("Failed to build proxy") ||
-                output.status.code().unwrap_or(0) != 0
+                stdout.contains("Failed to build proxy")
+                    || stderr.contains("Failed to build proxy")
+                    || output.status.code().unwrap_or(0) != 0
             );
         }
         Ok(Err(e)) => {
@@ -194,12 +205,15 @@ async fn test_binary_invalid_config_format() {
 
     // Build the binary first to avoid compilation time in the test
     let build_output = Command::new("cargo")
-        .args(&["build", "--bin", "foxy"])
+        .args(["build", "--bin", "foxy"])
         .output()
         .expect("Failed to build foxy binary");
 
     if !build_output.status.success() {
-        panic!("Failed to build binary: {}", String::from_utf8_lossy(&build_output.stderr));
+        panic!(
+            "Failed to build binary: {}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
     }
 
     // Create a config file with invalid TOML
@@ -218,7 +232,8 @@ async fn test_binary_invalid_config_format() {
             .spawn()
             .expect("Failed to start foxy binary")
             .wait_with_output()
-    }).await;
+    })
+    .await;
 
     match output {
         Ok(Ok(output)) => {
@@ -229,8 +244,8 @@ async fn test_binary_invalid_config_format() {
             let stderr = String::from_utf8_lossy(&output.stderr);
 
             assert!(
-                stdout.contains("Failed to build proxy") ||
-                stderr.contains("Failed to build proxy")
+                stdout.contains("Failed to build proxy")
+                    || stderr.contains("Failed to build proxy")
             );
         }
         Ok(Err(e)) => {
@@ -243,6 +258,7 @@ async fn test_binary_invalid_config_format() {
 }
 
 /// Helper function to wait for a TCP port to be open
+#[allow(dead_code)]
 async fn wait_for_port(addr: &str, timeout_duration: Duration) -> Result<(), String> {
     let start_time = tokio::time::Instant::now();
     while start_time.elapsed() < timeout_duration {

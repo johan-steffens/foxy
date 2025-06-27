@@ -5,7 +5,7 @@
 //! Comprehensive tests for the logging module to achieve 95% coverage
 
 #[cfg(test)]
-mod tests {
+mod logging_tests {
     use super::super::*;
     use crate::logging::config::LoggingConfig;
     use crate::logging::test_logger;
@@ -16,7 +16,7 @@ mod tests {
     fn reset_logging_state() {
         // Reset the atomic flag
         USING_STRUCTURED.store(false, Ordering::SeqCst);
-        
+
         // Note: We can't reset the Once, but we can test different scenarios
         // by creating new processes or using different test strategies
     }
@@ -99,14 +99,15 @@ mod tests {
     fn test_is_structured_logging() {
         // Test the atomic boolean getter
         let initial_state = is_structured_logging();
-        
+
         // The function should return a boolean without panicking
-        assert!(initial_state == true || initial_state == false);
-        
+        // This assertion just checks that initial_state is a valid boolean
+        assert!(matches!(initial_state, true | false));
+
         // Test setting the state manually
         USING_STRUCTURED.store(true, Ordering::SeqCst);
         assert!(is_structured_logging());
-        
+
         USING_STRUCTURED.store(false, Ordering::SeqCst);
         assert!(!is_structured_logging());
     }
@@ -115,7 +116,7 @@ mod tests {
     fn test_log_error_structured() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, slog::o!());
+        let _logger = slog::Logger::root(drain, slog::o!());
         test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
@@ -131,10 +132,10 @@ mod tests {
     #[test]
     fn test_log_error_non_structured() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
-        
+
         let test_error = "Test error message";
         let context = "TestContext";
-        
+
         // Test that log_error returns the error unchanged
         let returned_error = log_error(context, test_error);
         assert_eq!(returned_error, test_error);
@@ -144,7 +145,7 @@ mod tests {
     fn test_log_warning_structured() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, slog::o!());
+        let _logger = slog::Logger::root(drain, slog::o!());
         test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
@@ -159,10 +160,10 @@ mod tests {
     #[test]
     fn test_log_warning_non_structured() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
-        
+
         let test_warning = "Test warning message";
         let context = "TestContext";
-        
+
         // Test that log_warning doesn't panic
         log_warning(context, test_warning);
     }
@@ -171,7 +172,7 @@ mod tests {
     fn test_log_debug_structured() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, slog::o!());
+        let _logger = slog::Logger::root(drain, slog::o!());
         test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
@@ -186,10 +187,10 @@ mod tests {
     #[test]
     fn test_log_debug_non_structured() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
-        
+
         let test_message = "Test debug message";
         let context = "TestContext";
-        
+
         // Test that log_debug doesn't panic
         log_debug(context, test_message);
     }
@@ -198,7 +199,7 @@ mod tests {
     fn test_log_trace_structured() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, slog::o!());
+        let _logger = slog::Logger::root(drain, slog::o!());
         test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
@@ -213,10 +214,10 @@ mod tests {
     #[test]
     fn test_log_trace_non_structured() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
-        
+
         let test_message = "Test trace message";
         let context = "TestContext";
-        
+
         // Test that log_trace doesn't panic
         log_trace(context, test_message);
     }
@@ -225,7 +226,7 @@ mod tests {
     fn test_log_info_structured() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, slog::o!());
+        let _logger = slog::Logger::root(drain, slog::o!());
         test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
@@ -240,10 +241,10 @@ mod tests {
     #[test]
     fn test_log_info_non_structured() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
-        
+
         let test_message = "Test info message";
         let context = "TestContext";
-        
+
         // Test that log_info doesn't panic
         log_info(context, test_message);
     }
@@ -252,7 +253,7 @@ mod tests {
     fn test_log_with_context_all_levels_structured() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, slog::o!());
+        let _logger = slog::Logger::root(drain, slog::o!());
         test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
@@ -317,7 +318,7 @@ mod tests {
     fn test_log_with_context_empty_fields() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, slog::o!());
+        let _logger = slog::Logger::root(drain, slog::o!());
         test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
@@ -335,7 +336,7 @@ mod tests {
         // Create a test logger (this requires slog to be initialized)
         let drain = slog::Discard;
         let logger = slog::Logger::root(drain, slog::o!());
-        
+
         let fields = vec![
             ("test_field1", "value1".to_string()),
             ("test_field2", "value2".to_string()),
@@ -344,10 +345,10 @@ mod tests {
 
         // Test that add_fields_to_logger doesn't panic
         let result_logger = add_fields_to_logger(logger, &fields);
-        
+
         // The function should return a logger (we can't easily test the fields without complex setup)
         // But we can verify it doesn't panic and returns a logger
-        assert!(std::ptr::addr_of!(result_logger) != std::ptr::null());
+        assert!(!std::ptr::addr_of!(result_logger).is_null());
     }
 
     #[test]
@@ -359,7 +360,7 @@ mod tests {
 
         // Test with empty fields
         let result_logger = add_fields_to_logger(logger, &empty_fields);
-        assert!(std::ptr::addr_of!(result_logger) != std::ptr::null());
+        assert!(!std::ptr::addr_of!(result_logger).is_null());
     }
 
     #[test]
@@ -371,7 +372,7 @@ mod tests {
 
         // Test with single field
         let result_logger = add_fields_to_logger(logger, &fields);
-        assert!(std::ptr::addr_of!(result_logger) != std::ptr::null());
+        assert!(!std::ptr::addr_of!(result_logger).is_null());
     }
 
     #[test]
@@ -389,10 +390,11 @@ mod tests {
 
         // Test with many fields
         let result_logger = add_fields_to_logger(logger, &fields);
-        assert!(std::ptr::addr_of!(result_logger) != std::ptr::null());
+        assert!(!std::ptr::addr_of!(result_logger).is_null());
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_logging_functions_with_different_types() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
 
@@ -437,7 +439,7 @@ mod tests {
     fn test_log_with_context_special_field_values() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
-        let logger = slog::Logger::root(drain, slog::o!());
+        let _logger = slog::Logger::root(drain, slog::o!());
         test_logger::init_test_logger();
 
         USING_STRUCTURED.store(true, Ordering::SeqCst);
@@ -518,17 +520,19 @@ mod tests {
     fn test_atomic_operations_thread_safety() {
         use std::thread;
 
-        let handles: Vec<_> = (0..10).map(|i| {
-            thread::spawn(move || {
-                // Test concurrent access to the atomic boolean
-                let state = is_structured_logging();
-                USING_STRUCTURED.store(i % 2 == 0, Ordering::SeqCst);
-                let new_state = is_structured_logging();
+        let handles: Vec<_> = (0..10)
+            .map(|i| {
+                thread::spawn(move || {
+                    // Test concurrent access to the atomic boolean
+                    let state = is_structured_logging();
+                    USING_STRUCTURED.store(i % 2 == 0, Ordering::SeqCst);
+                    let new_state = is_structured_logging();
 
-                // Both operations should complete without panicking
-                (state, new_state)
+                    // Both operations should complete without panicking
+                    (state, new_state)
+                })
             })
-        }).collect();
+            .collect();
 
         // Wait for all threads to complete
         for handle in handles {

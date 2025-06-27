@@ -10,15 +10,20 @@
 //! HMAC secret      : optional `shared-secret` in config (required for HS* algs)
 //! JWKS refresh     : lazy + every 30 min ± key-rotation retry
 
+use crate::{
+    core::{ProxyError, ProxyRequest},
+    debug_fmt, error_fmt,
+    security::{SecurityProvider, SecurityStage},
+    trace_fmt, warn_fmt,
+};
 use async_trait::async_trait;
-use jsonwebtoken::{decode, decode_header, jwk::JwkSet, Algorithm, DecodingKey, Validation};
-use jsonwebtoken::jwk::{AlgorithmParameters, Jwk, OctetKeyParameters};
-use reqwest::Client;
-use std::{sync::Arc, time::Duration};
-use serde::Deserialize;
-use tokio::sync::RwLock;
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use crate::{core::{ProxyError, ProxyRequest}, debug_fmt, error_fmt, security::{SecurityProvider, SecurityStage}, trace_fmt, warn_fmt};
+use jsonwebtoken::jwk::{AlgorithmParameters, Jwk, OctetKeyParameters};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
+use reqwest::Client;
+use serde::Deserialize;
+use std::{sync::Arc, time::Duration};
+use tokio::sync::RwLock;
 
 pub const CLAIMS_ATTRIBUTE: &str = "oidc-claims";
 const BEARER: &str = "bearer ";
@@ -40,10 +45,16 @@ impl RouteRule {
     fn matches(&self, method: &str, path: &str) -> bool {
         let method_match = self.methods.iter().any(|m| m == "*" || m == method);
         let path_match = self.paths.is_match(path);
-        
-        trace_fmt!("OidcProvider", "OIDC bypass rule check: method={} path={} -> method_match={} path_match={}", 
-            method, path, method_match, path_match);
-            
+
+        trace_fmt!(
+            "OidcProvider",
+            "OIDC bypass rule check: method={} path={} -> method_match={} path_match={}",
+            method,
+            path,
+            method_match,
+            path_match
+        );
+
         method_match && path_match
     }
 }
@@ -53,14 +64,14 @@ impl RouteRule {
 pub struct OidcConfig {
     #[serde(rename = "issuer-uri")]
     pub issuer_uri: String,
-    
+
     /// Expected audience claim (optional)
     pub aud: Option<String>,
-    
+
     /// Shared secret for HS* algorithms (optional)
     #[serde(rename = "shared-secret")]
     pub shared_secret: Option<String>,
-    
+
     /// Routes to bypass authentication for
     #[serde(default)]
     pub bypass: Vec<RouteRuleConfig>,
@@ -71,25 +82,25 @@ pub struct OidcConfig {
 pub struct OidcProvider {
     /// Issuer URI
     issuer: String,
-    
+
     /// Expected audience claim
     aud: Option<String>,
-    
+
     /// Shared secret for HS* algorithms
     shared_secret: Option<String>,
-    
+
     /// JWKS URI
     jwks_uri: String,
-    
+
     /// Cached JWKS
     jwks: Arc<RwLock<Option<JwkSet>>>,
-    
+
     /// Last refresh time
     last_refresh: Arc<RwLock<tokio::time::Instant>>,
-    
+
     /// HTTP client
     http: Client,
-    
+
     /// Bypass rules
     rules: Vec<RouteRule>,
 }
@@ -99,7 +110,7 @@ impl OidcProvider {
     pub async fn discover(cfg: OidcConfig) -> Result<Self, ProxyError> {
         // --- minimal discovery ---
         debug_fmt!("OidcProvider", "OIDC discovery from {}", cfg.issuer_uri);
-        
+
         let client = Client::builder()
             .user_agent("foxy/oidc")
             .build()
@@ -108,44 +119,46 @@ impl OidcProvider {
                 error_fmt!("OidcProvider", "{}", err);
                 err
             })?;
-            
+
         #[derive(Deserialize)]
-        struct Discovery { jwks_uri: String }
-        
+        struct Discovery {
+            jwks_uri: String,
+        }
+
         let meta: Discovery = match client.get(&cfg.issuer_uri).send().await {
-            Ok(response) => {
-                match response.error_for_status() {
-                    Ok(response) => {
-                        match response.json().await {
-                            Ok(meta) => meta,
-                            Err(e) => {
-                                let err = ProxyError::SecurityError(
-                                    format!("Failed to parse OIDC discovery response: {e}")
-                                );
-                                error_fmt!("OidcProvider", "{}", err);
-                                return Err(err);
-                            }
-                        }
-                    },
+            Ok(response) => match response.error_for_status() {
+                Ok(response) => match response.json().await {
+                    Ok(meta) => meta,
                     Err(e) => {
-                        let err = ProxyError::SecurityError(
-                            format!("OIDC discovery endpoint returned error: {e}")
-                        );
+                        let err = ProxyError::SecurityError(format!(
+                            "Failed to parse OIDC discovery response: {e}"
+                        ));
                         error_fmt!("OidcProvider", "{}", err);
                         return Err(err);
                     }
+                },
+                Err(e) => {
+                    let err = ProxyError::SecurityError(format!(
+                        "OIDC discovery endpoint returned error: {e}"
+                    ));
+                    error_fmt!("OidcProvider", "{}", err);
+                    return Err(err);
                 }
             },
             Err(e) => {
-                let err = ProxyError::SecurityError(
-                    format!("Failed to connect to OIDC discovery endpoint: {e}")
-                );
+                let err = ProxyError::SecurityError(format!(
+                    "Failed to connect to OIDC discovery endpoint: {e}"
+                ));
                 error_fmt!("OidcProvider", "{}", err);
                 return Err(err);
             }
         };
 
-        debug_fmt!("OidcProvider", "OIDC discovery successful, JWKS URI: {}", meta.jwks_uri);
+        debug_fmt!(
+            "OidcProvider",
+            "OIDC discovery successful, JWKS URI: {}",
+            meta.jwks_uri
+        );
 
         // --- compile bypass rules ---
         let mut rules = Vec::with_capacity(cfg.bypass.len());
@@ -159,20 +172,26 @@ impl OidcProvider {
                         paths: match builder.build() {
                             Ok(set) => set,
                             Err(e) => {
-                                let err = ProxyError::SecurityError(
-                                    format!("Failed to build glob set for path {}: {}", raw.path, e)
-                                );
+                                let err = ProxyError::SecurityError(format!(
+                                    "Failed to build glob set for path {}: {}",
+                                    raw.path, e
+                                ));
                                 error_fmt!("OidcProvider", "{}", err);
                                 return Err(err);
                             }
                         },
                     });
-                    debug_fmt!("OidcProvider", "Added OIDC bypass rule: methods={:?}, path={}", raw.methods, raw.path);
-                },
-                Err(e) => {
-                    let err = ProxyError::SecurityError(
-                        format!("Invalid glob pattern in bypass rule: {e}")
+                    debug_fmt!(
+                        "OidcProvider",
+                        "Added OIDC bypass rule: methods={:?}, path={}",
+                        raw.methods,
+                        raw.path
                     );
+                }
+                Err(e) => {
+                    let err = ProxyError::SecurityError(format!(
+                        "Invalid glob pattern in bypass rule: {e}"
+                    ));
                     error_fmt!("OidcProvider", "{}", err);
                     return Err(err);
                 }
@@ -189,11 +208,13 @@ impl OidcProvider {
             jwks_uri: meta.jwks_uri,
             jwks: Arc::new(RwLock::new(None)),
             last_refresh: Arc::new(RwLock::new(
-                tokio::time::Instant::now().checked_sub(JWKS_REFRESH * 2)
+                tokio::time::Instant::now()
+                    .checked_sub(JWKS_REFRESH * 2)
                     .unwrap_or_else(|| {
                         // If we can't subtract, use a very old instant
-                        tokio::time::Instant::now().checked_sub(std::time::Duration::from_secs(1))
-                            .unwrap_or_else(|| tokio::time::Instant::now())
+                        tokio::time::Instant::now()
+                            .checked_sub(std::time::Duration::from_secs(1))
+                            .unwrap_or_else(tokio::time::Instant::now)
                     }),
             )),
             http: client,
@@ -218,45 +239,43 @@ impl OidcProvider {
             trace_fmt!("OidcProvider", "JWKS cache still fresh, skipping refresh");
             return Ok(());
         }
-        
+
         debug_fmt!("OidcProvider", "Refreshing JWKS from {}", self.jwks_uri);
-        
+
         // Fetch the JWKS
         let jwks = match self.http.get(&self.jwks_uri).send().await {
-            Ok(response) => {
-                match response.error_for_status() {
-                    Ok(response) => {
-                        match response.json::<JwkSet>().await {
-                            Ok(jwks) => jwks,
-                            Err(e) => {
-                                let err = ProxyError::SecurityError(
-                                    format!("Failed to parse JWKS response: {e}")
-                                );
-                                error_fmt!("OidcProvider", "{}", err);
-                                return Err(err);
-                            }
-                        }
-                    },
+            Ok(response) => match response.error_for_status() {
+                Ok(response) => match response.json::<JwkSet>().await {
+                    Ok(jwks) => jwks,
                     Err(e) => {
-                        let err = ProxyError::SecurityError(
-                            format!("JWKS endpoint returned error: {e}")
-                        );
+                        let err = ProxyError::SecurityError(format!(
+                            "Failed to parse JWKS response: {e}"
+                        ));
                         error_fmt!("OidcProvider", "{}", err);
                         return Err(err);
                     }
+                },
+                Err(e) => {
+                    let err =
+                        ProxyError::SecurityError(format!("JWKS endpoint returned error: {e}"));
+                    error_fmt!("OidcProvider", "{}", err);
+                    return Err(err);
                 }
             },
             Err(e) => {
-                let err = ProxyError::SecurityError(
-                    format!("Failed to connect to JWKS endpoint: {e}")
-                );
+                let err =
+                    ProxyError::SecurityError(format!("Failed to connect to JWKS endpoint: {e}"));
                 error_fmt!("OidcProvider", "{}", err);
                 return Err(err);
             }
         };
-        
-        debug_fmt!("OidcProvider", "JWKS refresh successful, found {} keys", jwks.keys.len());
-        
+
+        debug_fmt!(
+            "OidcProvider",
+            "JWKS refresh successful, found {} keys",
+            jwks.keys.len()
+        );
+
         // Update the cache
         {
             let mut w = self.jwks.write().await;
@@ -266,7 +285,7 @@ impl OidcProvider {
             let mut w = self.last_refresh.write().await;
             *w = now;
         }
-        
+
         Ok(())
     }
 
@@ -274,21 +293,19 @@ impl OidcProvider {
         match &jwk.algorithm {
             AlgorithmParameters::RSA(params) => {
                 trace_fmt!("OidcProvider", "Converting RSA JWK to decoding key");
-                DecodingKey::from_rsa_components(&params.n, &params.e)
-                    .map_err(|e| {
-                        let err = ProxyError::SecurityError(format!("Invalid RSA key: {e}"));
-                        error_fmt!("OidcProvider", "{}", err);
-                        err
-                    })
+                DecodingKey::from_rsa_components(&params.n, &params.e).map_err(|e| {
+                    let err = ProxyError::SecurityError(format!("Invalid RSA key: {e}"));
+                    error_fmt!("OidcProvider", "{}", err);
+                    err
+                })
             }
             AlgorithmParameters::EllipticCurve(params) => {
                 trace_fmt!("OidcProvider", "Converting EC JWK to decoding key");
-                DecodingKey::from_ec_components(&params.x, &params.y)
-                    .map_err(|e| {
-                        let err = ProxyError::SecurityError(format!("Invalid EC key: {e}"));
-                        error_fmt!("OidcProvider", "{}", err);
-                        err
-                    })
+                DecodingKey::from_ec_components(&params.x, &params.y).map_err(|e| {
+                    let err = ProxyError::SecurityError(format!("Invalid EC key: {e}"));
+                    error_fmt!("OidcProvider", "{}", err);
+                    err
+                })
             }
             AlgorithmParameters::OctetKey(OctetKeyParameters { value, .. }) => {
                 trace_fmt!("OidcProvider", "Converting octet JWK to decoding key");
@@ -296,12 +313,11 @@ impl OidcProvider {
             }
             AlgorithmParameters::OctetKeyPair(params) => {
                 trace_fmt!("OidcProvider", "Converting OKP JWK to decoding key");
-                DecodingKey::from_ed_components(&params.x)
-                    .map_err(|e| {
-                        let err = ProxyError::SecurityError(format!("Invalid OKP key: {e}"));
-                        error_fmt!("OidcProvider", "{}", err);
-                        err
-                    })
+                DecodingKey::from_ed_components(&params.x).map_err(|e| {
+                    let err = ProxyError::SecurityError(format!("Invalid OKP key: {e}"));
+                    error_fmt!("OidcProvider", "{}", err);
+                    err
+                })
             }
         }
     }
@@ -316,22 +332,32 @@ impl OidcProvider {
                 return Err(err);
             }
         };
-        
-        trace_fmt!("OidcProvider", "JWT header: alg={:?}, kid={:?}", header.alg, header.kid);
-        
+
+        trace_fmt!(
+            "OidcProvider",
+            "JWT header: alg={:?}, kid={:?}",
+            header.alg,
+            header.kid
+        );
+
         // Check for allowed algorithms
         let allowed_algs = [
-            Algorithm::RS256, Algorithm::RS384, Algorithm::RS512,
-            Algorithm::PS256, Algorithm::PS384, Algorithm::PS512,
-            Algorithm::ES256, Algorithm::ES384,
+            Algorithm::RS256,
+            Algorithm::RS384,
+            Algorithm::RS512,
+            Algorithm::PS256,
+            Algorithm::PS384,
+            Algorithm::PS512,
+            Algorithm::ES256,
+            Algorithm::ES384,
             Algorithm::EdDSA,
-            Algorithm::HS256, Algorithm::HS384, Algorithm::HS512,
+            Algorithm::HS256,
+            Algorithm::HS384,
+            Algorithm::HS512,
         ];
-        
+
         if !allowed_algs.contains(&header.alg) {
-            let err = ProxyError::SecurityError(
-                format!("Algorithm not allowed: {:?}", header.alg)
-            );
+            let err = ProxyError::SecurityError(format!("Algorithm not allowed: {:?}", header.alg));
             warn_fmt!("OidcProvider", "{}", err);
             return Err(err);
         }
@@ -354,13 +380,21 @@ impl OidcProvider {
                 };
 
                 // Try to find the key by ID
-                match jwks.keys.iter().find(|k| k.common.key_id == Some(kid.clone())) {
+                match jwks
+                    .keys
+                    .iter()
+                    .find(|k| k.common.key_id == Some(kid.clone()))
+                {
                     Some(key) => {
                         trace_fmt!("OidcProvider", "Found key with ID {}", kid);
                         match self.jwk_to_decoding_key(key) {
                             Ok(key) => key,
                             Err(e) => {
-                                error_fmt!("OidcProvider", "Failed to convert JWK to decoding key: {}", e);
+                                error_fmt!(
+                                    "OidcProvider",
+                                    "Failed to convert JWK to decoding key: {}",
+                                    e
+                                );
                                 return Err(e);
                             }
                         }
@@ -368,16 +402,23 @@ impl OidcProvider {
                     None => {
                         // If we have a shared secret, use that for HS* algorithms
                         if let Some(ref secret) = self.shared_secret {
-                            if matches!(header.alg, Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512) {
+                            if matches!(
+                                header.alg,
+                                Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512
+                            ) {
                                 trace_fmt!("OidcProvider", "Using shared secret for HS* algorithm");
                                 DecodingKey::from_secret(secret.as_bytes())
                             } else {
-                                let err = ProxyError::SecurityError(format!("Key ID {kid} not found in JWKS"));
+                                let err = ProxyError::SecurityError(format!(
+                                    "Key ID {kid} not found in JWKS"
+                                ));
                                 warn_fmt!("OidcProvider", "{}", err);
                                 return Err(err);
                             }
                         } else {
-                            let err = ProxyError::SecurityError(format!("Key ID {kid} not found in JWKS"));
+                            let err = ProxyError::SecurityError(format!(
+                                "Key ID {kid} not found in JWKS"
+                            ));
                             warn_fmt!("OidcProvider", "{}", err);
                             return Err(err);
                         }
@@ -390,7 +431,9 @@ impl OidcProvider {
                     trace_fmt!("OidcProvider", "No key ID in token, using shared secret");
                     DecodingKey::from_secret(secret.as_bytes())
                 } else {
-                    let err = ProxyError::SecurityError("No key ID in token and no shared secret configured".to_string());
+                    let err = ProxyError::SecurityError(
+                        "No key ID in token and no shared secret configured".to_string(),
+                    );
                     warn_fmt!("OidcProvider", "{}", err);
                     return Err(err);
                 }
@@ -421,9 +464,10 @@ impl OidcProvider {
         // Check issuer
         if let Some(iss) = claims["iss"].as_str() {
             if iss != self.issuer {
-                let err = ProxyError::SecurityError(
-                    format!("Invalid issuer: expected '{}', got '{}'", self.issuer, iss)
-                );
+                let err = ProxyError::SecurityError(format!(
+                    "Invalid issuer: expected '{}', got '{}'",
+                    self.issuer, iss
+                ));
                 warn_fmt!("OidcProvider", "{}", err);
                 return Err(err);
             }
@@ -432,42 +476,43 @@ impl OidcProvider {
             warn_fmt!("OidcProvider", "{}", err);
             return Err(err);
         }
-        
+
         // Check audience if configured
         if let Some(ref expected_aud) = self.aud {
             let valid_audience = match &claims["aud"] {
                 serde_json::Value::String(aud) => aud == expected_aud,
-                serde_json::Value::Array(auds) => auds.iter()
+                serde_json::Value::Array(auds) => auds
+                    .iter()
                     .filter_map(|a| a.as_str())
                     .any(|a| a == expected_aud),
                 _ => false,
             };
-            
+
             if !valid_audience {
-                let err = ProxyError::SecurityError(
-                    format!("Invalid audience: expected '{expected_aud}'")
-                );
+                let err = ProxyError::SecurityError(format!(
+                    "Invalid audience: expected '{expected_aud}'"
+                ));
                 warn_fmt!("OidcProvider", "{}", err);
                 return Err(err);
             }
         }
-        
+
         // Check expiration
         if let Some(exp) = claims["exp"].as_i64() {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs() as i64;
-                
+
             if exp <= now {
-                let err = ProxyError::SecurityError(
-                    format!("Token expired at {exp}, current time is {now}")
-                );
+                let err = ProxyError::SecurityError(format!(
+                    "Token expired at {exp}, current time is {now}"
+                ));
                 warn_fmt!("OidcProvider", "{}", err);
                 return Err(err);
             }
         }
-        
+
         debug_fmt!("OidcProvider", "Token claims validation successful");
         Ok(())
     }
@@ -482,16 +527,105 @@ impl OidcProvider {
     }
 }
 
+#[async_trait]
+impl SecurityProvider for OidcProvider {
+    fn name(&self) -> &str {
+        "OidcProvider"
+    }
+
+    fn stage(&self) -> SecurityStage {
+        SecurityStage::Pre
+    }
+
+    async fn pre(&self, req: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+        // 0) Bypass?
+        if self.is_bypassed(&req.method.to_string(), &req.path) {
+            debug_fmt!(
+                "OidcProvider",
+                "OIDC bypass for {} {}",
+                req.method,
+                req.path
+            );
+            return Ok(req);
+        }
+
+        debug_fmt!(
+            "OidcProvider",
+            "OIDC validating request: {} {}",
+            req.method,
+            req.path
+        );
+
+        // 1) Extract bearer token
+        let auth_header = match req.headers.get("authorization") {
+            Some(h) => match h.to_str() {
+                Ok(s) => s.to_lowercase(),
+                Err(e) => {
+                    let err =
+                        ProxyError::SecurityError(format!("Invalid authorization header: {e}"));
+                    warn_fmt!("OidcProvider", "{}", err);
+                    return Err(err);
+                }
+            },
+            None => {
+                let err = ProxyError::SecurityError("Missing authorization header".to_string());
+                warn_fmt!("OidcProvider", "{}", err);
+                return Err(err);
+            }
+        };
+
+        if !auth_header.starts_with(BEARER) {
+            let err = ProxyError::SecurityError(format!(
+                "Invalid authorization scheme: expected 'Bearer', got '{}'",
+                auth_header.split_whitespace().next().unwrap_or("")
+            ));
+            warn_fmt!("OidcProvider", "{}", err);
+            return Err(err);
+        }
+
+        let token = &auth_header[BEARER.len()..];
+        if token.is_empty() {
+            let err = ProxyError::SecurityError("Empty bearer token".to_string());
+            warn_fmt!("OidcProvider", "{}", err);
+            return Err(err);
+        }
+
+        // 2) Validate the token
+        trace_fmt!("OidcProvider", "Validating token: {}", token);
+        let claims = match self.validate_token(token).await {
+            Ok(claims) => claims,
+            Err(e) => {
+                warn_fmt!("OidcProvider", "Token validation failed: {}", e);
+                return Err(e);
+            }
+        };
+
+        // 3) Store claims in request context
+        {
+            let mut ctx = req.context.write().await;
+            ctx.attributes.insert(CLAIMS_ATTRIBUTE.to_string(), claims);
+        }
+
+        debug_fmt!(
+            "OidcProvider",
+            "OIDC validation successful for {} {}",
+            req.method,
+            req.path
+        );
+        Ok(req)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{ProxyRequest, HttpMethod, RequestContext};
+    use crate::core::{HttpMethod, ProxyRequest, RequestContext};
+    use base64::Engine as _;
     use reqwest::header::HeaderMap;
     use std::sync::Arc;
     use tokio::sync::RwLock;
-    use wiremock::{MockServer, Mock, ResponseTemplate};
     use wiremock::matchers::{method, path};
-    use base64::{Engine as _};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn test_route_rule_config_deserialization() {
@@ -559,7 +693,10 @@ mod tests {
         }"#;
 
         let config: OidcConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.issuer_uri, "https://auth.example.com/.well-known/openid-configuration");
+        assert_eq!(
+            config.issuer_uri,
+            "https://auth.example.com/.well-known/openid-configuration"
+        );
         assert_eq!(config.aud, Some("my-app".to_string()));
         assert_eq!(config.shared_secret, Some("secret123".to_string()));
         assert_eq!(config.bypass.len(), 1);
@@ -599,13 +736,12 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri()),
-                    "authorization_endpoint": format!("{}/auth", mock_server.uri()),
-                    "token_endpoint": format!("{}/token", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri()),
+                "authorization_endpoint": format!("{}/auth", mock_server.uri()),
+                "token_endpoint": format!("{}/token", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -649,11 +785,10 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -683,11 +818,10 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/.well-known/openid-configuration"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -763,8 +897,7 @@ mod tests {
         // Mock the discovery endpoint to return invalid JSON
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_string("invalid json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("invalid json"))
             .mount(&mock_server)
             .await;
 
@@ -793,11 +926,10 @@ mod tests {
         // Mock the discovery endpoint to return JSON without jwks_uri
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "authorization_endpoint": format!("{}/auth", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "authorization_endpoint": format!("{}/auth", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -826,11 +958,10 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -838,12 +969,10 @@ mod tests {
             issuer_uri: mock_server.uri(),
             aud: None,
             shared_secret: None,
-            bypass: vec![
-                RouteRuleConfig {
-                    methods: vec!["GET".to_string()],
-                    path: "[invalid-glob".to_string(), // Invalid glob pattern
-                },
-            ],
+            bypass: vec![RouteRuleConfig {
+                methods: vec!["GET".to_string()],
+                path: "[invalid-glob".to_string(), // Invalid glob pattern
+            }],
         };
 
         let result = OidcProvider::discover(config).await;
@@ -864,11 +993,10 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -909,11 +1037,10 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -949,30 +1076,28 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
         // Mock the JWKS endpoint
         Mock::given(method("GET"))
             .and(path("/jwks"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "keys": [
-                        {
-                            "kty": "RSA",
-                            "kid": "test-key-1",
-                            "use": "sig",
-                            "alg": "RS256",
-                            "n": "test-modulus",
-                            "e": "AQAB"
-                        }
-                    ]
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "RSA",
+                        "kid": "test-key-1",
+                        "use": "sig",
+                        "alg": "RS256",
+                        "n": "test-modulus",
+                        "e": "AQAB"
+                    }
+                ]
+            })))
             .mount(&mock_server)
             .await;
 
@@ -993,11 +1118,13 @@ mod tests {
         {
             let mut refresh_w = provider.last_refresh.write().await;
             // Set to a time that's guaranteed to trigger refresh
-            *refresh_w = tokio::time::Instant::now().checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
+            *refresh_w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
                 .unwrap_or_else(|| {
                     // Fallback: use a very old instant by subtracting a small amount
-                    tokio::time::Instant::now().checked_sub(std::time::Duration::from_millis(1))
-                        .unwrap_or_else(|| tokio::time::Instant::now())
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_millis(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
                 });
         }
 
@@ -1020,11 +1147,10 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -1047,10 +1173,12 @@ mod tests {
         // Force cache expiration by setting last_refresh to a very old time
         {
             let mut w = provider.last_refresh.write().await;
-            *w = tokio::time::Instant::now().checked_sub(JWKS_REFRESH * 2)
+            *w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH * 2)
                 .unwrap_or_else(|| {
-                    tokio::time::Instant::now().checked_sub(std::time::Duration::from_secs(1))
-                        .unwrap_or_else(|| tokio::time::Instant::now())
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_secs(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
                 });
         }
 
@@ -1072,19 +1200,17 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
         // Mock the JWKS endpoint to return invalid JSON
         Mock::given(method("GET"))
             .and(path("/jwks"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_string("invalid json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("invalid json"))
             .mount(&mock_server)
             .await;
 
@@ -1105,11 +1231,13 @@ mod tests {
         {
             let mut refresh_w = provider.last_refresh.write().await;
             // Set to a time that's guaranteed to trigger refresh
-            *refresh_w = tokio::time::Instant::now().checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
+            *refresh_w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
                 .unwrap_or_else(|| {
                     // Fallback: use a very old instant by subtracting a small amount
-                    tokio::time::Instant::now().checked_sub(std::time::Duration::from_millis(1))
-                        .unwrap_or_else(|| tokio::time::Instant::now())
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_millis(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
                 });
         }
 
@@ -1132,11 +1260,13 @@ mod tests {
             jwks_uri: "http://invalid-host-12345.example.com/jwks".to_string(),
             jwks: Arc::new(RwLock::new(None)),
             last_refresh: Arc::new(RwLock::new(
-                tokio::time::Instant::now().checked_sub(JWKS_REFRESH * 2)
+                tokio::time::Instant::now()
+                    .checked_sub(JWKS_REFRESH * 2)
                     .unwrap_or_else(|| {
-                        tokio::time::Instant::now().checked_sub(std::time::Duration::from_secs(1))
-                            .unwrap_or_else(|| tokio::time::Instant::now())
-                    })
+                        tokio::time::Instant::now()
+                            .checked_sub(std::time::Duration::from_secs(1))
+                            .unwrap_or_else(tokio::time::Instant::now)
+                    }),
             )),
             http: reqwest::Client::new(),
             rules: vec![],
@@ -1194,7 +1324,6 @@ mod tests {
 
         // Create a JWT with unsupported algorithm (none)
 
-
         let mut _header = Header::new(jsonwebtoken::Algorithm::HS256);
         _header.alg = jsonwebtoken::Algorithm::HS256; // This will be overridden
 
@@ -1219,7 +1348,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_token_no_jwks_available() {
-        use jsonwebtoken::{Header, Algorithm};
+        use jsonwebtoken::{Algorithm, Header};
         use serde_json::json;
 
         let provider = OidcProvider {
@@ -1229,11 +1358,13 @@ mod tests {
             jwks_uri: "https://auth.example.com/jwks".to_string(),
             jwks: Arc::new(RwLock::new(None)), // No JWKS available
             last_refresh: Arc::new(RwLock::new(
-                tokio::time::Instant::now().checked_sub(JWKS_REFRESH * 2)
+                tokio::time::Instant::now()
+                    .checked_sub(JWKS_REFRESH * 2)
                     .unwrap_or_else(|| {
-                        tokio::time::Instant::now().checked_sub(std::time::Duration::from_secs(1))
-                            .unwrap_or_else(|| tokio::time::Instant::now())
-                    })
+                        tokio::time::Instant::now()
+                            .checked_sub(std::time::Duration::from_secs(1))
+                            .unwrap_or_else(tokio::time::Instant::now)
+                    }),
             )),
             http: reqwest::Client::new(),
             rules: vec![],
@@ -1282,7 +1413,7 @@ mod tests {
         };
 
         // Create a valid HMAC JWT token
-        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
         let header = Header::new(Algorithm::HS256);
 
@@ -1299,15 +1430,23 @@ mod tests {
             iss: "https://auth.example.com".to_string(),
             aud: "test-audience".to_string(),
             sub: "test-user".to_string(),
-            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
-            iat: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64,
+            exp: (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 3600) as i64,
+            iat: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
         };
 
         let token = encode(
             &header,
             &claims,
-            &EncodingKey::from_secret("test-secret-key".as_ref())
-        ).unwrap();
+            &EncodingKey::from_secret("test-secret-key".as_ref()),
+        )
+        .unwrap();
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_ok());
@@ -1332,7 +1471,7 @@ mod tests {
         };
 
         // Create a JWT token with different secret
-        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
         let header = Header::new(Algorithm::HS256);
 
@@ -1346,14 +1485,19 @@ mod tests {
         let claims = WrongSecretClaims {
             iss: "https://auth.example.com".to_string(),
             sub: "test-user".to_string(),
-            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
+            exp: (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 3600) as i64,
         };
 
         let token = encode(
             &header,
             &claims,
-            &EncodingKey::from_secret("correct-secret".as_ref())
-        ).unwrap();
+            &EncodingKey::from_secret("correct-secret".as_ref()),
+        )
+        .unwrap();
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_err());
@@ -1379,7 +1523,7 @@ mod tests {
         };
 
         // Create a HMAC JWT token
-        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
         let header = Header::new(Algorithm::HS256);
 
@@ -1393,14 +1537,19 @@ mod tests {
         let claims = NoSecretClaims {
             iss: "https://auth.example.com".to_string(),
             sub: "test-user".to_string(),
-            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
+            exp: (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 3600) as i64,
         };
 
         let token = encode(
             &header,
             &claims,
-            &EncodingKey::from_secret("test-secret".as_ref())
-        ).unwrap();
+            &EncodingKey::from_secret("test-secret".as_ref()),
+        )
+        .unwrap();
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_err());
@@ -1426,7 +1575,7 @@ mod tests {
         };
 
         // Create a JWT token with wrong issuer
-        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
         let header = Header::new(Algorithm::HS256);
 
@@ -1440,14 +1589,19 @@ mod tests {
         let claims = WrongIssuerClaims {
             iss: "https://wrong-issuer.com".to_string(), // Wrong issuer
             sub: "test-user".to_string(),
-            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
+            exp: (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 3600) as i64,
         };
 
         let token = encode(
             &header,
             &claims,
-            &EncodingKey::from_secret("test-secret".as_ref())
-        ).unwrap();
+            &EncodingKey::from_secret("test-secret".as_ref()),
+        )
+        .unwrap();
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_err());
@@ -1473,7 +1627,7 @@ mod tests {
         };
 
         // Create a JWT token with wrong audience
-        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
         let header = Header::new(Algorithm::HS256);
 
@@ -1489,14 +1643,19 @@ mod tests {
             iss: "https://auth.example.com".to_string(),
             aud: "wrong-audience".to_string(), // Wrong audience
             sub: "test-user".to_string(),
-            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
+            exp: (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 3600) as i64,
         };
 
         let token = encode(
             &header,
             &claims,
-            &EncodingKey::from_secret("test-secret".as_ref())
-        ).unwrap();
+            &EncodingKey::from_secret("test-secret".as_ref()),
+        )
+        .unwrap();
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_err());
@@ -1522,7 +1681,7 @@ mod tests {
         };
 
         // Create an expired JWT token
-        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
         let header = Header::new(Algorithm::HS256);
 
@@ -1536,14 +1695,19 @@ mod tests {
         let claims = ExpiredClaims {
             iss: "https://auth.example.com".to_string(),
             sub: "test-user".to_string(),
-            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() - 3600) as i64, // Expired 1 hour ago
+            exp: (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                - 3600) as i64, // Expired 1 hour ago
         };
 
         let token = encode(
             &header,
             &claims,
-            &EncodingKey::from_secret("test-secret".as_ref())
-        ).unwrap();
+            &EncodingKey::from_secret("test-secret".as_ref()),
+        )
+        .unwrap();
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_err());
@@ -1569,8 +1733,7 @@ mod tests {
         };
 
         // Create a JWT token with very long expiration (effectively no expiration)
-        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
-
+        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
         let header = Header::new(Algorithm::HS256);
 
@@ -1585,14 +1748,19 @@ mod tests {
         let claims = TestClaimsLongExp {
             iss: "https://auth.example.com".to_string(),
             sub: "test-user".to_string(),
-            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + (100 * 365 * 24 * 3600)) as i64, // 100 years
+            exp: (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + (100 * 365 * 24 * 3600)) as i64, // 100 years
         };
 
         let token = encode(
             &header,
             &claims,
-            &EncodingKey::from_secret("test-secret".as_ref())
-        ).unwrap();
+            &EncodingKey::from_secret("test-secret".as_ref()),
+        )
+        .unwrap();
 
         let result = provider.validate_token(&token).await;
         if result.is_err() {
@@ -1613,30 +1781,28 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
         // Mock the JWKS endpoint
         Mock::given(method("GET"))
             .and(path("/jwks"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "keys": [
-                        {
-                            "kty": "RSA",
-                            "kid": "test-key-1",
-                            "use": "sig",
-                            "alg": "RS256",
-                            "n": "test-modulus",
-                            "e": "AQAB"
-                        }
-                    ]
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "RSA",
+                        "kid": "test-key-1",
+                        "use": "sig",
+                        "alg": "RS256",
+                        "n": "test-modulus",
+                        "e": "AQAB"
+                    }
+                ]
+            })))
             .mount(&mock_server)
             .await;
 
@@ -1680,30 +1846,28 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
         // Mock the JWKS endpoint
         Mock::given(method("GET"))
             .and(path("/jwks"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "keys": [
-                        {
-                            "kty": "RSA",
-                            "kid": "different-key",
-                            "use": "sig",
-                            "alg": "RS256",
-                            "n": "test-modulus",
-                            "e": "AQAB"
-                        }
-                    ]
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "RSA",
+                        "kid": "different-key",
+                        "use": "sig",
+                        "alg": "RS256",
+                        "n": "test-modulus",
+                        "e": "AQAB"
+                    }
+                ]
+            })))
             .mount(&mock_server)
             .await;
 
@@ -1747,11 +1911,10 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -1816,11 +1979,10 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -1917,12 +2079,10 @@ mod tests {
         builder.add(Glob::new("/health").unwrap());
         let paths = builder.build().unwrap();
 
-        let rules = vec![
-            RouteRule {
-                methods: vec!["GET".to_string()],
-                paths,
-            },
-        ];
+        let rules = vec![RouteRule {
+            methods: vec!["GET".to_string()],
+            paths,
+        }];
 
         let provider = OidcProvider {
             issuer: "https://auth.example.com".to_string(),
@@ -2064,11 +2224,10 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -2118,31 +2277,29 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
         // Mock JWKS with EC key
         Mock::given(method("GET"))
             .and(path("/jwks"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "keys": [
-                        {
-                            "kty": "EC",
-                            "kid": "ec-key-1",
-                            "use": "sig",
-                            "alg": "ES256",
-                            "crv": "P-256",
-                            "x": "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
-                            "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
-                        }
-                    ]
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "EC",
+                        "kid": "ec-key-1",
+                        "use": "sig",
+                        "alg": "ES256",
+                        "crv": "P-256",
+                        "x": "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
+                        "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+                    }
+                ]
+            })))
             .mount(&mock_server)
             .await;
 
@@ -2173,29 +2330,27 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
         // Mock JWKS with octet key (HMAC)
         Mock::given(method("GET"))
             .and(path("/jwks"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "keys": [
-                        {
-                            "kty": "oct",
-                            "kid": "hmac-key-1",
-                            "use": "sig",
-                            "alg": "HS256",
-                            "k": "GawgguFyGrWKav7AX4VKUg"
-                        }
-                    ]
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "oct",
+                        "kid": "hmac-key-1",
+                        "use": "sig",
+                        "alg": "HS256",
+                        "k": "GawgguFyGrWKav7AX4VKUg"
+                    }
+                ]
+            })))
             .mount(&mock_server)
             .await;
 
@@ -2226,30 +2381,28 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
         // Mock JWKS with OKP key (EdDSA)
         Mock::given(method("GET"))
             .and(path("/jwks"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "keys": [
-                        {
-                            "kty": "OKP",
-                            "kid": "ed25519-key-1",
-                            "use": "sig",
-                            "alg": "EdDSA",
-                            "crv": "Ed25519",
-                            "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
-                        }
-                    ]
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "OKP",
+                        "kid": "ed25519-key-1",
+                        "use": "sig",
+                        "alg": "EdDSA",
+                        "crv": "Ed25519",
+                        "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+                    }
+                ]
+            })))
             .mount(&mock_server)
             .await;
 
@@ -2287,7 +2440,7 @@ mod tests {
         };
 
         // Create a HMAC JWT token with kid that won't be found in JWKS
-        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
         let mut header = Header::new(Algorithm::HS256);
         header.kid = Some("missing-key".to_string());
@@ -2302,14 +2455,19 @@ mod tests {
         let claims = TestClaims {
             iss: "https://auth.example.com".to_string(),
             sub: "test-user".to_string(),
-            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
+            exp: (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 3600) as i64,
         };
 
         let token = encode(
             &header,
             &claims,
-            &EncodingKey::from_secret("test-secret".as_ref())
-        ).unwrap();
+            &EncodingKey::from_secret("test-secret".as_ref()),
+        )
+        .unwrap();
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_ok());
@@ -2369,7 +2527,7 @@ mod tests {
         };
 
         // Test HS384 algorithm
-        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
         let header = Header::new(Algorithm::HS384);
 
@@ -2383,14 +2541,19 @@ mod tests {
         let claims = TestClaims {
             iss: "https://auth.example.com".to_string(),
             sub: "test-user".to_string(),
-            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
+            exp: (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 3600) as i64,
         };
 
         let token = encode(
             &header,
             &claims,
-            &EncodingKey::from_secret("test-secret-key-for-hs384".as_ref())
-        ).unwrap();
+            &EncodingKey::from_secret("test-secret-key-for-hs384".as_ref()),
+        )
+        .unwrap();
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_ok());
@@ -2414,7 +2577,7 @@ mod tests {
         };
 
         // Test HS512 algorithm
-        use jsonwebtoken::{encode, Header, EncodingKey, Algorithm};
+        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
         let header = Header::new(Algorithm::HS512);
 
@@ -2428,14 +2591,19 @@ mod tests {
         let claims = TestClaims {
             iss: "https://auth.example.com".to_string(),
             sub: "test-user".to_string(),
-            exp: (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600) as i64,
+            exp: (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 3600) as i64,
         };
 
         let token = encode(
             &header,
             &claims,
-            &EncodingKey::from_secret("test-secret-key-for-hs512-algorithm".as_ref())
-        ).unwrap();
+            &EncodingKey::from_secret("test-secret-key-for-hs512-algorithm".as_ref()),
+        )
+        .unwrap();
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_ok());
@@ -2667,8 +2835,6 @@ mod tests {
         assert!(result.is_ok());
     }
 
-
-
     #[tokio::test]
     async fn test_jwks_refresh_empty_keys() {
         // Setup mock server
@@ -2677,21 +2843,19 @@ mod tests {
         // Mock the discovery endpoint
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
         // Mock the JWKS endpoint with empty keys array
         Mock::given(method("GET"))
             .and(path("/jwks"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "keys": []
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": []
+            })))
             .mount(&mock_server)
             .await;
 
@@ -2711,10 +2875,12 @@ mod tests {
         }
         {
             let mut refresh_w = provider.last_refresh.write().await;
-            *refresh_w = tokio::time::Instant::now().checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
+            *refresh_w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
                 .unwrap_or_else(|| {
-                    tokio::time::Instant::now().checked_sub(std::time::Duration::from_millis(1))
-                        .unwrap_or_else(|| tokio::time::Instant::now())
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_millis(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
                 });
         }
 
@@ -2739,11 +2905,10 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -2752,12 +2917,10 @@ mod tests {
             issuer_uri: mock_server.uri(),
             aud: None,
             shared_secret: None,
-            bypass: vec![
-                RouteRuleConfig {
-                    methods: vec!["GET".to_string()],
-                    path: "/api/*".to_string(), // Simple valid pattern
-                },
-            ],
+            bypass: vec![RouteRuleConfig {
+                methods: vec!["GET".to_string()],
+                path: "/api/*".to_string(), // Simple valid pattern
+            }],
         };
 
         // This should succeed since we're using a valid pattern
@@ -2772,11 +2935,10 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({
-                    "issuer": mock_server.uri(),
-                    "jwks_uri": format!("{}/jwks", mock_server.uri())
-                })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
             .mount(&mock_server)
             .await;
 
@@ -2887,73 +3049,4 @@ mod tests {
     }
 }
 
-#[async_trait]
-impl SecurityProvider for OidcProvider {
-    fn name(&self) -> &str { "OidcProvider" }
 
-    fn stage(&self) -> SecurityStage { SecurityStage::Pre }
-
-    async fn pre(&self, req: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
-        // 0) Bypass?
-        if self.is_bypassed(&req.method.to_string(), &req.path) {
-            debug_fmt!("OidcProvider", "OIDC bypass for {} {}", req.method, req.path);
-            return Ok(req);
-        }
-
-        debug_fmt!("OidcProvider", "OIDC validating request: {} {}", req.method, req.path);
-
-        // 1) Extract bearer token
-        let auth_header = match req.headers.get("authorization") {
-            Some(h) => match h.to_str() {
-                Ok(s) => s.to_lowercase(),
-                Err(e) => {
-                    let err = ProxyError::SecurityError(
-                        format!("Invalid authorization header: {e}")
-                    );
-                    warn_fmt!("OidcProvider", "{}", err);
-                    return Err(err);
-                }
-            },
-            None => {
-                let err = ProxyError::SecurityError("Missing authorization header".to_string());
-                warn_fmt!("OidcProvider", "{}", err);
-                return Err(err);
-            }
-        };
-
-        if !auth_header.starts_with(BEARER) {
-            let err = ProxyError::SecurityError(
-                format!("Invalid authorization scheme: expected 'Bearer', got '{}'", 
-                    auth_header.split_whitespace().next().unwrap_or(""))
-            );
-            warn_fmt!("OidcProvider", "{}", err);
-            return Err(err);
-        }
-
-        let token = &auth_header[BEARER.len()..];
-        if token.is_empty() {
-            let err = ProxyError::SecurityError("Empty bearer token".to_string());
-            warn_fmt!("OidcProvider", "{}", err);
-            return Err(err);
-        }
-
-        // 2) Validate the token
-        trace_fmt!("OidcProvider", "Validating token: {}", token);
-        let claims = match self.validate_token(token).await {
-            Ok(claims) => claims,
-            Err(e) => {
-                warn_fmt!("OidcProvider", "Token validation failed: {}", e);
-                return Err(e);
-            }
-        };
-
-        // 3) Store claims in request context
-        {
-            let mut ctx = req.context.write().await;
-            ctx.attributes.insert(CLAIMS_ATTRIBUTE.to_string(), claims);
-        }
-
-        debug_fmt!("OidcProvider", "OIDC validation successful for {} {}", req.method, req.path);
-        Ok(req)
-    }
-}

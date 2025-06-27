@@ -6,11 +6,11 @@
 
 use slog::{Drain, Logger, o};
 use slog_async::Async;
-use slog_term::{TermDecorator, CompactFormat};
 use slog_json::Json;
+use slog_term::{CompactFormat, TermDecorator};
 use std::io;
-use uuid::Uuid;
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 /// Logger configuration
 #[derive(Debug, Clone)]
@@ -181,8 +181,14 @@ mod tests {
         assert!(!config.include_location);
         assert!(!config.include_thread_id);
         assert_eq!(config.static_fields.len(), 2);
-        assert_eq!(config.static_fields.get("service"), Some(&"foxy".to_string()));
-        assert_eq!(config.static_fields.get("version"), Some(&"1.0.0".to_string()));
+        assert_eq!(
+            config.static_fields.get("service"),
+            Some(&"foxy".to_string())
+        );
+        assert_eq!(
+            config.static_fields.get("version"),
+            Some(&"1.0.0".to_string())
+        );
     }
 
     #[test]
@@ -201,7 +207,9 @@ mod tests {
     #[test]
     fn test_logger_config_clone() {
         let mut config = LoggerConfig::default();
-        config.static_fields.insert("test".to_string(), "value".to_string());
+        config
+            .static_fields
+            .insert("test".to_string(), "value".to_string());
 
         let cloned = config.clone();
 
@@ -284,7 +292,7 @@ mod tests {
 
         let elapsed = request_info.elapsed_ms();
         // Should be approximately 100ms, but allow for some variance
-        assert!(elapsed >= 90 && elapsed <= 200);
+        assert!((90..=200).contains(&elapsed));
     }
 
     #[test]

@@ -7,24 +7,24 @@
 //! Initially ships with *zero* providers; downstream crates add their own by
 //! implementing [`SecurityProvider`] and registering them on [`ProxyCore`].
 
-pub mod oidc;
 pub mod basic;
+pub mod oidc;
 
 #[cfg(test)]
 mod tests;
 
+use crate::core::{ProxyError, ProxyRequest, ProxyResponse};
+use crate::security::basic::{BasicAuthConfig, BasicAuthProvider};
+use crate::security::oidc::{OidcConfig, OidcProvider};
+use crate::{debug_fmt, error_fmt, trace_fmt};
+use async_trait::async_trait;
+use once_cell::sync::Lazy;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use async_trait::async_trait;
-use std::{fmt, sync::Arc};
-use once_cell::sync::Lazy;
-use serde::Deserialize;
 use std::sync::RwLock as StdRwLock;
-use crate::core::{ProxyError, ProxyRequest, ProxyResponse};
-use crate::{debug_fmt, error_fmt, trace_fmt};
-use crate::security::oidc::{OidcConfig, OidcProvider};
-use crate::security::basic::{BasicAuthConfig, BasicAuthProvider};
+use std::{fmt, sync::Arc};
 
 /// When in the request/response lifecycle should a provider run?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,8 +35,12 @@ pub enum SecurityStage {
 }
 
 impl SecurityStage {
-    pub const fn is_pre(self) -> bool { matches!(self, Self::Pre | Self::Both) }
-    pub const fn is_post(self) -> bool { matches!(self, Self::Post | Self::Both) }
+    pub const fn is_pre(self) -> bool {
+        matches!(self, Self::Pre | Self::Both)
+    }
+    pub const fn is_post(self) -> bool {
+        matches!(self, Self::Post | Self::Both)
+    }
 }
 
 /// A unit of security logic – e.g. BasicAuth, JWT, OIDC, mTLS …
@@ -48,11 +52,12 @@ pub trait SecurityProvider: fmt::Debug + Send + Sync {
     fn name(&self) -> &str;
 
     /// Optionally mutate/validate the inbound request *before* routing.
-    async fn pre(
-        &self,
-        request: ProxyRequest,
-    ) -> Result<ProxyRequest, ProxyError> {
-        trace_fmt!("SecurityChain", "Security provider '{}' skipping pre-auth (default implementation)", self.name());
+    async fn pre(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+        trace_fmt!(
+            "SecurityChain",
+            "Security provider '{}' skipping pre-auth (default implementation)",
+            self.name()
+        );
         Ok(request)
     }
 
@@ -62,7 +67,11 @@ pub trait SecurityProvider: fmt::Debug + Send + Sync {
         _request: ProxyRequest,
         response: ProxyResponse,
     ) -> Result<ProxyResponse, ProxyError> {
-        trace_fmt!("SecurityChain", "Security provider '{}' skipping post-auth (default implementation)", self.name());
+        trace_fmt!(
+            "SecurityChain",
+            "Security provider '{}' skipping post-auth (default implementation)",
+            self.name()
+        );
         Ok(response)
     }
 }
@@ -81,14 +90,20 @@ impl Default for SecurityChain {
 
 impl SecurityChain {
     pub fn new() -> Self {
-        Self { providers: Vec::new() }
+        Self {
+            providers: Vec::new(),
+        }
     }
 
     /// Build from raw config list.
     pub async fn from_configs(cfgs: Vec<ProviderConfig>) -> Result<Self, ProxyError> {
         let mut chain = SecurityChain::new();
 
-        debug_fmt!("SecurityChain", "Building security chain from {} provider configs", cfgs.len());
+        debug_fmt!(
+            "SecurityChain",
+            "Building security chain from {} provider configs",
+            cfgs.len()
+        );
 
         for c in cfgs {
             let provider = SecurityProviderFactory::create_provider(&c.type_, c.config).await?;
@@ -98,13 +113,16 @@ impl SecurityChain {
         Ok(chain)
     }
 
-    pub fn add(&mut self, p: Arc<dyn SecurityProvider>) { self.providers.push(p); }
+    pub fn add(&mut self, p: Arc<dyn SecurityProvider>) {
+        self.providers.push(p);
+    }
 
-    pub async fn apply_pre(
-        &self,
-        mut req: ProxyRequest,
-    ) -> Result<ProxyRequest, ProxyError> {
-        trace_fmt!("SecurityChain", "Applying security pre-auth chain with {} providers", self.providers.len());
+    pub async fn apply_pre(&self, mut req: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
+        trace_fmt!(
+            "SecurityChain",
+            "Applying security pre-auth chain with {} providers",
+            self.providers.len()
+        );
 
         for p in &self.providers {
             if p.stage().is_pre() {
@@ -112,7 +130,7 @@ impl SecurityChain {
                 match p.pre(req).await {
                     Ok(new_req) => {
                         req = new_req;
-                    },
+                    }
                     Err(e) => {
                         let err = ProxyError::SecurityError(format!("{}: {}", p.name(), e));
                         error_fmt!("SecurityChain", "Security pre-auth failed: {}", err);
@@ -129,7 +147,11 @@ impl SecurityChain {
         req: ProxyRequest,
         mut resp: ProxyResponse,
     ) -> Result<ProxyResponse, ProxyError> {
-        trace_fmt!("SecurityChain", "Applying security post-auth chain with {} providers", self.providers.len());
+        trace_fmt!(
+            "SecurityChain",
+            "Applying security post-auth chain with {} providers",
+            self.providers.len()
+        );
 
         for p in &self.providers {
             if p.stage().is_post() {
@@ -137,7 +159,7 @@ impl SecurityChain {
                 match p.post(req.clone(), resp).await {
                     Ok(new_resp) => {
                         resp = new_resp;
-                    },
+                    }
                     Err(e) => {
                         let err = ProxyError::SecurityError(format!("{}: {}", p.name(), e));
                         error_fmt!("SecurityChain", "Security post-auth failed: {}", err);
@@ -157,13 +179,13 @@ pub struct ProviderConfig {
     pub config: serde_json::Value,
 }
 
-
 /// Constructor signature every dynamic security provider must implement.
 /// Because providers may need to perform async operations (like OIDC discovery),
 /// the constructor returns a pinned, boxed future.
 pub type SecurityProviderConstructor =
-fn(serde_json::Value) -> Pin<Box<dyn Future<Output = Result<Arc<dyn SecurityProvider>, ProxyError>> + Send>>;
-
+    fn(
+        serde_json::Value,
+    ) -> Pin<Box<dyn Future<Output = Result<Arc<dyn SecurityProvider>, ProxyError>> + Send>>;
 
 /// Global registry for security providers.
 static SECURITY_PROVIDER_REGISTRY: Lazy<StdRwLock<HashMap<String, SecurityProviderConstructor>>> =
@@ -196,25 +218,36 @@ impl SecurityProviderFactory {
         provider_type: &str,
         config: serde_json::Value,
     ) -> Result<Arc<dyn SecurityProvider>, ProxyError> {
-        debug_fmt!("SecurityProviderFactory", "Creating security provider of type '{}'", provider_type);
+        debug_fmt!(
+            "SecurityProviderFactory",
+            "Creating security provider of type '{}'",
+            provider_type
+        );
         if let Some(ctor) = get_registered_security_provider(provider_type) {
             return ctor(config).await;
         }
 
         match provider_type {
             "oidc" => {
-                let oidc_config: OidcConfig = serde_json::from_value(config)
-                    .map_err(|e| ProxyError::SecurityError(format!("Invalid OIDC provider config: {e}")))?;
+                let oidc_config: OidcConfig = serde_json::from_value(config).map_err(|e| {
+                    ProxyError::SecurityError(format!("Invalid OIDC provider config: {e}"))
+                })?;
                 let provider = OidcProvider::discover(oidc_config).await?;
                 Ok(Arc::new(provider))
-            },
+            }
             "basic" => {
-                let basic_auth_config: BasicAuthConfig = serde_json::from_value(config)
-                    .map_err(|e| ProxyError::SecurityError(format!("Invalid Basic Auth provider config: {e}")))?;
+                let basic_auth_config: BasicAuthConfig =
+                    serde_json::from_value(config).map_err(|e| {
+                        ProxyError::SecurityError(format!(
+                            "Invalid Basic Auth provider config: {e}"
+                        ))
+                    })?;
                 let provider = BasicAuthProvider::new(basic_auth_config)?;
                 Ok(Arc::new(provider))
-            },
-            _ => Err(ProxyError::SecurityError(format!("Unknown security provider type: {provider_type}"))),
+            }
+            _ => Err(ProxyError::SecurityError(format!(
+                "Unknown security provider type: {provider_type}"
+            ))),
         }
     }
 }

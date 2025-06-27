@@ -23,17 +23,17 @@ mod tests;
 
 pub use predicates::*;
 
+use async_trait::async_trait;
+use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use once_cell::sync::Lazy;
 use std::sync::RwLock as StdRwLock;
-use async_trait::async_trait;
 use tokio::sync::RwLock;
-use serde::{Serialize, Deserialize};
 
 use crate::config::Config;
-use crate::core::{ProxyRequest, ProxyError, Route};
-use crate::{debug_fmt, error_fmt, trace_fmt, warn_fmt, FilterFactory};
+use crate::core::{ProxyError, ProxyRequest, Route};
+use crate::{FilterFactory, debug_fmt, error_fmt, trace_fmt, warn_fmt};
 
 /// Configuration for a route.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,9 +87,7 @@ pub trait Predicate: Send + Sync + std::fmt::Debug {
 }
 
 /// Constructor signature every dynamic predicate must implement
-pub type PredicateConstructor =
-fn(serde_json::Value) -> Result<Arc<dyn Predicate>, ProxyError>;
-
+pub type PredicateConstructor = fn(serde_json::Value) -> Result<Arc<dyn Predicate>, ProxyError>;
 
 /// Global registry – `register_predicate()` writes to it,
 /// `PredicateFactory::create_predicate()` reads from it.
@@ -179,11 +177,16 @@ impl PredicateRouter {
                 }
 
                 // Find the first path predicate to use as the route pattern
-                let path_pattern = route_config.predicates.iter()
+                let path_pattern = route_config
+                    .predicates
+                    .iter()
                     .find(|p| p.type_ == "path")
-                    .map(|p| p.config.get("pattern")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("/*"))
+                    .map(|p| {
+                        p.config
+                            .get("pattern")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("/*")
+                    })
                     .unwrap_or("/*")
                     .to_string();
 
@@ -191,15 +194,16 @@ impl PredicateRouter {
                     id: route_config.id.clone(),
                     target_base_url: route_config.target.clone(),
                     path_pattern,
-                    filters: if filters.is_empty() { None } else { Some(filters) },
+                    filters: if filters.is_empty() {
+                        None
+                    } else {
+                        Some(filters)
+                    },
                 };
 
                 // Add the route with its predicates
-                self.add_route_with_predicates(
-                    route,
-                    predicates,
-                    route_config.priority,
-                ).await?;
+                self.add_route_with_predicates(route, predicates, route_config.priority)
+                    .await?;
             }
         }
 
@@ -243,24 +247,38 @@ impl crate::core::Router for PredicateRouter {
     async fn route(&self, request: &ProxyRequest) -> Result<Route, ProxyError> {
         // Find the first route where all predicates match
         let sorted_routes = self.sorted_routes.read().await;
-        trace_fmt!("Router", "Routing request {} {} against {} routes", 
-            request.method, request.path, sorted_routes.len());
+        trace_fmt!(
+            "Router",
+            "Routing request {} {} against {} routes",
+            request.method,
+            request.path,
+            sorted_routes.len()
+        );
 
         for route_with_predicates in sorted_routes.iter() {
             // Check all predicates for this route
             let mut all_match = true;
             let route_id = &route_with_predicates.route.id;
-            
-            trace_fmt!("Router", "Checking route '{}' with {} predicates", 
-                route_id, route_with_predicates.predicates.len());
+
+            trace_fmt!(
+                "Router",
+                "Checking route '{}' with {} predicates",
+                route_id,
+                route_with_predicates.predicates.len()
+            );
 
             for predicate in &route_with_predicates.predicates {
                 let predicate_type = predicate.predicate_type();
                 let matches = predicate.matches(request).await;
-                
-                trace_fmt!("Router", "  Predicate '{}' for route '{}': {}", 
-                    predicate_type, route_id, if matches { "match" } else { "no match" });
-                
+
+                trace_fmt!(
+                    "Router",
+                    "  Predicate '{}' for route '{}': {}",
+                    predicate_type,
+                    route_id,
+                    if matches { "match" } else { "no match" }
+                );
+
                 if !matches {
                     all_match = false;
                     break;
@@ -269,15 +287,22 @@ impl crate::core::Router for PredicateRouter {
 
             // If all predicates match, use this route
             if all_match {
-                debug_fmt!("Router", "Route '{}' matched request {} {}", 
-                    route_id, request.method, request.path);
+                debug_fmt!(
+                    "Router",
+                    "Route '{}' matched request {} {}",
+                    route_id,
+                    request.method,
+                    request.path
+                );
                 return Ok(route_with_predicates.route.clone());
             }
         }
 
         // No route matched
-        let err = ProxyError::RoutingError(format!("No route matched the request: {} {}",
-                                             request.method, request.path));
+        let err = ProxyError::RoutingError(format!(
+            "No route matched the request: {} {}",
+            request.method, request.path
+        ));
         warn_fmt!("Router", "{}", err);
         Err(err)
     }
@@ -298,7 +323,9 @@ impl crate::core::Router for PredicateRouter {
         {
             let mut routes = self.routes.write().await;
             if routes.remove(route_id).is_none() {
-                return Err(ProxyError::RoutingError(format!("Route not found: {route_id}")));
+                return Err(ProxyError::RoutingError(format!(
+                    "Route not found: {route_id}"
+                )));
             }
         }
 
@@ -322,70 +349,72 @@ impl PredicateFactory {
         predicate_type: &str,
         config: serde_json::Value,
     ) -> Result<Arc<dyn Predicate>, ProxyError> {
-        debug_fmt!("Router", "Creating predicate of type '{}' with config: {}", 
-            predicate_type, config);
+        debug_fmt!(
+            "Router",
+            "Creating predicate of type '{}' with config: {}",
+            predicate_type,
+            config
+        );
 
         // See if we've got an external predicate registered of that name
         if let Some(ctor) = get_registered_predicate(predicate_type) {
             return ctor(config);
         }
-            
+
         match predicate_type {
             "path" => {
-                let path_config: PathPredicateConfig = serde_json::from_value(config)
-                    .map_err(|e| {
-                        let err = ProxyError::RoutingError(
-                            format!("Invalid path predicate config: {e}")
-                        );
+                let path_config: PathPredicateConfig =
+                    serde_json::from_value(config).map_err(|e| {
+                        let err =
+                            ProxyError::RoutingError(format!("Invalid path predicate config: {e}"));
                         error_fmt!("Router", "{}", err);
                         err
                     })?;
-                
-                match PathPredicate::new(path_config) { 
+
+                match PathPredicate::new(path_config) {
                     Ok(predicate) => Ok(Arc::new(predicate)),
                     Err(error) => Err(error),
                 }
-            },
+            }
             "method" => {
-                let method_config: MethodPredicateConfig = serde_json::from_value(config)
-                    .map_err(|e| {
-                        let err = ProxyError::RoutingError(
-                            format!("Invalid method predicate config: {e}")
-                        );
+                let method_config: MethodPredicateConfig =
+                    serde_json::from_value(config).map_err(|e| {
+                        let err = ProxyError::RoutingError(format!(
+                            "Invalid method predicate config: {e}"
+                        ));
                         error_fmt!("Router", "{}", err);
                         err
                     })?;
                 Ok(Arc::new(MethodPredicate::new(method_config)))
-            },
+            }
             "header" => {
-                let header_config: HeaderPredicateConfig = serde_json::from_value(config)
-                    .map_err(|e| {
-                        let err = ProxyError::RoutingError(
-                            format!("Invalid header predicate config: {e}")
-                        );
+                let header_config: HeaderPredicateConfig =
+                    serde_json::from_value(config).map_err(|e| {
+                        let err = ProxyError::RoutingError(format!(
+                            "Invalid header predicate config: {e}"
+                        ));
                         error_fmt!("Router", "{}", err);
                         err
                     })?;
                 Ok(Arc::new(HeaderPredicate::new(header_config)))
-            },
+            }
             "query" => {
-                let query_config: QueryPredicateConfig = serde_json::from_value(config)
-                    .map_err(|e| {
-                        let err = ProxyError::RoutingError(
-                            format!("Invalid query predicate config: {e}")
-                        );
+                let query_config: QueryPredicateConfig =
+                    serde_json::from_value(config).map_err(|e| {
+                        let err = ProxyError::RoutingError(format!(
+                            "Invalid query predicate config: {e}"
+                        ));
                         error_fmt!("Router", "{}", err);
                         err
                     })?;
                 Ok(Arc::new(QueryPredicate::new(query_config)))
-            },
+            }
             _ => {
-                let err = ProxyError::RoutingError(
-                    format!("Unknown predicate type: {predicate_type}")
-                );
+                let err =
+                    ProxyError::RoutingError(format!("Unknown predicate type: {predicate_type}"));
                 error_fmt!("Router", "{}", err);
                 Err(err)
-            },
+            }
         }
     }
 }

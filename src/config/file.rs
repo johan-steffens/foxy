@@ -4,14 +4,14 @@
 
 //! File-based configuration provider implementation.
 
+use serde_json;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde_json;
 use toml;
 
-use super::ConfigProvider;
 use super::ConfigError;
+use super::ConfigProvider;
 
 /// Supported file formats for configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,47 +66,56 @@ impl FileConfigProvider {
     }
 
     /// Read and parse a configuration file.
-    fn read_file(path: &Path, format: FileFormat) -> Result<HashMap<String, serde_json::Value>, ConfigError> {
-        let content = fs::read_to_string(path)
-            .map_err(|e| ConfigError::provider_error("file", format!("failed to read file: {e}")))?;
+    fn read_file(
+        path: &Path,
+        format: FileFormat,
+    ) -> Result<HashMap<String, serde_json::Value>, ConfigError> {
+        let content = fs::read_to_string(path).map_err(|e| {
+            ConfigError::provider_error("file", format!("failed to read file: {e}"))
+        })?;
 
         match format {
-            FileFormat::Json => {
-                serde_json::from_str(&content)
-                    .map_err(|e| ConfigError::provider_error("file", format!("invalid JSON: {e}")))
-            },
+            FileFormat::Json => serde_json::from_str(&content)
+                .map_err(|e| ConfigError::provider_error("file", format!("invalid JSON: {e}"))),
             FileFormat::Toml => {
-                let toml_value: toml::Value = toml::from_str(&content)
-                    .map_err(|e| ConfigError::provider_error("file", format!("invalid TOML: {e}")))?;
+                let toml_value: toml::Value = toml::from_str(&content).map_err(|e| {
+                    ConfigError::provider_error("file", format!("invalid TOML: {e}"))
+                })?;
 
                 // Convert toml::Value to serde_json::Value for unified internal representation
-                let json_value = serde_json::to_value(toml_value)
-                    .map_err(|e| ConfigError::provider_error("file", format!("failed to convert TOML: {e}")))?;
+                let json_value = serde_json::to_value(toml_value).map_err(|e| {
+                    ConfigError::provider_error("file", format!("failed to convert TOML: {e}"))
+                })?;
 
                 match json_value {
                     serde_json::Value::Object(map) => {
                         // Convert the map to our format
                         Ok(map.into_iter().collect())
-                    },
-                    _ => Err(ConfigError::provider_error("file", "root configuration must be an object")),
-                }
-            },
-            FileFormat::Yaml => {
-                {
-                    let yaml_value: serde_yaml::Value = serde_yaml::from_str(&content)
-                        .map_err(|e| ConfigError::provider_error("file", format!("invalid YAML: {e}")))?;
-
-                    let json_value = serde_json::to_value(yaml_value)
-                        .map_err(|e| ConfigError::provider_error("file", format!("failed to convert YAML: {e}")))?;
-
-                    match json_value {
-                        serde_json::Value::Object(map) => {
-                            Ok(map.into_iter().collect())
-                        },
-                        _ => Err(ConfigError::provider_error("file", "root configuration must be an object")),
                     }
+                    _ => Err(ConfigError::provider_error(
+                        "file",
+                        "root configuration must be an object",
+                    )),
                 }
-            },
+            }
+            FileFormat::Yaml => {
+                let yaml_value: serde_yaml::Value =
+                    serde_yaml::from_str(&content).map_err(|e| {
+                        ConfigError::provider_error("file", format!("invalid YAML: {e}"))
+                    })?;
+
+                let json_value = serde_json::to_value(yaml_value).map_err(|e| {
+                    ConfigError::provider_error("file", format!("failed to convert YAML: {e}"))
+                })?;
+
+                match json_value {
+                    serde_json::Value::Object(map) => Ok(map.into_iter().collect()),
+                    _ => Err(ConfigError::provider_error(
+                        "file",
+                        "root configuration must be an object",
+                    )),
+                }
+            }
         }
     }
 
@@ -144,17 +153,29 @@ impl ConfigProvider for FileConfigProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ConfigProviderExt;
     use std::fs::File;
     use std::io::Write;
     use tempfile::tempdir;
-    use crate::config::ConfigProviderExt;
 
     #[test]
     fn test_file_format_detection() {
-        assert_eq!(FileFormat::from_extension(Path::new("config.json")), Some(FileFormat::Json));
-        assert_eq!(FileFormat::from_extension(Path::new("config.toml")), Some(FileFormat::Toml));
-        assert_eq!(FileFormat::from_extension(Path::new("config.yaml")), Some(FileFormat::Yaml));
-        assert_eq!(FileFormat::from_extension(Path::new("config.yml")), Some(FileFormat::Yaml));
+        assert_eq!(
+            FileFormat::from_extension(Path::new("config.json")),
+            Some(FileFormat::Json)
+        );
+        assert_eq!(
+            FileFormat::from_extension(Path::new("config.toml")),
+            Some(FileFormat::Toml)
+        );
+        assert_eq!(
+            FileFormat::from_extension(Path::new("config.yaml")),
+            Some(FileFormat::Yaml)
+        );
+        assert_eq!(
+            FileFormat::from_extension(Path::new("config.yml")),
+            Some(FileFormat::Yaml)
+        );
         assert_eq!(FileFormat::from_extension(Path::new("config.txt")), None);
     }
 
@@ -176,8 +197,8 @@ mod tests {
 
         let provider = FileConfigProvider::new(file_path.to_str().unwrap()).unwrap();
 
-        assert_eq!(provider.has("server.host"), true);
-        assert_eq!(provider.has("server.nonexistent"), false);
+        assert!(provider.has("server.host"));
+        assert!(!provider.has("server.nonexistent"));
 
         let host: String = provider.get("server.host").unwrap().unwrap();
         assert_eq!(host, "127.0.0.1");
@@ -207,7 +228,7 @@ mod tests {
 
         let provider = FileConfigProvider::new(file_path.to_str().unwrap()).unwrap();
 
-        assert_eq!(provider.has("server.host"), true);
+        assert!(provider.has("server.host"));
         let host: String = provider.get("server.host").unwrap().unwrap();
         assert_eq!(host, "127.0.0.1");
 
@@ -233,7 +254,7 @@ debug: true
 
         let provider = FileConfigProvider::new(file_path.to_str().unwrap()).unwrap();
 
-        assert_eq!(provider.has("server.host"), true);
+        assert!(provider.has("server.host"));
         let host: String = provider.get("server.host").unwrap().unwrap();
         assert_eq!(host, "127.0.0.1");
 
@@ -244,7 +265,7 @@ debug: true
         assert_eq!(timeout, 30);
 
         let debug: bool = provider.get("debug").unwrap().unwrap();
-        assert_eq!(debug, true);
+        assert!(debug);
     }
 
     #[test]
@@ -263,7 +284,7 @@ server:
 
         let provider = FileConfigProvider::new(file_path.to_str().unwrap()).unwrap();
 
-        assert_eq!(provider.has("server.host"), true);
+        assert!(provider.has("server.host"));
         let host: String = provider.get("server.host").unwrap().unwrap();
         assert_eq!(host, "127.0.0.1");
     }
@@ -405,17 +426,29 @@ server:
 
         // Test deeply nested values
         assert!(provider.has("database.connections.primary.host"));
-        let primary_host: String = provider.get("database.connections.primary.host").unwrap().unwrap();
+        let primary_host: String = provider
+            .get("database.connections.primary.host")
+            .unwrap()
+            .unwrap();
         assert_eq!(primary_host, "db1.example.com");
 
-        let primary_port: u16 = provider.get("database.connections.primary.port").unwrap().unwrap();
+        let primary_port: u16 = provider
+            .get("database.connections.primary.port")
+            .unwrap()
+            .unwrap();
         assert_eq!(primary_port, 5432);
 
-        let primary_ssl: bool = provider.get("database.connections.primary.ssl").unwrap().unwrap();
-        assert_eq!(primary_ssl, true);
+        let primary_ssl: bool = provider
+            .get("database.connections.primary.ssl")
+            .unwrap()
+            .unwrap();
+        assert!(primary_ssl);
 
-        let secondary_ssl: bool = provider.get("database.connections.secondary.ssl").unwrap().unwrap();
-        assert_eq!(secondary_ssl, false);
+        let secondary_ssl: bool = provider
+            .get("database.connections.secondary.ssl")
+            .unwrap()
+            .unwrap();
+        assert!(!secondary_ssl);
 
         let min_pool_size: u32 = provider.get("database.pool.min_size").unwrap().unwrap();
         assert_eq!(min_pool_size, 5);
@@ -476,10 +509,22 @@ server:
 
     #[test]
     fn test_file_format_case_insensitive() {
-        assert_eq!(FileFormat::from_extension(Path::new("config.JSON")), Some(FileFormat::Json));
-        assert_eq!(FileFormat::from_extension(Path::new("config.TOML")), Some(FileFormat::Toml));
-        assert_eq!(FileFormat::from_extension(Path::new("config.YAML")), Some(FileFormat::Yaml));
-        assert_eq!(FileFormat::from_extension(Path::new("config.YML")), Some(FileFormat::Yaml));
+        assert_eq!(
+            FileFormat::from_extension(Path::new("config.JSON")),
+            Some(FileFormat::Json)
+        );
+        assert_eq!(
+            FileFormat::from_extension(Path::new("config.TOML")),
+            Some(FileFormat::Toml)
+        );
+        assert_eq!(
+            FileFormat::from_extension(Path::new("config.YAML")),
+            Some(FileFormat::Yaml)
+        );
+        assert_eq!(
+            FileFormat::from_extension(Path::new("config.YML")),
+            Some(FileFormat::Yaml)
+        );
     }
 
     #[test]

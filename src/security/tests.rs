@@ -3,10 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #[cfg(test)]
-mod tests {
+mod security_tests {
     use crate::{
-        HttpMethod, ProxyRequest, ProxyResponse, ProxyError,
-        SecurityProvider, SecurityChain, SecurityStage,
+        HttpMethod, ProxyError, ProxyRequest, ProxyResponse, SecurityChain, SecurityProvider,
+        SecurityStage,
     };
 
     use crate::core::RequestContext;
@@ -16,7 +16,11 @@ mod tests {
     use tokio::sync::RwLock;
 
     // Helper function to create a test request
-    fn create_test_request(method: HttpMethod, path: &str, headers: Vec<(&'static str, &'static str)>) -> ProxyRequest {
+    fn create_test_request(
+        method: HttpMethod,
+        path: &str,
+        headers: Vec<(&'static str, &'static str)>,
+    ) -> ProxyRequest {
         let mut header_map = reqwest::header::HeaderMap::new();
         for (name, value) in headers {
             header_map.insert(
@@ -63,7 +67,9 @@ mod tests {
             if self.bypassed {
                 Ok(request)
             } else {
-                Err(ProxyError::SecurityError("Mock authentication failure".to_string()))
+                Err(ProxyError::SecurityError(
+                    "Mock authentication failure".to_string(),
+                ))
             }
         }
     }
@@ -98,8 +104,12 @@ mod tests {
 
         #[async_trait]
         impl SecurityProvider for MockOidcProviderWithBypass {
-            fn stage(&self) -> SecurityStage { SecurityStage::Pre }
-            fn name(&self) -> &str { "mock-oidc-with-bypass" }
+            fn stage(&self) -> SecurityStage {
+                SecurityStage::Pre
+            }
+            fn name(&self) -> &str {
+                "mock-oidc-with-bypass"
+            }
 
             async fn pre(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
                 // Internal bypass logic
@@ -107,7 +117,9 @@ mod tests {
                     return Ok(request); // Bypass
                 }
                 // Fail otherwise
-                Err(ProxyError::SecurityError("OIDC validation failed".to_string()))
+                Err(ProxyError::SecurityError(
+                    "OIDC validation failed".to_string(),
+                ))
             }
         }
 
@@ -132,15 +144,16 @@ mod tests {
             bypass: vec![],
         };
         let _provider = BasicAuthProvider::new(config).unwrap();
-        let chain = SecurityChain::from_configs(vec![
-            crate::security::ProviderConfig {
-                type_: "basic".to_string(),
-                config: serde_json::to_value(BasicAuthConfig {
-                    credentials: vec!["user1:pass1".to_string()],
-                    bypass: vec![],
-                }).unwrap(),
-            }
-        ]).await.unwrap();
+        let chain = SecurityChain::from_configs(vec![crate::security::ProviderConfig {
+            type_: "basic".to_string(),
+            config: serde_json::to_value(BasicAuthConfig {
+                credentials: vec!["user1:pass1".to_string()],
+                bypass: vec![],
+            })
+            .unwrap(),
+        }])
+        .await
+        .unwrap();
 
         let request = create_test_request(
             HttpMethod::Get,
@@ -159,15 +172,16 @@ mod tests {
             bypass: vec![],
         };
         let _provider = BasicAuthProvider::new(config).unwrap();
-        let chain = SecurityChain::from_configs(vec![
-            crate::security::ProviderConfig {
-                type_: "basic".to_string(),
-                config: serde_json::to_value(BasicAuthConfig {
-                    credentials: vec!["user1:pass1".to_string()],
-                    bypass: vec![],
-                }).unwrap(),
-            }
-        ]).await.unwrap();
+        let chain = SecurityChain::from_configs(vec![crate::security::ProviderConfig {
+            type_: "basic".to_string(),
+            config: serde_json::to_value(BasicAuthConfig {
+                credentials: vec!["user1:pass1".to_string()],
+                bypass: vec![],
+            })
+            .unwrap(),
+        }])
+        .await
+        .unwrap();
 
         let request = create_test_request(
             HttpMethod::Get,
@@ -183,28 +197,25 @@ mod tests {
 
         let config = BasicAuthConfig {
             credentials: vec!["user1:pass1".to_string()],
-            bypass: vec![
-                RouteRuleConfig {
-                    methods: vec!["GET".to_string()],
-                    path: "/public/*".to_string(),
-                },
-            ],
+            bypass: vec![RouteRuleConfig {
+                methods: vec!["GET".to_string()],
+                path: "/public/*".to_string(),
+            }],
         };
         let _provider = BasicAuthProvider::new(config).unwrap();
-        let chain = SecurityChain::from_configs(vec![
-            crate::security::ProviderConfig {
-                type_: "basic".to_string(),
-                config: serde_json::to_value(BasicAuthConfig {
-                    credentials: vec!["user1:pass1".to_string()],
-                    bypass: vec![
-                        RouteRuleConfig {
-                            methods: vec!["GET".to_string()],
-                            path: "/public/*".to_string(),
-                        },
-                    ],
-                }).unwrap(),
-            }
-        ]).await.unwrap();
+        let chain = SecurityChain::from_configs(vec![crate::security::ProviderConfig {
+            type_: "basic".to_string(),
+            config: serde_json::to_value(BasicAuthConfig {
+                credentials: vec!["user1:pass1".to_string()],
+                bypass: vec![RouteRuleConfig {
+                    methods: vec!["GET".to_string()],
+                    path: "/public/*".to_string(),
+                }],
+            })
+            .unwrap(),
+        }])
+        .await
+        .unwrap();
 
         // Test bypassed route
         let request_bypassed = create_test_request(HttpMethod::Get, "/public/data", vec![]);
@@ -291,9 +302,15 @@ mod tests {
                 "mock-post-provider"
             }
 
-            async fn post(&self, _request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
+            async fn post(
+                &self,
+                _request: ProxyRequest,
+                response: ProxyResponse,
+            ) -> Result<ProxyResponse, ProxyError> {
                 if self.should_fail {
-                    Err(ProxyError::SecurityError("Mock post-auth failure".to_string()))
+                    Err(ProxyError::SecurityError(
+                        "Mock post-auth failure".to_string(),
+                    ))
                 } else {
                     Ok(response)
                 }
@@ -327,9 +344,15 @@ mod tests {
                 "mock-post-provider"
             }
 
-            async fn post(&self, _request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
+            async fn post(
+                &self,
+                _request: ProxyRequest,
+                response: ProxyResponse,
+            ) -> Result<ProxyResponse, ProxyError> {
                 if self.should_fail {
-                    Err(ProxyError::SecurityError("Mock post-auth failure".to_string()))
+                    Err(ProxyError::SecurityError(
+                        "Mock post-auth failure".to_string(),
+                    ))
                 } else {
                     Ok(response)
                 }
@@ -371,7 +394,11 @@ mod tests {
                 Ok(request)
             }
 
-            async fn post(&self, _request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
+            async fn post(
+                &self,
+                _request: ProxyRequest,
+                response: ProxyResponse,
+            ) -> Result<ProxyResponse, ProxyError> {
                 Ok(response)
             }
         }
@@ -392,7 +419,10 @@ mod tests {
     }
 
     // Helper function to create a test response
-    fn create_test_response(status: u16, headers: Vec<(&'static str, &'static str)>) -> ProxyResponse {
+    fn create_test_response(
+        status: u16,
+        headers: Vec<(&'static str, &'static str)>,
+    ) -> ProxyResponse {
         let mut header_map = reqwest::header::HeaderMap::new();
         for (name, value) in headers {
             header_map.insert(
@@ -420,12 +450,10 @@ mod tests {
     async fn test_security_chain_from_configs_unknown_provider() {
         use crate::security::ProviderConfig;
 
-        let configs = vec![
-            ProviderConfig {
-                type_: "unknown_provider".to_string(),
-                config: serde_json::json!({}),
-            }
-        ];
+        let configs = vec![ProviderConfig {
+            type_: "unknown_provider".to_string(),
+            config: serde_json::json!({}),
+        }];
 
         let result = SecurityChain::from_configs(configs).await;
         assert!(result.is_err());
@@ -439,8 +467,7 @@ mod tests {
     // Tests for provider registration
     #[tokio::test]
     async fn test_register_security_provider() {
-        use crate::security::{register_security_provider, SecurityChain, ProviderConfig};
-
+        use crate::security::{ProviderConfig, SecurityChain, register_security_provider};
 
         // Define a custom security provider
         #[derive(Debug)]
@@ -463,18 +490,16 @@ mod tests {
 
         // Register the custom provider
         register_security_provider("custom_test", |_config| {
-            Box::pin(async move {
-                Ok(Arc::new(CustomSecurityProvider) as Arc<dyn SecurityProvider>)
-            })
+            Box::pin(
+                async move { Ok(Arc::new(CustomSecurityProvider) as Arc<dyn SecurityProvider>) },
+            )
         });
 
         // Create a chain using the registered provider
-        let configs = vec![
-            ProviderConfig {
-                type_: "custom_test".to_string(),
-                config: serde_json::json!({}),
-            }
-        ];
+        let configs = vec![ProviderConfig {
+            type_: "custom_test".to_string(),
+            config: serde_json::json!({}),
+        }];
 
         let chain = SecurityChain::from_configs(configs).await.unwrap();
         assert_eq!(chain.providers.len(), 1);
@@ -553,17 +578,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_basic_auth_provider_invalid_glob_pattern() {
-        use crate::security::basic::{BasicAuthConfig, RouteRuleConfig};
         use crate::security::basic::BasicAuthProvider;
+        use crate::security::basic::{BasicAuthConfig, RouteRuleConfig};
 
         let config = BasicAuthConfig {
             credentials: vec!["user:pass".to_string()],
-            bypass: vec![
-                RouteRuleConfig {
-                    methods: vec!["GET".to_string()],
-                    path: "[invalid_glob".to_string(), // Invalid glob pattern
-                },
-            ],
+            bypass: vec![RouteRuleConfig {
+                methods: vec!["GET".to_string()],
+                path: "[invalid_glob".to_string(), // Invalid glob pattern
+            }],
         };
 
         let result = BasicAuthProvider::new(config);
@@ -675,16 +698,14 @@ mod tests {
     // Tests for RouteRule matching (tested indirectly through pre method)
     #[tokio::test]
     async fn test_route_rule_wildcard_method() {
-        use crate::security::basic::{RouteRuleConfig, BasicAuthProvider, BasicAuthConfig};
+        use crate::security::basic::{BasicAuthConfig, BasicAuthProvider, RouteRuleConfig};
 
         let config = BasicAuthConfig {
             credentials: vec!["user:pass".to_string()],
-            bypass: vec![
-                RouteRuleConfig {
-                    methods: vec!["*".to_string()], // Wildcard method
-                    path: "/public/*".to_string(),
-                },
-            ],
+            bypass: vec![RouteRuleConfig {
+                methods: vec!["*".to_string()], // Wildcard method
+                path: "/public/*".to_string(),
+            }],
         };
         let provider = BasicAuthProvider::new(config).unwrap();
 
@@ -704,16 +725,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_route_rule_specific_methods() {
-        use crate::security::basic::{RouteRuleConfig, BasicAuthProvider, BasicAuthConfig};
+        use crate::security::basic::{BasicAuthConfig, BasicAuthProvider, RouteRuleConfig};
 
         let config = BasicAuthConfig {
             credentials: vec!["user:pass".to_string()],
-            bypass: vec![
-                RouteRuleConfig {
-                    methods: vec!["GET".to_string(), "POST".to_string()],
-                    path: "/api/*".to_string(),
-                },
-            ],
+            bypass: vec![RouteRuleConfig {
+                methods: vec!["GET".to_string(), "POST".to_string()],
+                path: "/api/*".to_string(),
+            }],
         };
         let provider = BasicAuthProvider::new(config).unwrap();
 
@@ -734,16 +753,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_route_rule_complex_glob_patterns() {
-        use crate::security::basic::{RouteRuleConfig, BasicAuthProvider, BasicAuthConfig};
+        use crate::security::basic::{BasicAuthConfig, BasicAuthProvider, RouteRuleConfig};
 
         let config = BasicAuthConfig {
             credentials: vec!["user:pass".to_string()],
-            bypass: vec![
-                RouteRuleConfig {
-                    methods: vec!["GET".to_string()],
-                    path: "/api/v*/users/*/profile".to_string(), // Complex glob
-                },
-            ],
+            bypass: vec![RouteRuleConfig {
+                methods: vec!["GET".to_string()],
+                path: "/api/v*/users/*/profile".to_string(), // Complex glob
+            }],
         };
         let provider = BasicAuthProvider::new(config).unwrap();
 
@@ -764,16 +781,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_route_rule_exact_path_match() {
-        use crate::security::basic::{RouteRuleConfig, BasicAuthProvider, BasicAuthConfig};
+        use crate::security::basic::{BasicAuthConfig, BasicAuthProvider, RouteRuleConfig};
 
         let config = BasicAuthConfig {
             credentials: vec!["user:pass".to_string()],
-            bypass: vec![
-                RouteRuleConfig {
-                    methods: vec!["GET".to_string()],
-                    path: "/health".to_string(), // Exact path
-                },
-            ],
+            bypass: vec![RouteRuleConfig {
+                methods: vec!["GET".to_string()],
+                path: "/health".to_string(), // Exact path
+            }],
         };
         let provider = BasicAuthProvider::new(config).unwrap();
 
@@ -792,7 +807,7 @@ mod tests {
     // Tests for multiple bypass rules
     #[tokio::test]
     async fn test_basic_auth_provider_multiple_bypass_rules() {
-        use crate::security::basic::{BasicAuthConfig, RouteRuleConfig, BasicAuthProvider};
+        use crate::security::basic::{BasicAuthConfig, BasicAuthProvider, RouteRuleConfig};
 
         let config = BasicAuthConfig {
             credentials: vec!["user:pass".to_string()],

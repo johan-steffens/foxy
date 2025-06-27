@@ -4,12 +4,12 @@
 
 //! Environment variable-based configuration provider implementation.
 
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::env;
-use serde_json::{Value, json};
 
-use super::ConfigProvider;
 use super::ConfigError;
+use super::ConfigProvider;
 
 /// Configuration provider that retrieves values from environment variables.
 #[derive(Debug)]
@@ -33,8 +33,6 @@ impl EnvConfigProvider {
 
         provider
     }
-
-
 
     /// Refresh the cache of environment variables.
     pub fn refresh_cache(&mut self) {
@@ -108,8 +106,8 @@ impl ConfigProvider for EnvConfigProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
     use crate::config::ConfigProviderExt;
+    use std::env;
 
     #[test]
     fn test_env_provider() {
@@ -122,8 +120,8 @@ mod tests {
 
         let provider = EnvConfigProvider::default();
 
-        assert_eq!(provider.has("server.host"), true);
-        assert_eq!(provider.has("nonexistent"), false);
+        assert!(provider.has("server.host"));
+        assert!(!provider.has("nonexistent"));
 
         let host: String = provider.get("server.host").unwrap().unwrap();
         assert_eq!(host, "localhost");
@@ -132,7 +130,7 @@ mod tests {
         assert_eq!(port, 9090);
 
         let debug: bool = provider.get("debug").unwrap().unwrap();
-        assert_eq!(debug, true);
+        assert!(debug);
 
         // Clean up
         unsafe {
@@ -150,7 +148,7 @@ mod tests {
 
         let provider = EnvConfigProvider::new("CUSTOM_");
 
-        assert_eq!(provider.has("host"), true);
+        assert!(provider.has("host"));
         let host: String = provider.get("host").unwrap().unwrap();
         assert_eq!(host, "customhost");
 
@@ -165,7 +163,7 @@ mod tests {
         let mut provider = EnvConfigProvider::new("TEST_");
 
         // Initially there should be no values
-        assert_eq!(provider.has("value"), false);
+        assert!(!provider.has("value"));
 
         // Set a value after initialization
         unsafe {
@@ -173,13 +171,13 @@ mod tests {
         }
 
         // Should still be false as the cache hasn't been refreshed
-        assert_eq!(provider.has("value"), false);
+        assert!(!provider.has("value"));
 
         // Refresh the cache
         provider.refresh_cache();
 
         // Now it should be available
-        assert_eq!(provider.has("value"), true);
+        assert!(provider.has("value"));
         let value: i32 = provider.get("value").unwrap().unwrap();
         assert_eq!(value, 42);
 
@@ -200,10 +198,10 @@ mod tests {
 
         let provider = EnvConfigProvider::new("MYAPP_");
 
-        assert_eq!(provider.has("database.host"), true);
-        assert_eq!(provider.has("database.port"), true);
-        assert_eq!(provider.has("feature.enabled"), true);
-        assert_eq!(provider.has("nonexistent"), false);
+        assert!(provider.has("database.host"));
+        assert!(provider.has("database.port"));
+        assert!(provider.has("feature.enabled"));
+        assert!(!provider.has("nonexistent"));
 
         let host: String = provider.get("database.host").unwrap().unwrap();
         assert_eq!(host, "db.example.com");
@@ -212,7 +210,7 @@ mod tests {
         assert_eq!(port, 5432);
 
         let enabled: bool = provider.get("feature.enabled").unwrap().unwrap();
-        assert_eq!(enabled, true);
+        assert!(enabled);
 
         // Clean up
         unsafe {
@@ -232,8 +230,8 @@ mod tests {
 
         let provider = EnvConfigProvider::new("");
 
-        assert_eq!(provider.has("host"), true);
-        assert_eq!(provider.has("port"), true);
+        assert!(provider.has("host"));
+        assert!(provider.has("port"));
 
         let host: String = provider.get("host").unwrap().unwrap();
         assert_eq!(host, "localhost");
@@ -253,20 +251,32 @@ mod tests {
         unsafe {
             env::set_var("FOXY_DATABASE_CONNECTIONS_PRIMARY_HOST", "db1.example.com");
             env::set_var("FOXY_DATABASE_CONNECTIONS_PRIMARY_PORT", "5432");
-            env::set_var("FOXY_DATABASE_CONNECTIONS_SECONDARY_HOST", "db2.example.com");
+            env::set_var(
+                "FOXY_DATABASE_CONNECTIONS_SECONDARY_HOST",
+                "db2.example.com",
+            );
             env::set_var("FOXY_CACHE_REDIS_URL", "redis://localhost:6379");
         }
 
         let provider = EnvConfigProvider::default();
 
-        assert_eq!(provider.has("database.connections.primary.host"), true);
-        let primary_host: String = provider.get("database.connections.primary.host").unwrap().unwrap();
+        assert!(provider.has("database.connections.primary.host"));
+        let primary_host: String = provider
+            .get("database.connections.primary.host")
+            .unwrap()
+            .unwrap();
         assert_eq!(primary_host, "db1.example.com");
 
-        let primary_port: u16 = provider.get("database.connections.primary.port").unwrap().unwrap();
+        let primary_port: u16 = provider
+            .get("database.connections.primary.port")
+            .unwrap()
+            .unwrap();
         assert_eq!(primary_port, 5432);
 
-        let secondary_host: String = provider.get("database.connections.secondary.host").unwrap().unwrap();
+        let secondary_host: String = provider
+            .get("database.connections.secondary.host")
+            .unwrap()
+            .unwrap();
         assert_eq!(secondary_host, "db2.example.com");
 
         let redis_url: String = provider.get("cache.redis.url").unwrap().unwrap();
@@ -282,6 +292,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_different_value_types() {
         unsafe {
             env::set_var("FOXY_STRING_VALUE", "hello world");
@@ -305,10 +316,10 @@ mod tests {
         assert_eq!(float_val, 3.14);
 
         let bool_true: bool = provider.get("boolean.true").unwrap().unwrap();
-        assert_eq!(bool_true, true);
+        assert!(bool_true);
 
         let bool_false: bool = provider.get("boolean.false").unwrap().unwrap();
-        assert_eq!(bool_false, false);
+        assert!(!bool_false);
 
         let array_val: Vec<i32> = provider.get("array.value").unwrap().unwrap();
         assert_eq!(array_val, vec![1, 2, 3]);
@@ -361,12 +372,12 @@ mod tests {
         let provider = EnvConfigProvider::default();
 
         // Should find the uppercase version
-        assert_eq!(provider.has("upper.case"), true);
+        assert!(provider.has("upper.case"));
         let value: String = provider.get("upper.case").unwrap().unwrap();
         assert_eq!(value, "upper");
 
         // Should not find the lowercase version (prefix doesn't match)
-        assert_eq!(provider.has("lower.case"), false);
+        assert!(!provider.has("lower.case"));
 
         // Clean up
         unsafe {
@@ -380,7 +391,7 @@ mod tests {
         // Create a provider with a prefix that doesn't exist
         let provider = EnvConfigProvider::new("NONEXISTENT_PREFIX_");
 
-        assert_eq!(provider.has("any.key"), false);
+        assert!(!provider.has("any.key"));
         let result: Option<String> = provider.get("any.key").unwrap();
         assert!(result.is_none());
     }
@@ -394,7 +405,10 @@ mod tests {
     #[test]
     fn test_special_characters_in_values() {
         unsafe {
-            env::set_var("FOXY_SPECIAL_CHARS", "value with spaces and symbols: !@#$%^&*()");
+            env::set_var(
+                "FOXY_SPECIAL_CHARS",
+                "value with spaces and symbols: !@#$%^&*()",
+            );
             env::set_var("FOXY_UNICODE_VALUE", "Hello 世界 🌍");
             env::set_var("FOXY_NEWLINES", "line1\nline2\nline3");
         }

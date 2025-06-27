@@ -3,26 +3,29 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #[cfg(test)]
-mod tests {
+mod filter_tests {
+    use crate::core::{Filter, RequestContext, ResponseContext};
+    use crate::filters::{HeaderFilterConfig, LoggingFilterConfig, TimeoutFilterConfig};
+    use crate::{
+        FilterType, HeaderFilter, HttpMethod, LoggingFilter, PathRewriteFilter,
+        PathRewriteFilterConfig, ProxyError, ProxyRequest, ProxyResponse, TimeoutFilter,
+    };
     use bytes::Bytes;
     use futures_util::StreamExt;
     use http_body_util::BodyExt;
-    use crate::{
-        HttpMethod, ProxyRequest, ProxyResponse, ProxyError, FilterType,
-        LoggingFilter, HeaderFilter, TimeoutFilter,
-        PathRewriteFilter, PathRewriteFilterConfig
-    };
-    use crate::filters::{
-        LoggingFilterConfig, HeaderFilterConfig, TimeoutFilterConfig
-    };
-    use crate::core::{RequestContext, ResponseContext, Filter};
     use reqwest::Body;
+    use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::RwLock;
-    use std::collections::HashMap;
 
     // Helper function to create a test request
-    fn create_test_request(method: HttpMethod, path: &str, headers: Vec<(&'static str, &'static str)>, body: Vec<u8>, target: &str) -> ProxyRequest {
+    fn create_test_request(
+        method: HttpMethod,
+        path: &str,
+        headers: Vec<(&'static str, &'static str)>,
+        body: Vec<u8>,
+        target: &str,
+    ) -> ProxyRequest {
         let mut header_map = reqwest::header::HeaderMap::new();
         for (name, value) in headers {
             header_map.insert(
@@ -67,11 +70,13 @@ mod tests {
     #[tokio::test]
     async fn test_logging_filter() {
         // Create a test request
-        let request = create_test_request(HttpMethod::Get,
-                                          "/test",
-                                          vec![("content-type", "application/json")],
-                                          b"{\"test\": \"value\"}".to_vec(),
-                                          "http://test.co.za");
+        let request = create_test_request(
+            HttpMethod::Get,
+            "/test",
+            vec![("content-type", "application/json")],
+            b"{\"test\": \"value\"}".to_vec(),
+            "http://test.co.za",
+        );
 
         // Create a logging filter
         let config = LoggingFilterConfig {
@@ -99,10 +104,10 @@ mod tests {
             "/test",
             vec![
                 ("content-type", "application/json"),
-                ("x-remove-me", "should be removed")
+                ("x-remove-me", "should be removed"),
             ],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         // Create a header filter
@@ -136,7 +141,7 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         // Create a timeout filter
@@ -160,7 +165,7 @@ mod tests {
             "/api/users",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         // Create a path rewrite filter
@@ -187,7 +192,7 @@ mod tests {
             "/other/path",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         // Create a path rewrite filter
@@ -324,7 +329,12 @@ mod tests {
         let config = json!({});
         let result = FilterFactory::create_filter("unknown_filter", config);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unknown filter type"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown filter type")
+        );
     }
 
     #[tokio::test]
@@ -352,7 +362,7 @@ mod tests {
     // Tests for filter registration
     #[tokio::test]
     async fn test_register_filter() {
-        use crate::filters::{register_filter, FilterFactory};
+        use crate::filters::{FilterFactory, register_filter};
         use serde_json::json;
         use std::sync::Arc;
 
@@ -376,9 +386,7 @@ mod tests {
         }
 
         // Register the custom filter
-        register_filter("custom_test", |_config| {
-            Ok(Arc::new(CustomFilter))
-        });
+        register_filter("custom_test", |_config| Ok(Arc::new(CustomFilter)));
 
         // Create the filter using the factory
         let config = json!({});
@@ -396,7 +404,7 @@ mod tests {
             "/test",
             vec![("content-type", "application/json")],
             large_body,
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = LoggingFilterConfig {
@@ -420,7 +428,7 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         for level in &["trace", "debug", "info", "warn", "error"] {
@@ -446,13 +454,13 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let response = create_test_response(
             200,
             vec![("content-type", "application/json")],
-            b"{\"result\": \"success\"}".to_vec()
+            b"{\"result\": \"success\"}".to_vec(),
         );
 
         let config = LoggingFilterConfig {
@@ -477,20 +485,23 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let response = create_test_response(
             200,
             vec![
                 ("content-type", "application/json"),
-                ("x-remove-response", "should be removed")
+                ("x-remove-response", "should be removed"),
             ],
-            Vec::new()
+            Vec::new(),
         );
 
         let mut add_response_headers = HashMap::new();
-        add_response_headers.insert("x-custom-response".to_string(), "response-value".to_string());
+        add_response_headers.insert(
+            "x-custom-response".to_string(),
+            "response-value".to_string(),
+        );
 
         let config = HeaderFilterConfig {
             add_request_headers: HashMap::new(),
@@ -520,7 +531,7 @@ mod tests {
             "/test",
             vec![("existing-header", "existing-value")],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = HeaderFilterConfig {
@@ -549,7 +560,7 @@ mod tests {
             "/api/users",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = PathRewriteFilterConfig {
@@ -573,7 +584,7 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let response = create_test_response(200, vec![], Vec::new());
@@ -603,7 +614,12 @@ mod tests {
 
         let result = PathRewriteFilter::new(config);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid regex pattern"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid regex pattern")
+        );
     }
 
     #[tokio::test]
@@ -613,7 +629,7 @@ mod tests {
             "/api/v1/users/123/posts/456",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = PathRewriteFilterConfig {
@@ -638,7 +654,7 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = TimeoutFilterConfig { timeout_ms: 0 };
@@ -658,10 +674,12 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
-        let config = TimeoutFilterConfig { timeout_ms: u64::MAX };
+        let config = TimeoutFilterConfig {
+            timeout_ms: u64::MAX,
+        };
         let filter = TimeoutFilter::new(config);
 
         let filtered_request = filter.pre_filter(request).await.unwrap();
@@ -721,7 +739,7 @@ mod tests {
         // Create a stream that produces an error
         let stream = futures_util::stream::iter(vec![
             Ok::<_, std::io::Error>(Bytes::from("data")),
-            Err(std::io::Error::new(std::io::ErrorKind::Other, "test error")),
+            Err(std::io::Error::other("test error")),
         ]);
 
         let body = reqwest::Body::wrap_stream(stream);
@@ -734,13 +752,13 @@ mod tests {
     #[test]
     fn test_default_true() {
         use crate::filters::default_true;
-        assert_eq!(default_true(), true);
+        assert!(default_true());
     }
 
     #[test]
     fn test_default_false() {
         use crate::filters::default_false;
-        assert_eq!(default_false(), false);
+        assert!(!default_false());
     }
 
     // Tests for LoggingFilter formatting methods
@@ -844,7 +862,7 @@ mod tests {
             "/test",
             vec![("content-type", "application/json")],
             b"test body".to_vec(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = LoggingFilterConfig {
@@ -868,7 +886,7 @@ mod tests {
             "/test",
             vec![("content-type", "application/json")],
             b"test body".to_vec(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = LoggingFilterConfig {
@@ -892,7 +910,7 @@ mod tests {
             "/test",
             vec![("content-type", "application/json")],
             b"test body".to_vec(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = LoggingFilterConfig {
@@ -916,7 +934,7 @@ mod tests {
             "/test",
             vec![("content-type", "application/json")],
             b"test body".to_vec(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = LoggingFilterConfig {
@@ -940,7 +958,7 @@ mod tests {
             "/test",
             vec![("content-type", "application/json")],
             b"test body".to_vec(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = LoggingFilterConfig {
@@ -966,13 +984,13 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let response = create_test_response(
             200,
             vec![("content-type", "application/json"), ("x-custom", "value")],
-            b"response body".to_vec()
+            b"response body".to_vec(),
         );
 
         let config = LoggingFilterConfig {
@@ -996,13 +1014,13 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let response = create_test_response(
             200,
             vec![("content-type", "application/json")],
-            b"response body content".to_vec()
+            b"response body content".to_vec(),
         );
 
         let config = LoggingFilterConfig {
@@ -1026,15 +1044,11 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let large_body = vec![b'x'; 5000];
-        let response = create_test_response(
-            200,
-            vec![("content-type", "text/plain")],
-            large_body
-        );
+        let response = create_test_response(200, vec![("content-type", "text/plain")], large_body);
 
         let config = LoggingFilterConfig {
             log_request_body: false,
@@ -1058,7 +1072,7 @@ mod tests {
             "/test",
             vec![("existing-header", "existing-value")],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let mut add_headers = std::collections::HashMap::new();
@@ -1078,8 +1092,14 @@ mod tests {
         assert!(filtered_request.headers.contains_key("x-new-header"));
         assert!(filtered_request.headers.contains_key("x-another-header"));
         assert!(filtered_request.headers.contains_key("existing-header"));
-        assert_eq!(filtered_request.headers.get("x-new-header").unwrap(), "new-value");
-        assert_eq!(filtered_request.headers.get("x-another-header").unwrap(), "another-value");
+        assert_eq!(
+            filtered_request.headers.get("x-new-header").unwrap(),
+            "new-value"
+        );
+        assert_eq!(
+            filtered_request.headers.get("x-another-header").unwrap(),
+            "another-value"
+        );
     }
 
     #[tokio::test]
@@ -1090,10 +1110,10 @@ mod tests {
             vec![
                 ("keep-me", "keep-value"),
                 ("remove-me", "remove-value"),
-                ("also-remove", "also-remove-value")
+                ("also-remove", "also-remove-value"),
             ],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = HeaderFilterConfig {
@@ -1118,7 +1138,7 @@ mod tests {
             "/test",
             vec![("content-type", "text/plain")],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let mut add_headers = std::collections::HashMap::new();
@@ -1134,7 +1154,10 @@ mod tests {
 
         let filtered_request = filter.pre_filter(request).await.unwrap();
 
-        assert_eq!(filtered_request.headers.get("content-type").unwrap(), "application/json");
+        assert_eq!(
+            filtered_request.headers.get("content-type").unwrap(),
+            "application/json"
+        );
     }
 
     #[tokio::test]
@@ -1144,17 +1167,20 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let response = create_test_response(
             200,
             vec![("existing-response-header", "existing-value")],
-            Vec::new()
+            Vec::new(),
         );
 
         let mut add_headers = std::collections::HashMap::new();
-        add_headers.insert("x-response-header".to_string(), "response-value".to_string());
+        add_headers.insert(
+            "x-response-header".to_string(),
+            "response-value".to_string(),
+        );
         add_headers.insert("x-cors-header".to_string(), "cors-value".to_string());
 
         let config = HeaderFilterConfig {
@@ -1169,9 +1195,19 @@ mod tests {
 
         assert!(filtered_response.headers.contains_key("x-response-header"));
         assert!(filtered_response.headers.contains_key("x-cors-header"));
-        assert!(filtered_response.headers.contains_key("existing-response-header"));
-        assert_eq!(filtered_response.headers.get("x-response-header").unwrap(), "response-value");
-        assert_eq!(filtered_response.headers.get("x-cors-header").unwrap(), "cors-value");
+        assert!(
+            filtered_response
+                .headers
+                .contains_key("existing-response-header")
+        );
+        assert_eq!(
+            filtered_response.headers.get("x-response-header").unwrap(),
+            "response-value"
+        );
+        assert_eq!(
+            filtered_response.headers.get("x-cors-header").unwrap(),
+            "cors-value"
+        );
     }
 
     #[tokio::test]
@@ -1181,7 +1217,7 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let response = create_test_response(
@@ -1189,9 +1225,9 @@ mod tests {
             vec![
                 ("keep-response", "keep-value"),
                 ("remove-response", "remove-value"),
-                ("server", "nginx/1.0")
+                ("server", "nginx/1.0"),
             ],
-            Vec::new()
+            Vec::new(),
         );
 
         let config = HeaderFilterConfig {
@@ -1216,12 +1252,15 @@ mod tests {
             "/test",
             vec![("valid-header", "valid-value")],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let mut add_headers = std::collections::HashMap::new();
         add_headers.insert("valid-header".to_string(), "new-value".to_string());
-        add_headers.insert("invalid header name".to_string(), "invalid-value".to_string()); // Contains space
+        add_headers.insert(
+            "invalid header name".to_string(),
+            "invalid-value".to_string(),
+        ); // Contains space
         add_headers.insert("".to_string(), "empty-name".to_string()); // Empty name
 
         let config = HeaderFilterConfig {
@@ -1235,7 +1274,10 @@ mod tests {
         let filtered_request = filter.pre_filter(request).await.unwrap();
 
         // Valid header should be updated
-        assert_eq!(filtered_request.headers.get("valid-header").unwrap(), "new-value");
+        assert_eq!(
+            filtered_request.headers.get("valid-header").unwrap(),
+            "new-value"
+        );
         // Invalid headers should be ignored (not added)
         assert!(!filtered_request.headers.contains_key("invalid header name"));
         assert!(!filtered_request.headers.contains_key(""));
@@ -1248,12 +1290,15 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let mut add_headers = std::collections::HashMap::new();
         add_headers.insert("valid-header".to_string(), "valid-value".to_string());
-        add_headers.insert("invalid-value-header".to_string(), "invalid\nvalue".to_string()); // Contains newline
+        add_headers.insert(
+            "invalid-value-header".to_string(),
+            "invalid\nvalue".to_string(),
+        ); // Contains newline
 
         let config = HeaderFilterConfig {
             add_request_headers: add_headers,
@@ -1268,7 +1313,11 @@ mod tests {
         // Valid header should be added
         assert!(filtered_request.headers.contains_key("valid-header"));
         // Invalid header value should be ignored (not added)
-        assert!(!filtered_request.headers.contains_key("invalid-value-header"));
+        assert!(
+            !filtered_request
+                .headers
+                .contains_key("invalid-value-header")
+        );
     }
 
     // Tests for TimeoutFilter comprehensive functionality
@@ -1279,7 +1328,7 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = TimeoutFilterConfig { timeout_ms: 60000 }; // 60 seconds
@@ -1299,7 +1348,7 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = TimeoutFilterConfig { timeout_ms: 1 }; // 1 millisecond
@@ -1321,7 +1370,7 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let filtered_request = filter.pre_filter(request).await.unwrap();
@@ -1338,13 +1387,15 @@ mod tests {
             "/test",
             vec![],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         // Set an initial timeout in the context
         {
             let mut context = request.context.write().await;
-            context.attributes.insert("timeout_ms".to_string(), serde_json::json!(10000));
+            context
+                .attributes
+                .insert("timeout_ms".to_string(), serde_json::json!(10000));
         }
 
         let config = TimeoutFilterConfig { timeout_ms: 20000 };
@@ -1456,10 +1507,10 @@ mod tests {
     #[test]
     fn test_logging_filter_config_default() {
         let config = LoggingFilterConfig::default();
-        assert_eq!(config.log_request_headers, true);
-        assert_eq!(config.log_request_body, false);
-        assert_eq!(config.log_response_headers, true);
-        assert_eq!(config.log_response_body, false);
+        assert!(config.log_request_headers);
+        assert!(!config.log_request_body);
+        assert!(config.log_response_headers);
+        assert!(!config.log_response_body);
         assert_eq!(config.log_level, "trace");
         assert_eq!(config.max_body_size, 1024);
     }
@@ -1504,7 +1555,7 @@ mod tests {
     // Tests for filter registration
     #[tokio::test]
     async fn test_register_custom_filter() {
-        use crate::filters::{register_filter, FilterFactory};
+        use crate::filters::{FilterFactory, register_filter};
 
         // Define a custom filter
         #[derive(Debug)]
@@ -1545,7 +1596,7 @@ mod tests {
             "/test",
             vec![("content-type", "application/json")],
             Vec::new(), // Empty body
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = LoggingFilterConfig {
@@ -1569,7 +1620,7 @@ mod tests {
             "/test",
             vec![("existing", "value")],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = HeaderFilterConfig {
@@ -1594,7 +1645,7 @@ mod tests {
             "/test",
             vec![("existing", "value")],
             Vec::new(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         let config = HeaderFilterConfig {
@@ -1618,9 +1669,12 @@ mod tests {
         let request = create_test_request(
             HttpMethod::Post,
             "/api/test",
-            vec![("authorization", "Bearer token"), ("content-type", "text/plain")],
+            vec![
+                ("authorization", "Bearer token"),
+                ("content-type", "text/plain"),
+            ],
             b"original body".to_vec(),
-            "http://test.co.za"
+            "http://test.co.za",
         );
 
         // First apply header filter
@@ -1642,7 +1696,10 @@ mod tests {
         let timeout_config = TimeoutFilterConfig { timeout_ms: 5000 };
         let timeout_filter = TimeoutFilter::new(timeout_config);
 
-        let request_after_timeout = timeout_filter.pre_filter(request_after_header).await.unwrap();
+        let request_after_timeout = timeout_filter
+            .pre_filter(request_after_header)
+            .await
+            .unwrap();
 
         // Finally apply logging filter
         let logging_config = LoggingFilterConfig {
@@ -1655,12 +1712,18 @@ mod tests {
         };
         let logging_filter = LoggingFilter::new(logging_config);
 
-        let final_request = logging_filter.pre_filter(request_after_timeout).await.unwrap();
+        let final_request = logging_filter
+            .pre_filter(request_after_timeout)
+            .await
+            .unwrap();
 
         // Verify all filters were applied
         assert!(final_request.headers.contains_key("x-processed"));
         assert!(!final_request.headers.contains_key("authorization"));
-        assert_eq!(final_request.headers.get("content-type").unwrap(), "application/json");
+        assert_eq!(
+            final_request.headers.get("content-type").unwrap(),
+            "application/json"
+        );
 
         let context = final_request.context.read().await;
         let timeout = context.attributes.get("timeout_ms").unwrap();
@@ -1684,7 +1747,10 @@ mod tests {
 
         assert_eq!(config.log_request_headers, deserialized.log_request_headers);
         assert_eq!(config.log_request_body, deserialized.log_request_body);
-        assert_eq!(config.log_response_headers, deserialized.log_response_headers);
+        assert_eq!(
+            config.log_response_headers,
+            deserialized.log_response_headers
+        );
         assert_eq!(config.log_response_body, deserialized.log_response_body);
         assert_eq!(config.log_level, deserialized.log_level);
         assert_eq!(config.max_body_size, deserialized.max_body_size);
@@ -1706,9 +1772,18 @@ mod tests {
         let deserialized: HeaderFilterConfig = serde_json::from_str(&serialized).unwrap();
 
         assert_eq!(config.add_request_headers, deserialized.add_request_headers);
-        assert_eq!(config.remove_request_headers, deserialized.remove_request_headers);
-        assert_eq!(config.add_response_headers, deserialized.add_response_headers);
-        assert_eq!(config.remove_response_headers, deserialized.remove_response_headers);
+        assert_eq!(
+            config.remove_request_headers,
+            deserialized.remove_request_headers
+        );
+        assert_eq!(
+            config.add_response_headers,
+            deserialized.add_response_headers
+        );
+        assert_eq!(
+            config.remove_response_headers,
+            deserialized.remove_response_headers
+        );
     }
 
     #[test]

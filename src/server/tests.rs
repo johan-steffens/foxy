@@ -2,15 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::core::{ProxyCore, ProxyError, ProxyResponse, ResponseContext};
+use crate::server::{ProxyServer, ServerConfig};
 use bytes::Bytes;
 use http_body_util::Full;
-use hyper::{Response, Request, Method, HeaderMap};
-use crate::core::{ProxyResponse, ResponseContext, ProxyError, ProxyCore};
-use crate::server::{ServerConfig, ProxyServer};
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use hyper::{HeaderMap, Method, Request, Response};
 use reqwest::Body;
-use std::time::Duration;
+use std::sync::Arc;
+
+use tokio::sync::RwLock;
 
 /// Helper function to convert a hyper response to a ProxyResponse (for testing)
 #[allow(dead_code)]
@@ -64,7 +64,7 @@ fn create_test_hyper_request(method: Method, path: &str) -> Request<http_body_ut
 }
 
 #[cfg(test)]
-mod tests {
+mod server_tests {
     use super::*;
     use hyper::StatusCode;
     use std::time::Duration;
@@ -99,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_server_config_default_functions() {
-        use crate::server::{default_host, default_port, default_health_port};
+        use crate::server::{default_health_port, default_host, default_port};
         assert_eq!(default_host(), "127.0.0.1");
         assert_eq!(default_port(), 8080);
         assert_eq!(default_health_port(), 8081);
@@ -401,7 +401,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn test_unix_signal_handling() {
-        use tokio::signal::unix::{signal, SignalKind};
+        use tokio::signal::unix::{SignalKind, signal};
 
         // Test that we can create a SIGTERM signal handler
         let result = signal(SignalKind::terminate());
@@ -420,10 +420,13 @@ mod tests {
         let sigterm = std::future::pending::<()>();
 
         // Test that we can create a pending future (this covers the non-Unix code path)
-        assert!(std::future::Future::poll(
-            std::pin::Pin::new(&mut Box::pin(sigterm)),
-            &mut std::task::Context::from_waker(std::task::Waker::noop())
-        ).is_pending());
+        assert!(
+            std::future::Future::poll(
+                std::pin::Pin::new(&mut Box::pin(sigterm)),
+                &mut std::task::Context::from_waker(std::task::Waker::noop())
+            )
+            .is_pending()
+        );
     }
 
     // Test OpenTelemetry feature-gated code
@@ -431,13 +434,13 @@ mod tests {
     #[test]
     fn test_opentelemetry_imports() {
         // Test that OpenTelemetry imports are available when feature is enabled
-        use opentelemetry::{global, KeyValue, Context};
         use opentelemetry::trace::{TraceContextExt, Tracer};
+        use opentelemetry::{Context, KeyValue, global};
 
         // Test basic OpenTelemetry functionality
         let tracer = global::tracer("test");
         let span = tracer.start("test-span");
-        let context = Context::current().with_span(span);
+        let _context = Context::current().with_span(span);
 
         // Test KeyValue creation
         let kv = KeyValue::new("test-key", "test-value");
@@ -508,7 +511,7 @@ mod tests {
             let header_value = format!("value-{}", i);
             headers.insert(
                 header_name.parse::<hyper::header::HeaderName>().unwrap(),
-                header_value.parse().unwrap()
+                header_value.parse().unwrap(),
             );
         }
 

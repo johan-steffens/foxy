@@ -4,42 +4,51 @@
 
 //! Common test utilities and helpers for Foxy API Gateway tests.
 
-use foxy::{
-    HttpMethod, ProxyRequest, ProxyResponse, RequestContext, ResponseContext
-};
-use foxy::config::{Config, ConfigProvider, ConfigError};
+use foxy::config::{ConfigError, ConfigProvider};
+use foxy::{HttpMethod, ProxyRequest, ProxyResponse, RequestContext, ResponseContext};
 use reqwest::{Body, header::HeaderMap};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use tempfile::TempDir;
 use std::fs;
+use std::sync::Arc;
+use tempfile::TempDir;
+use tokio::sync::RwLock;
 
 /// Test configuration provider for consistent test setups
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TestConfigProvider {
     values: HashMap<String, Value>,
     name: String,
 }
 
+#[allow(dead_code)]
 impl TestConfigProvider {
     /// Create a new test config provider with default values
     pub fn new(name: &str) -> Self {
         let mut values = HashMap::new();
 
         // Default server configuration
-        values.insert("server.host".to_string(), Value::String("127.0.0.1".to_string()));
+        values.insert(
+            "server.host".to_string(),
+            Value::String("127.0.0.1".to_string()),
+        );
         values.insert("server.port".to_string(), Value::Number(8080.into()));
         values.insert("server.health_port".to_string(), Value::Number(8081.into()));
 
         // Default proxy configuration
         values.insert("proxy.timeout".to_string(), Value::Number(30.into()));
-        values.insert("proxy.max_body_size".to_string(), Value::Number(1048576.into())); // 1MB
+        values.insert(
+            "proxy.max_body_size".to_string(),
+            Value::Number(1048576.into()),
+        ); // 1MB
 
         // Default logging configuration
         values.insert("proxy.logging.enabled".to_string(), Value::Bool(true));
-        values.insert("proxy.logging.level".to_string(), Value::String("info".to_string()));
+        values.insert(
+            "proxy.logging.level".to_string(),
+            Value::String("info".to_string()),
+        );
 
         Self {
             values,
@@ -74,35 +83,36 @@ impl TestConfigProvider {
                     match val {
                         Value::Object(_) => {
                             Self::flatten_json(val, &new_key, values);
-                        },
+                        }
                         _ => {
                             values.insert(new_key, val.clone());
                         }
                     }
                 }
-            },
+            }
             _ => {
                 values.insert(prefix.to_string(), value.clone());
             }
         }
     }
-    
+
     /// Add a configuration value
     pub fn with_value<T: Into<Value>>(mut self, key: &str, value: T) -> Self {
         self.values.insert(key.to_string(), value.into());
         self
     }
-    
+
     /// Add multiple configuration values
     pub fn with_values(mut self, values: HashMap<String, Value>) -> Self {
         self.values.extend(values);
         self
     }
-    
+
     /// Create a test config with routes
     pub fn with_routes(mut self, routes: Vec<TestRoute>) -> Self {
         let routes_value: Vec<Value> = routes.into_iter().map(|r| r.into()).collect();
-        self.values.insert("routes".to_string(), Value::Array(routes_value));
+        self.values
+            .insert("routes".to_string(), Value::Array(routes_value));
         self
     }
 
@@ -110,7 +120,11 @@ impl TestConfigProvider {
     pub fn debug_print(&self) {
         println!("TestConfigProvider values:");
         for (key, value) in &self.values {
-            println!("  {}: {}", key, serde_json::to_string_pretty(value).unwrap_or_else(|_| "invalid json".to_string()));
+            println!(
+                "  {}: {}",
+                key,
+                serde_json::to_string_pretty(value).unwrap_or_else(|_| "invalid json".to_string())
+            );
         }
     }
 
@@ -118,7 +132,10 @@ impl TestConfigProvider {
     pub fn debug_print_routes(&self) {
         if let Some(routes) = self.values.get("routes") {
             println!("Routes configuration:");
-            println!("{}", serde_json::to_string_pretty(routes).unwrap_or_else(|_| "invalid json".to_string()));
+            println!(
+                "{}",
+                serde_json::to_string_pretty(routes).unwrap_or_else(|_| "invalid json".to_string())
+            );
         } else {
             println!("No routes found in configuration");
         }
@@ -177,6 +194,7 @@ impl ConfigProvider for TestConfigProvider {
 }
 
 /// Helper struct for creating test routes
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TestRoute {
     pub id: String,
@@ -185,6 +203,7 @@ pub struct TestRoute {
     pub filters: Vec<TestFilter>,
 }
 
+#[allow(dead_code)]
 impl TestRoute {
     pub fn new(target: &str) -> Self {
         use std::sync::atomic::{AtomicUsize, Ordering};
@@ -198,41 +217,43 @@ impl TestRoute {
             filters: Vec::new(),
         }
     }
-    
+
     pub fn with_path(mut self, pattern: &str) -> Self {
-        self.predicates.push(TestPredicate::Path(pattern.to_string()));
+        self.predicates
+            .push(TestPredicate::Path(pattern.to_string()));
         self
     }
-    
+
     pub fn with_method(mut self, method: HttpMethod) -> Self {
         self.predicates.push(TestPredicate::Method(vec![method]));
         self
     }
-    
+
     pub fn with_header(mut self, name: &str, value: &str) -> Self {
-        self.predicates.push(TestPredicate::Header(name.to_string(), value.to_string()));
+        self.predicates
+            .push(TestPredicate::Header(name.to_string(), value.to_string()));
         self
     }
-    
+
     pub fn with_filter(mut self, filter: TestFilter) -> Self {
         self.filters.push(filter);
         self
     }
 }
 
-impl Into<Value> for TestRoute {
-    fn into(self) -> Value {
+impl From<TestRoute> for Value {
+    fn from(val: TestRoute) -> Self {
         let mut route = serde_json::Map::new();
-        route.insert("id".to_string(), Value::String(self.id));
-        route.insert("target".to_string(), Value::String(self.target));
+        route.insert("id".to_string(), Value::String(val.id));
+        route.insert("target".to_string(), Value::String(val.target));
 
-        if !self.predicates.is_empty() {
-            let predicates: Vec<Value> = self.predicates.into_iter().map(|p| p.into()).collect();
+        if !val.predicates.is_empty() {
+            let predicates: Vec<Value> = val.predicates.into_iter().map(|p| p.into()).collect();
             route.insert("predicates".to_string(), Value::Array(predicates));
         }
 
-        if !self.filters.is_empty() {
-            let filters: Vec<Value> = self.filters.into_iter().map(|f| f.into()).collect();
+        if !val.filters.is_empty() {
+            let filters: Vec<Value> = val.filters.into_iter().map(|f| f.into()).collect();
             route.insert("filters".to_string(), Value::Array(filters));
         }
 
@@ -244,6 +265,7 @@ impl Into<Value> for TestRoute {
 }
 
 /// Test predicate configurations
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum TestPredicate {
     Path(String),
@@ -252,9 +274,9 @@ pub enum TestPredicate {
     Query(String, String),
 }
 
-impl Into<Value> for TestPredicate {
-    fn into(self) -> Value {
-        match self {
+impl From<TestPredicate> for Value {
+    fn from(val: TestPredicate) -> Self {
+        match val {
             TestPredicate::Path(pattern) => {
                 let mut pred = serde_json::Map::new();
                 pred.insert("type_".to_string(), Value::String("path".to_string()));
@@ -262,18 +284,19 @@ impl Into<Value> for TestPredicate {
                 config.insert("pattern".to_string(), Value::String(pattern));
                 pred.insert("config".to_string(), Value::Object(config));
                 Value::Object(pred)
-            },
+            }
             TestPredicate::Method(methods) => {
                 let mut pred = serde_json::Map::new();
                 pred.insert("type_".to_string(), Value::String("method".to_string()));
                 let mut config = serde_json::Map::new();
-                let method_strings: Vec<Value> = methods.into_iter()
+                let method_strings: Vec<Value> = methods
+                    .into_iter()
                     .map(|m| Value::String(m.to_string()))
                     .collect();
                 config.insert("methods".to_string(), Value::Array(method_strings));
                 pred.insert("config".to_string(), Value::Object(config));
                 Value::Object(pred)
-            },
+            }
             TestPredicate::Header(name, value) => {
                 let mut pred = serde_json::Map::new();
                 pred.insert("type_".to_string(), Value::String("header".to_string()));
@@ -284,7 +307,7 @@ impl Into<Value> for TestPredicate {
                 config.insert("exact_match".to_string(), Value::Bool(true));
                 pred.insert("config".to_string(), Value::Object(config));
                 Value::Object(pred)
-            },
+            }
             TestPredicate::Query(name, value) => {
                 let mut pred = serde_json::Map::new();
                 pred.insert("type_".to_string(), Value::String("query".to_string()));
@@ -295,23 +318,34 @@ impl Into<Value> for TestPredicate {
                 config.insert("exact_match".to_string(), Value::Bool(true));
                 pred.insert("config".to_string(), Value::Object(config));
                 Value::Object(pred)
-            },
+            }
         }
     }
 }
 
 /// Test filter configurations
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum TestFilter {
-    Logging { log_bodies: bool },
-    Header { add: HashMap<String, String>, remove: Vec<String> },
-    Timeout { timeout_ms: u64 },
-    PathRewrite { pattern: String, replacement: String },
+    Logging {
+        log_bodies: bool,
+    },
+    Header {
+        add: HashMap<String, String>,
+        remove: Vec<String>,
+    },
+    Timeout {
+        timeout_ms: u64,
+    },
+    PathRewrite {
+        pattern: String,
+        replacement: String,
+    },
 }
 
-impl Into<Value> for TestFilter {
-    fn into(self) -> Value {
-        match self {
+impl From<TestFilter> for Value {
+    fn from(val: TestFilter) -> Self {
+        match val {
             TestFilter::Logging { log_bodies } => {
                 let mut filter = serde_json::Map::new();
                 filter.insert("type".to_string(), Value::String("logging".to_string()));
@@ -320,25 +354,31 @@ impl Into<Value> for TestFilter {
                 config.insert("log_response_body".to_string(), Value::Bool(log_bodies));
                 filter.insert("config".to_string(), Value::Object(config));
                 Value::Object(filter)
-            },
+            }
             TestFilter::Header { add, remove } => {
                 let mut filter = serde_json::Map::new();
                 filter.insert("type".to_string(), Value::String("header".to_string()));
                 let mut config = serde_json::Map::new();
-                
-                let add_headers: serde_json::Map<String, Value> = add.into_iter()
+
+                let add_headers: serde_json::Map<String, Value> = add
+                    .into_iter()
                     .map(|(k, v)| (k, Value::String(v)))
                     .collect();
-                config.insert("add_request_headers".to_string(), Value::Object(add_headers));
-                
-                let remove_headers: Vec<Value> = remove.into_iter()
-                    .map(|h| Value::String(h))
-                    .collect();
-                config.insert("remove_request_headers".to_string(), Value::Array(remove_headers));
-                
+                config.insert(
+                    "add_request_headers".to_string(),
+                    Value::Object(add_headers),
+                );
+
+                let remove_headers: Vec<Value> =
+                    remove.into_iter().map(Value::String).collect();
+                config.insert(
+                    "remove_request_headers".to_string(),
+                    Value::Array(remove_headers),
+                );
+
                 filter.insert("config".to_string(), Value::Object(config));
                 Value::Object(filter)
-            },
+            }
             TestFilter::Timeout { timeout_ms } => {
                 let mut filter = serde_json::Map::new();
                 filter.insert("type".to_string(), Value::String("timeout".to_string()));
@@ -346,22 +386,29 @@ impl Into<Value> for TestFilter {
                 config.insert("timeout_ms".to_string(), Value::Number(timeout_ms.into()));
                 filter.insert("config".to_string(), Value::Object(config));
                 Value::Object(filter)
-            },
-            TestFilter::PathRewrite { pattern, replacement } => {
+            }
+            TestFilter::PathRewrite {
+                pattern,
+                replacement,
+            } => {
                 let mut filter = serde_json::Map::new();
-                filter.insert("type".to_string(), Value::String("path_rewrite".to_string()));
+                filter.insert(
+                    "type".to_string(),
+                    Value::String("path_rewrite".to_string()),
+                );
                 let mut config = serde_json::Map::new();
                 config.insert("pattern".to_string(), Value::String(pattern));
                 config.insert("replacement".to_string(), Value::String(replacement));
                 config.insert("rewrite_request".to_string(), Value::Bool(true));
                 filter.insert("config".to_string(), Value::Object(config));
                 Value::Object(filter)
-            },
+            }
         }
     }
 }
 
 /// Create a test request with common defaults
+#[allow(dead_code)]
 pub fn create_test_request(
     method: HttpMethod,
     path: &str,
@@ -389,6 +436,7 @@ pub fn create_test_request(
 }
 
 /// Create a test response with common defaults
+#[allow(dead_code)]
 pub fn create_test_response(
     status: u16,
     headers: Vec<(&str, &str)>,
@@ -411,13 +459,17 @@ pub fn create_test_response(
 }
 
 /// Create a temporary configuration file for testing
-pub fn create_temp_config_file(content: &str, format: &str) -> Result<(TempDir, String), std::io::Error> {
+#[allow(dead_code)]
+pub fn create_temp_config_file(
+    content: &str,
+    format: &str,
+) -> Result<(TempDir, String), std::io::Error> {
     let temp_dir = TempDir::new()?;
     let file_name = format!("test_config.{}", format);
     let file_path = temp_dir.path().join(&file_name);
-    
+
     fs::write(&file_path, content)?;
-    
+
     Ok((temp_dir, file_path.to_string_lossy().to_string()))
 }
 

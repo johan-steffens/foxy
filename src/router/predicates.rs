@@ -6,13 +6,13 @@
 //!
 //! This module provides various predicates that can be used for route matching.
 
-use std::collections::HashMap;
 use async_trait::async_trait;
 use regex::Regex;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-use crate::core::{ProxyRequest, HttpMethod, ProxyError};
 use super::Predicate;
+use crate::core::{HttpMethod, ProxyError, ProxyRequest};
 
 /// Configuration for a path predicate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,8 +38,12 @@ impl PathPredicate {
         let regex_pattern = Self::pattern_to_regex(&config.pattern);
 
         // Compile the regex
-        let regex = Regex::new(&regex_pattern)
-            .map_err(|e| ProxyError::RoutingError(format!("Invalid path predicate regex pattern '{}': {}", config.pattern, e)))?;
+        let regex = Regex::new(&regex_pattern).map_err(|e| {
+            ProxyError::RoutingError(format!(
+                "Invalid path predicate regex pattern '{}': {}",
+                config.pattern, e
+            ))
+        })?;
 
         Ok(Self { config, regex })
     }
@@ -64,16 +68,16 @@ impl PathPredicate {
 
                     // Add a capturing group for the parameter
                     regex_pattern.push_str("([^/]+)");
-                },
+                }
                 // Handle wildcards like *
                 '*' => {
                     regex_pattern.push_str("(.*)");
-                },
+                }
                 // Escape special regex characters
                 '.' | '^' | '$' | '|' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '\\' => {
                     regex_pattern.push('\\');
                     regex_pattern.push(c);
-                },
+                }
                 // Regular characters
                 _ => {
                     regex_pattern.push(c);

@@ -5,12 +5,10 @@
 //! End-to-end integration tests for Foxy API Gateway
 
 use foxy::Foxy;
+use serde_json::json;
 use std::time::Duration;
 use tokio::time::timeout;
-use serial_test::serial;
-use serde_json::json;
-use warp::{Filter, http::HeaderMap};
-use bytes::Bytes;
+use warp::Filter;
 
 mod common;
 use common::{TestConfigProvider, init_test_logging};
@@ -26,8 +24,12 @@ async fn start_mock_server() -> (tokio::task::JoinHandle<()>, u16) {
             println!("📋 Headers: {:?}", headers);
 
             // Check if request came through Foxy proxy by looking for forwarded headers
-            let via_foxy = headers.get("x-forwarded-for").is_some() ||
-                          headers.get("user-agent").map(|v| v.to_str().unwrap_or("")).unwrap_or("").contains("reqwest");
+            let via_foxy = headers.get("x-forwarded-for").is_some()
+                || headers
+                    .get("user-agent")
+                    .map(|v| v.to_str().unwrap_or(""))
+                    .unwrap_or("")
+                    .contains("reqwest");
 
             warp::reply::json(&json!({
                 "args": {},
@@ -106,7 +108,10 @@ async fn start_mock_server() -> (tokio::task::JoinHandle<()>, u16) {
         .and(warp::path::tail())
         .and(warp::header::headers_cloned())
         .map(|tail: warp::path::Tail, headers: warp::http::HeaderMap| {
-            println!("🔍 Mock server received GET /anything/{} request", tail.as_str());
+            println!(
+                "🔍 Mock server received GET /anything/{} request",
+                tail.as_str()
+            );
             println!("📋 Headers: {:?}", headers);
 
             warp::reply::json(&json!({
@@ -133,8 +138,7 @@ async fn start_mock_server() -> (tokio::task::JoinHandle<()>, u16) {
         .or(anything_route);
 
     // Start server on a random available port
-    let (addr, server) = warp::serve(routes)
-        .bind_ephemeral(([127, 0, 0, 1], 0));
+    let (addr, server) = warp::serve(routes).bind_ephemeral(([127, 0, 0, 1], 0));
 
     let port = addr.port();
     let handle = tokio::spawn(server);
@@ -311,9 +315,7 @@ async fn test_basic_proxy_functionality() {
         .expect("Failed to build Foxy instance");
 
     // Start the proxy server in the background
-    let server_handle = tokio::spawn(async move {
-        foxy.start().await
-    });
+    let server_handle = tokio::spawn(async move { foxy.start().await });
 
     // Give the server time to start
     tokio::time::sleep(Duration::from_millis(1000)).await;
@@ -322,8 +324,9 @@ async fn test_basic_proxy_functionality() {
     let client = reqwest::Client::new();
     let response = timeout(
         Duration::from_secs(10),
-        client.get("http://127.0.0.1:8080/").send()
-    ).await;
+        client.get("http://127.0.0.1:8080/").send(),
+    )
+    .await;
 
     // Verify the response
     match response {
@@ -331,7 +334,7 @@ async fn test_basic_proxy_functionality() {
             assert_eq!(resp.status(), 200);
             let body = resp.text().await.expect("Failed to read body");
             assert!(body.contains("httpbin") || body.contains("origin") || body.contains("url"));
-        },
+        }
         Ok(Err(e)) => panic!("Request failed: {}", e),
         Err(_) => panic!("Request timed out"),
     }
@@ -363,9 +366,7 @@ async fn test_anything_endpoint() {
         .await
         .expect("Failed to build Foxy instance");
 
-    let server_handle = tokio::spawn(async move {
-        foxy.start().await
-    });
+    let server_handle = tokio::spawn(async move { foxy.start().await });
 
     tokio::time::sleep(Duration::from_millis(1000)).await;
 
@@ -376,8 +377,9 @@ async fn test_anything_endpoint() {
     let client = reqwest::Client::new();
     let response = timeout(
         Duration::from_secs(10),
-        client.get("http://127.0.0.1:8080/anything/test").send()
-    ).await;
+        client.get("http://127.0.0.1:8080/anything/test").send(),
+    )
+    .await;
 
     // Verify the response
     match response {
@@ -389,8 +391,11 @@ async fn test_anything_endpoint() {
             assert!(body.contains("httpbin") || body.contains("origin") || body.contains("url"));
 
             // Verify it contains our proxy test marker
-            assert!(body.contains("proxy_test"), "Response should contain proxy_test marker from mock server");
-        },
+            assert!(
+                body.contains("proxy_test"),
+                "Response should contain proxy_test marker from mock server"
+            );
+        }
         Ok(Err(e)) => panic!("Request failed: {}", e),
         Err(_) => panic!("Request timed out"),
     }
@@ -421,9 +426,7 @@ async fn test_post_method() {
         .await
         .expect("Failed to build Foxy instance");
 
-    let server_handle = tokio::spawn(async move {
-        foxy.start().await
-    });
+    let server_handle = tokio::spawn(async move { foxy.start().await });
 
     tokio::time::sleep(Duration::from_millis(1000)).await;
 
@@ -431,8 +434,9 @@ async fn test_post_method() {
     let client = reqwest::Client::new();
     let response = timeout(
         Duration::from_secs(10),
-        client.post("http://127.0.0.1:8080/").send()
-    ).await;
+        client.post("http://127.0.0.1:8080/").send(),
+    )
+    .await;
 
     // Verify the response
     match response {
@@ -440,7 +444,7 @@ async fn test_post_method() {
             assert_eq!(resp.status(), 200);
             let body = resp.text().await.expect("Failed to read body");
             assert!(body.contains("httpbin") || body.contains("origin") || body.contains("url"));
-        },
+        }
         Ok(Err(e)) => panic!("Request failed: {}", e),
         Err(_) => panic!("Request timed out"),
     }
@@ -471,9 +475,7 @@ async fn test_put_method() {
         .await
         .expect("Failed to build Foxy instance");
 
-    let server_handle = tokio::spawn(async move {
-        foxy.start().await
-    });
+    let server_handle = tokio::spawn(async move { foxy.start().await });
 
     tokio::time::sleep(Duration::from_millis(1000)).await;
 
@@ -482,15 +484,16 @@ async fn test_put_method() {
     // Test PUT / (should route to mock server /put via path rewrite)
     let response = timeout(
         Duration::from_secs(10),
-        client.put("http://127.0.0.1:8080/").send()
-    ).await;
+        client.put("http://127.0.0.1:8080/").send(),
+    )
+    .await;
 
     match response {
         Ok(Ok(resp)) => {
             assert_eq!(resp.status(), 200);
             let body = resp.text().await.unwrap();
             assert!(body.contains("httpbin") || body.contains("origin") || body.contains("url"));
-        },
+        }
         Ok(Err(e)) => panic!("Request failed: {}", e),
         Err(_) => panic!("Request timed out"),
     }
@@ -521,9 +524,7 @@ async fn test_delete_method() {
         .await
         .expect("Failed to build Foxy instance");
 
-    let server_handle = tokio::spawn(async move {
-        foxy.start().await
-    });
+    let server_handle = tokio::spawn(async move { foxy.start().await });
 
     tokio::time::sleep(Duration::from_millis(1000)).await;
 
@@ -532,15 +533,16 @@ async fn test_delete_method() {
     // Test DELETE / (should route to mock server /delete via path rewrite)
     let response = timeout(
         Duration::from_secs(10),
-        client.delete("http://127.0.0.1:8080/").send()
-    ).await;
+        client.delete("http://127.0.0.1:8080/").send(),
+    )
+    .await;
 
     match response {
         Ok(Ok(resp)) => {
             assert_eq!(resp.status(), 200);
             let body = resp.text().await.expect("Failed to read body");
             assert!(body.contains("httpbin") || body.contains("origin") || body.contains("url"));
-        },
+        }
         Ok(Err(e)) => panic!("Request failed: {}", e),
         Err(_) => panic!("Request timed out"),
     }

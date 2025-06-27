@@ -26,22 +26,22 @@
 //!
 //! See [`README.md`](../../README.md#configuration) for a more narrative guide.
 
-mod file;
 mod env;
-mod proxy;
 pub mod error;
+mod file;
+mod proxy;
 
 #[cfg(test)]
 mod tests;
 
+pub use env::EnvConfigProvider;
 pub use error::ConfigError;
 pub use file::FileConfigProvider;
-pub use env::EnvConfigProvider;
 
-use std::fmt::Debug;
-use std::sync::Arc;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
+use std::fmt::Debug;
+use std::sync::Arc;
 
 /// Core configuration provider trait that all configuration sources must implement.
 /// This trait is object-safe since it doesn't contain generic methods.
@@ -63,11 +63,9 @@ pub trait ConfigProviderExt: ConfigProvider {
     /// Get a configuration value by key and deserialize it to the specified type.
     fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, ConfigError> {
         match self.get_raw(key)? {
-            Some(value) => {
-                serde_json::from_value(value)
-                    .map(Some)
-                    .map_err(|e| ConfigError::ParseError(format!("failed to deserialize '{key}': {e}")))
-            },
+            Some(value) => serde_json::from_value(value).map(Some).map_err(|e| {
+                ConfigError::ParseError(format!("failed to deserialize '{key}': {e}"))
+            }),
             None => Ok(None),
         }
     }
@@ -130,17 +128,19 @@ impl Config {
     /// Returns the first value found.
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, ConfigError> {
         match self.get_raw(key)? {
-            Some(value) => {
-                serde_json::from_value(value)
-                    .map(Some)
-                    .map_err(|e| ConfigError::ParseError(format!("failed to deserialize '{key}': {e}")))
-            },
+            Some(value) => serde_json::from_value(value).map(Some).map_err(|e| {
+                ConfigError::ParseError(format!("failed to deserialize '{key}': {e}"))
+            }),
             None => Ok(None),
         }
     }
 
     /// Get a configuration value by key with a default fallback value.
-    pub fn get_or_default<T: DeserializeOwned>(&self, key: &str, default: T) -> Result<T, ConfigError> {
+    pub fn get_or_default<T: DeserializeOwned>(
+        &self,
+        key: &str,
+        default: T,
+    ) -> Result<T, ConfigError> {
         match self.get(key)? {
             Some(value) => Ok(value),
             None => Ok(default),

@@ -11,31 +11,31 @@
 #[cfg(test)]
 mod tests;
 
+use crate::security::{ProviderConfig, SecurityChain, SecurityProvider};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, mem};
 use thiserror::Error;
-use crate::security::{ProviderConfig, SecurityChain, SecurityProvider};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
-use serde::{Serialize, Deserialize};
 
 use crate::config::Config;
 
+use crate::{debug_fmt, error_fmt, info_fmt, trace_fmt, warn_fmt};
+#[cfg(feature = "opentelemetry")]
+use std::borrow::Cow;
 #[cfg(feature = "opentelemetry")]
 use opentelemetry::{
-    global,
+    Context, KeyValue, global,
     trace::Tracer,
-    KeyValue,
-    Context,
-    trace::{Span, SpanBuilder, SpanKind, TraceContextExt, Status}
+    trace::{SpanBuilder, SpanKind, Status, TraceContextExt},
 };
-use std::borrow::Cow;
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_http::HeaderInjector;
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_semantic_conventions::attribute::HTTP_RESPONSE_STATUS_CODE;
-use crate::{debug_fmt, error_fmt, info_fmt, trace_fmt, warn_fmt};
+
 
 /// Errors that can occur during proxy operations.
 #[derive(Error, Debug)]
@@ -171,12 +171,12 @@ impl Clone for ProxyRequest {
     fn clone(&self) -> Self {
         // A streaming body can't be duplicated.  Give filters an empty one.
         Self {
-            method:   self.method,
-            path:     self.path.clone(),
-            query:    self.query.clone(),
-            headers:  self.headers.clone(),
-            body:     reqwest::Body::from(""),
-            context:  self.context.clone(),
+            method: self.method,
+            path: self.path.clone(),
+            query: self.query.clone(),
+            headers: self.headers.clone(),
+            body: reqwest::Body::from(""),
+            context: self.context.clone(),
             custom_target: self.custom_target.clone(),
         }
     }
@@ -242,7 +242,11 @@ impl ProxyCore {
             Ok(Some(sc)) => sc,
             Ok(None) => Vec::new(), // No security chain configured
             Err(e) => {
-                warn_fmt!("Core", "Could not parse 'proxy.security_chain', defaulting to empty: {}", e);
+                warn_fmt!(
+                    "Core",
+                    "Could not parse 'proxy.security_chain', defaulting to empty: {}",
+                    e
+                );
                 Vec::new() // Default to empty on error
             }
         };
@@ -273,8 +277,7 @@ impl ProxyCore {
     pub async fn process_request(
         &self,
         request: ProxyRequest,
-        #[cfg(feature = "opentelemetry")]
-        parent_context: Option<Context>,
+        #[cfg(feature = "opentelemetry")] parent_context: Option<Context>,
     ) -> Result<ProxyResponse, ProxyError> {
         let overall_start = Instant::now();
         let method = request.method.to_string();
@@ -284,17 +287,19 @@ impl ProxyCore {
 
         #[cfg(feature = "opentelemetry")]
         let span_context = {
-            let parent  = parent_context
+            let parent = parent_context
                 .as_ref()
                 .cloned()
                 .unwrap_or_else(Context::current);
 
-            let mut span = global::tracer("foxy::proxy")
-                .build_with_context(SpanBuilder {
+            let span = global::tracer("foxy::proxy").build_with_context(
+                SpanBuilder {
                     name: Cow::from(format!("{method} {path}")),
                     span_kind: Some(SpanKind::Client),
                     ..Default::default()
-                }, &parent);
+                },
+                &parent,
+            );
 
             let span_context = &Context::current_with_span(span);
             span_context.clone()
@@ -305,13 +310,21 @@ impl ProxyCore {
             Ok(req) => {
                 trace_fmt!("Core", "Security pre-auth passed for {} {}", method, path);
                 req
-            },
+            }
             Err(e) => {
-                warn_fmt!("Core", "Security pre-auth failed for {} {}: {}", method, path, e);
+                warn_fmt!(
+                    "Core",
+                    "Security pre-auth failed for {} {}: {}",
+                    method,
+                    path,
+                    e
+                );
 
                 #[cfg(feature = "opentelemetry")]
                 {
-                    span_context.span().set_status(Status::Error {description: Cow::from(e.to_string()) });
+                    span_context.span().set_status(Status::Error {
+                        description: Cow::from(e.to_string()),
+                    });
                     span_context.span().end();
                 }
 
@@ -330,7 +343,9 @@ impl ProxyCore {
 
                         #[cfg(feature = "opentelemetry")]
                         {
-                            span_context.span().set_status(Status::Error {description: Cow::from(e.to_string()) });
+                            span_context.span().set_status(Status::Error {
+                                description: Cow::from(e.to_string()),
+                            });
                             span_context.span().end();
                         }
 
@@ -342,15 +357,23 @@ impl ProxyCore {
 
         let mut route = match self.router.route(&request).await {
             Ok(r) => {
-                debug_fmt!("Core", "Request {} {} matched route: {}", method, path, r.id);
+                debug_fmt!(
+                    "Core",
+                    "Request {} {} matched route: {}",
+                    method,
+                    path,
+                    r.id
+                );
                 r
-            },
+            }
             Err(e) => {
                 warn_fmt!("Core", "No route found for {} {}: {}", method, path, e);
 
                 #[cfg(feature = "opentelemetry")]
                 {
-                    span_context.span().set_status(Status::Error {description: Cow::from(e.to_string()) });
+                    span_context.span().set_status(Status::Error {
+                        description: Cow::from(e.to_string()),
+                    });
                     span_context.span().end();
                 }
 
@@ -376,11 +399,19 @@ impl ProxyCore {
 
         /* ---------- build outbound req ---------- */
         if request.custom_target.is_some() {
-            debug_fmt!("Core", "Attempting to dynamically set target base Url: {}", route.target_base_url);
+            debug_fmt!(
+                "Core",
+                "Attempting to dynamically set target base Url: {}",
+                route.target_base_url
+            );
             route.target_base_url = request.custom_target.clone().unwrap();
-            debug_fmt!("Core", "Dynamically set target base Url to: {}", route.target_base_url);
+            debug_fmt!(
+                "Core",
+                "Dynamically set target base Url to: {}",
+                route.target_base_url
+            );
         }
-        
+
         let url = format!("{}{}", route.target_base_url, request.path);
         debug_fmt!("Core", "Forwarding to target: {}", url);
         let outbound_body = mem::replace(&mut request.body, reqwest::Body::from(""));
@@ -391,7 +422,9 @@ impl ProxyCore {
         let outbound_headers = request.headers.clone();
         #[cfg(feature = "opentelemetry")]
         {
-            span_context.span().set_attribute(KeyValue::new("target", url.clone()));
+            span_context
+                .span()
+                .set_attribute(KeyValue::new("target", url.clone()));
 
             global::get_text_map_propagator(|prop| {
                 prop.inject_context(&span_context, &mut HeaderInjector(&mut outbound_headers));
@@ -416,7 +449,10 @@ impl ProxyCore {
         // If a per-request timeout from a TimeoutFilter is present in context, it should override.
         // For now, let's rely on the client's global timeout.
         // A more advanced implementation could check request.context for a specific timeout.
-        let request_specific_timeout_ms: Option<u64> = request.context.read().await
+        let request_specific_timeout_ms: Option<u64> = request
+            .context
+            .read()
+            .await
             .attributes
             .get("timeout_ms")
             .and_then(|v| v.as_u64());
@@ -429,11 +465,17 @@ impl ProxyCore {
             // For consistency, we could fetch it from config again or store it in ProxyCore.
             // For now, let's assume the client's timeout is sufficient.
             // If we want to re-fetch:
-            self.config.get_or_default("proxy.timeout", 30_u64).map(Duration::from_secs)?
+            self.config
+                .get_or_default("proxy.timeout", 30_u64)
+                .map(Duration::from_secs)?
         };
 
         let upstream_start = Instant::now();
-        trace_fmt!("Core", "Sending request to upstream with timeout: {:?}", timeout_duration);
+        trace_fmt!(
+            "Core",
+            "Sending request to upstream with timeout: {:?}",
+            timeout_duration
+        );
 
         let resp = match timeout(timeout_duration, builder.send()).await {
             Ok(result) => match result {
@@ -443,7 +485,9 @@ impl ProxyCore {
 
                     #[cfg(feature = "opentelemetry")]
                     {
-                        span_context.span().set_status(Status::Error {description: Cow::from(e.to_string()) });
+                        span_context.span().set_status(Status::Error {
+                            description: Cow::from(e.to_string()),
+                        });
                         span_context.span().end();
                     }
 
@@ -451,11 +495,18 @@ impl ProxyCore {
                 }
             },
             Err(_) => {
-                warn_fmt!("Core", "Request to {} timed out after {:?}", url, timeout_duration);
+                warn_fmt!(
+                    "Core",
+                    "Request to {} timed out after {:?}",
+                    url,
+                    timeout_duration
+                );
 
                 #[cfg(feature = "opentelemetry")]
                 {
-                    span_context.span().set_status(Status::Error {description: Cow::from("Request timed out") });
+                    span_context.span().set_status(Status::Error {
+                        description: Cow::from("Request timed out"),
+                    });
                     span_context.span().end();
                 }
 
@@ -475,7 +526,11 @@ impl ProxyCore {
         }
 
         let upstream_elapsed = upstream_start.elapsed();
-        trace_fmt!("Core", "Received response from upstream in {:?}", upstream_elapsed);
+        trace_fmt!(
+            "Core",
+            "Received response from upstream in {:?}",
+            upstream_elapsed
+        );
 
         /* ---------- wrap streaming response ---------- */
         let status = resp.status().as_u16();
@@ -520,13 +575,25 @@ impl ProxyCore {
         }
 
         /* ---------- Security chain post auth ---------- */
-        proxy_resp = match self.security_chain.read().await.apply_post(request.clone(), proxy_resp).await {
+        proxy_resp = match self
+            .security_chain
+            .read()
+            .await
+            .apply_post(request.clone(), proxy_resp)
+            .await
+        {
             Ok(resp) => {
                 trace_fmt!("Core", "Security post-auth passed for {} {}", method, path);
                 resp
-            },
+            }
             Err(e) => {
-                warn_fmt!("Core", "Security post-auth failed for {} {}: {}", method, path, e);
+                warn_fmt!(
+                    "Core",
+                    "Security post-auth failed for {} {}: {}",
+                    method,
+                    path,
+                    e
+                );
                 return Err(e);
             }
         };
@@ -535,7 +602,8 @@ impl ProxyCore {
         let overall_elapsed = overall_start.elapsed();
         let internal_elapsed = overall_elapsed.saturating_sub(upstream_elapsed);
 
-        debug_fmt!("Core", 
+        debug_fmt!(
+            "Core",
             "[timing] {} {} -> {} | total={:?} upstream={:?} internal={:?}",
             request.method,
             request.path,
@@ -593,7 +661,11 @@ pub trait Filter: fmt::Debug + Send + Sync {
     }
 
     /// Process a response after it is received from the target.
-    async fn post_filter(&self, _request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
+    async fn post_filter(
+        &self,
+        _request: ProxyRequest,
+        response: ProxyResponse,
+    ) -> Result<ProxyResponse, ProxyError> {
         // Default implementation: pass through the response unchanged
         Ok(response)
     }

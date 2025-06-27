@@ -4,17 +4,17 @@
 
 //! HTTP middleware for request/response logging with trace context.
 
-use hyper::{Request, Response};
-use std::task::{Context, Poll};
-use std::pin::Pin;
-use std::future::Future;
-use futures_util::ready;
-use std::time::Duration;
-use crate::logging::structured::{RequestInfo, generate_trace_id};
 use crate::logging::config::LoggingConfig;
+use crate::logging::structured::{RequestInfo, generate_trace_id};
+use futures_util::ready;
+use hyper::{Request, Response};
 use slog_scope;
-use std::sync::Arc;
+use std::future::Future;
 use std::net::SocketAddr;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
+use std::time::Duration;
 
 /// Middleware for request/response logging with trace context
 #[derive(Debug, Clone)]
@@ -29,7 +29,7 @@ impl LoggingMiddleware {
             config: Arc::new(config),
         }
     }
-    
+
     /// Process a request and add trace context
     pub async fn process<B>(
         &self,
@@ -41,14 +41,14 @@ impl LoggingMiddleware {
         let remote_addr_str = remote_addr
             .map(|addr| addr.to_string())
             .unwrap_or_else(|| "unknown".to_string());
-        
+
         let user_agent = req
             .headers()
             .get(hyper::header::USER_AGENT)
             .and_then(|h| h.to_str().ok())
             .unwrap_or("unknown")
             .to_string();
-        
+
         // Check for existing trace ID in headers if propagation is enabled
         let trace_id = if self.config.propagate_trace_id {
             req.headers()
@@ -60,7 +60,7 @@ impl LoggingMiddleware {
         } else {
             generate_trace_id()
         };
-        
+
         let request_info = RequestInfo {
             trace_id,
             method,
@@ -72,7 +72,7 @@ impl LoggingMiddleware {
                 .unwrap_or_default()
                 .as_millis(),
         };
-        
+
         // Log the incoming request with trace context
         if self.config.structured {
             let logger = slog_scope::logger();
@@ -92,10 +92,10 @@ impl LoggingMiddleware {
                 request_info.trace_id
             );
         }
-        
+
         (req, request_info)
     }
-    
+
     /// Log the response with timing information
     pub fn log_response<B>(
         &self,
@@ -105,11 +105,9 @@ impl LoggingMiddleware {
     ) {
         let status = response.status().as_u16();
         let elapsed_ms = request_info.elapsed_ms();
-        let upstream_ms = upstream_duration
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
+        let upstream_ms = upstream_duration.map(|d| d.as_millis()).unwrap_or(0);
         let internal_ms = elapsed_ms.saturating_sub(upstream_ms);
-        
+
         if self.config.structured {
             let logger = slog_scope::logger();
             slog::info!(logger, "Response completed";
@@ -149,21 +147,25 @@ where
     F: Future<Output = Result<Response<B>, E>> + Unpin,
 {
     type Output = Result<Response<B>, E>;
-    
+
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let result = ready!(Pin::new(&mut self.inner).poll(cx));
-        
+
         Poll::Ready(match result {
             Ok(mut response) => {
                 // Add trace ID header to response if enabled
                 if self.include_trace_id {
-                    let header_name = hyper::header::HeaderName::from_bytes(self.trace_header.as_bytes())
-                        .unwrap_or_else(|_| hyper::header::HeaderName::from_static("x-trace-id"));
-                    
+                    let header_name =
+                        hyper::header::HeaderName::from_bytes(self.trace_header.as_bytes())
+                            .unwrap_or_else(|_| {
+                                hyper::header::HeaderName::from_static("x-trace-id")
+                            });
+
                     response.headers_mut().insert(
                         header_name,
-                        hyper::header::HeaderValue::from_str(&self.trace_id)
-                            .unwrap_or_else(|_| hyper::header::HeaderValue::from_static("invalid-trace-id")),
+                        hyper::header::HeaderValue::from_str(&self.trace_id).unwrap_or_else(|_| {
+                            hyper::header::HeaderValue::from_static("invalid-trace-id")
+                        }),
                     );
                 }
                 Ok(response)
@@ -207,14 +209,14 @@ where
 mod tests {
     use super::*;
     use crate::logging::config::LoggingConfig;
-    use hyper::{Request, Response, Method};
-    use http_body_util::Empty;
     use bytes::Bytes;
-    use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-    use std::time::Duration;
+    use http_body_util::Empty;
+    use hyper::{Method, Request, Response};
     use std::future::Future;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::pin::Pin;
     use std::task::{Context, Poll};
+    use std::time::Duration;
 
     fn create_test_config() -> LoggingConfig {
         LoggingConfig {
@@ -501,11 +503,8 @@ mod tests {
             .unwrap();
 
         let future = MockResponseFuture::new_ok(response);
-        let traced_future = future.with_trace_id(
-            "test-trace-123".to_string(),
-            "x-trace-id".to_string(),
-            true,
-        );
+        let traced_future =
+            future.with_trace_id("test-trace-123".to_string(), "x-trace-id".to_string(), true);
 
         let result = traced_future.await;
         assert!(result.is_ok());
@@ -544,11 +543,8 @@ mod tests {
     #[tokio::test]
     async fn test_traced_response_future_error() {
         let future = MockResponseFuture::new_err("test error");
-        let traced_future = future.with_trace_id(
-            "test-trace-789".to_string(),
-            "x-trace-id".to_string(),
-            true,
-        );
+        let traced_future =
+            future.with_trace_id("test-trace-789".to_string(), "x-trace-id".to_string(), true);
 
         let result = traced_future.await;
         assert!(result.is_err());

@@ -3,33 +3,41 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #[cfg(test)]
-mod tests {
-    use crate::{
-        HttpMethod, ProxyRequest, ProxyResponse,
-        RequestContext, ResponseContext, ProxyError, FilterType,
-        Filter, Router, Route
-    };
+mod core_tests {
+    use crate::config::{Config, ConfigError, ConfigProvider};
     use crate::core::ProxyCore;
-    use crate::config::{Config, ConfigProvider, ConfigError};
     use crate::security::{SecurityProvider, SecurityStage};
+    use crate::{
+        Filter, FilterType, HttpMethod, ProxyError, ProxyRequest, ProxyResponse, RequestContext,
+        ResponseContext, Route, Router,
+    };
     use async_trait::async_trait;
-    use std::sync::Arc;
-    use tokio::sync::RwLock;
-    use std::time::Duration;
     use serde_json::Value;
     use std::collections::HashMap;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::sync::RwLock;
 
     #[test]
     fn test_http_method_from() {
         assert_eq!(HttpMethod::from(&reqwest::Method::GET), HttpMethod::Get);
         assert_eq!(HttpMethod::from(&reqwest::Method::POST), HttpMethod::Post);
         assert_eq!(HttpMethod::from(&reqwest::Method::PUT), HttpMethod::Put);
-        assert_eq!(HttpMethod::from(&reqwest::Method::DELETE), HttpMethod::Delete);
+        assert_eq!(
+            HttpMethod::from(&reqwest::Method::DELETE),
+            HttpMethod::Delete
+        );
         assert_eq!(HttpMethod::from(&reqwest::Method::HEAD), HttpMethod::Head);
-        assert_eq!(HttpMethod::from(&reqwest::Method::OPTIONS), HttpMethod::Options);
+        assert_eq!(
+            HttpMethod::from(&reqwest::Method::OPTIONS),
+            HttpMethod::Options
+        );
         assert_eq!(HttpMethod::from(&reqwest::Method::PATCH), HttpMethod::Patch);
         assert_eq!(HttpMethod::from(&reqwest::Method::TRACE), HttpMethod::Trace);
-        assert_eq!(HttpMethod::from(&reqwest::Method::CONNECT), HttpMethod::Connect);
+        assert_eq!(
+            HttpMethod::from(&reqwest::Method::CONNECT),
+            HttpMethod::Connect
+        );
     }
 
     #[test]
@@ -50,11 +58,21 @@ mod tests {
         let mut context = RequestContext::default();
 
         // Test attribute manipulation
-        context.attributes.insert("key1".to_string(), serde_json::json!("value1"));
-        context.attributes.insert("key2".to_string(), serde_json::json!(42));
+        context
+            .attributes
+            .insert("key1".to_string(), serde_json::json!("value1"));
+        context
+            .attributes
+            .insert("key2".to_string(), serde_json::json!(42));
 
-        assert_eq!(context.attributes.get("key1").unwrap(), &serde_json::json!("value1"));
-        assert_eq!(context.attributes.get("key2").unwrap(), &serde_json::json!(42));
+        assert_eq!(
+            context.attributes.get("key1").unwrap(),
+            &serde_json::json!("value1")
+        );
+        assert_eq!(
+            context.attributes.get("key2").unwrap(),
+            &serde_json::json!(42)
+        );
     }
 
     #[test]
@@ -62,11 +80,21 @@ mod tests {
         let mut context = ResponseContext::default();
 
         // Test attribute manipulation
-        context.attributes.insert("key1".to_string(), serde_json::json!("value1"));
-        context.attributes.insert("key2".to_string(), serde_json::json!(42));
+        context
+            .attributes
+            .insert("key1".to_string(), serde_json::json!("value1"));
+        context
+            .attributes
+            .insert("key2".to_string(), serde_json::json!(42));
 
-        assert_eq!(context.attributes.get("key1").unwrap(), &serde_json::json!("value1"));
-        assert_eq!(context.attributes.get("key2").unwrap(), &serde_json::json!(42));
+        assert_eq!(
+            context.attributes.get("key1").unwrap(),
+            &serde_json::json!("value1")
+        );
+        assert_eq!(
+            context.attributes.get("key2").unwrap(),
+            &serde_json::json!(42)
+        );
     }
 
     #[tokio::test]
@@ -85,11 +113,15 @@ mod tests {
         // Test context manipulation
         {
             let mut ctx = request.context.write().await;
-            ctx.attributes.insert("test".to_string(), serde_json::json!("value"));
+            ctx.attributes
+                .insert("test".to_string(), serde_json::json!("value"));
         }
 
         let ctx = request.context.read().await;
-        assert_eq!(ctx.attributes.get("test").unwrap(), &serde_json::json!("value"));
+        assert_eq!(
+            ctx.attributes.get("test").unwrap(),
+            &serde_json::json!("value")
+        );
     }
 
     #[tokio::test]
@@ -105,11 +137,15 @@ mod tests {
         // Test context manipulation
         {
             let mut ctx = response.context.write().await;
-            ctx.attributes.insert("test".to_string(), serde_json::json!("value"));
+            ctx.attributes
+                .insert("test".to_string(), serde_json::json!("value"));
         }
 
         let ctx = response.context.read().await;
-        assert_eq!(ctx.attributes.get("test").unwrap(), &serde_json::json!("value"));
+        assert_eq!(
+            ctx.attributes.get("test").unwrap(),
+            &serde_json::json!("value")
+        );
     }
 
     // Mock implementations for testing
@@ -250,20 +286,30 @@ mod tests {
 
             if self.modify_request {
                 let mut ctx = request.context.write().await;
-                ctx.attributes.insert("filter_applied".to_string(), Value::String(self.name.clone()));
+                ctx.attributes.insert(
+                    "filter_applied".to_string(),
+                    Value::String(self.name.clone()),
+                );
             }
 
             Ok(request)
         }
 
-        async fn post_filter(&self, _request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
+        async fn post_filter(
+            &self,
+            _request: ProxyRequest,
+            response: ProxyResponse,
+        ) -> Result<ProxyResponse, ProxyError> {
             if self.should_fail {
                 return Err(ProxyError::FilterError("Mock filter failure".to_string()));
             }
 
             if self.modify_response {
                 let mut ctx = response.context.write().await;
-                ctx.attributes.insert("filter_applied".to_string(), Value::String(self.name.clone()));
+                ctx.attributes.insert(
+                    "filter_applied".to_string(),
+                    Value::String(self.name.clone()),
+                );
             }
 
             Ok(response)
@@ -309,15 +355,23 @@ mod tests {
 
         async fn pre(&self, request: ProxyRequest) -> Result<ProxyRequest, ProxyError> {
             if self.pre_failure {
-                Err(ProxyError::SecurityError("Mock security pre-auth failure".to_string()))
+                Err(ProxyError::SecurityError(
+                    "Mock security pre-auth failure".to_string(),
+                ))
             } else {
                 Ok(request)
             }
         }
 
-        async fn post(&self, _request: ProxyRequest, response: ProxyResponse) -> Result<ProxyResponse, ProxyError> {
+        async fn post(
+            &self,
+            _request: ProxyRequest,
+            response: ProxyResponse,
+        ) -> Result<ProxyResponse, ProxyError> {
             if self.post_failure {
-                Err(ProxyError::SecurityError("Mock security post-auth failure".to_string()))
+                Err(ProxyError::SecurityError(
+                    "Mock security post-auth failure".to_string(),
+                ))
             } else {
                 Ok(response)
             }
@@ -329,7 +383,10 @@ mod tests {
     async fn test_proxy_error_display() {
         // Create a mock reqwest error by making a request to an invalid URL
         let client = reqwest::Client::new();
-        let result = client.get("http://invalid-url-that-does-not-exist.invalid").send().await;
+        let result = client
+            .get("http://invalid-url-that-does-not-exist.invalid")
+            .send()
+            .await;
         let client_error = ProxyError::ClientError(result.unwrap_err());
         assert!(client_error.to_string().contains("HTTP client error"));
 
@@ -343,7 +400,10 @@ mod tests {
         assert_eq!(filter_error.to_string(), "filter error: Filter failed");
 
         let config_error = ProxyError::ConfigError("Invalid config".to_string());
-        assert_eq!(config_error.to_string(), "configuration error: Invalid config");
+        assert_eq!(
+            config_error.to_string(),
+            "configuration error: Invalid config"
+        );
 
         let security_error = ProxyError::SecurityError("Auth failed".to_string());
         assert_eq!(security_error.to_string(), "security error: Auth failed");
@@ -422,14 +482,21 @@ mod tests {
 
     #[test]
     fn test_request_context_with_data() {
-        let mut context = RequestContext::default();
-        context.client_ip = Some("192.168.1.1".to_string());
-        context.start_time = Some(std::time::Instant::now());
-        context.attributes.insert("user_id".to_string(), Value::String("123".to_string()));
+        let mut context = RequestContext {
+            client_ip: Some("192.168.1.1".to_string()),
+            start_time: Some(std::time::Instant::now()),
+            ..Default::default()
+        };
+        context
+            .attributes
+            .insert("user_id".to_string(), Value::String("123".to_string()));
 
         assert_eq!(context.client_ip.as_ref().unwrap(), "192.168.1.1");
         assert!(context.start_time.is_some());
-        assert_eq!(context.attributes.get("user_id").unwrap(), &Value::String("123".to_string()));
+        assert_eq!(
+            context.attributes.get("user_id").unwrap(),
+            &Value::String("123".to_string())
+        );
     }
 
     // Tests for ResponseContext
@@ -442,12 +509,19 @@ mod tests {
 
     #[test]
     fn test_response_context_with_data() {
-        let mut context = ResponseContext::default();
-        context.receive_time = Some(std::time::Instant::now());
-        context.attributes.insert("response_size".to_string(), Value::Number(1024.into()));
+        let mut context = ResponseContext {
+            receive_time: Some(std::time::Instant::now()),
+            ..Default::default()
+        };
+        context
+            .attributes
+            .insert("response_size".to_string(), Value::Number(1024.into()));
 
         assert!(context.receive_time.is_some());
-        assert_eq!(context.attributes.get("response_size").unwrap(), &Value::Number(1024.into()));
+        assert_eq!(
+            context.attributes.get("response_size").unwrap(),
+            &Value::Number(1024.into())
+        );
     }
 
     // Tests for Route struct
@@ -498,8 +572,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_proxy_core_creation_with_custom_timeout() {
-        let config_provider = MockConfigProvider::new()
-            .with_value("proxy.timeout", 60);
+        let config_provider = MockConfigProvider::new().with_value("proxy.timeout", 60);
         let config = Arc::new(Config::builder().with_provider(config_provider).build());
         let router = Arc::new(MockRouter::new());
 
@@ -632,8 +705,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_filter_pre_filter_with_modification() {
-        let filter = MockFilter::new("test-filter", FilterType::Pre)
-            .with_request_modification();
+        let filter = MockFilter::new("test-filter", FilterType::Pre).with_request_modification();
         let request = create_test_request(HttpMethod::Get, "/test");
 
         let result = filter.pre_filter(request).await;
@@ -685,8 +757,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_filter_post_filter_with_modification() {
-        let filter = MockFilter::new("test-filter", FilterType::Post)
-            .with_response_modification();
+        let filter = MockFilter::new("test-filter", FilterType::Post).with_response_modification();
         let request = create_test_request(HttpMethod::Get, "/test");
         let response = ProxyResponse {
             status: 200,
@@ -767,20 +838,26 @@ mod tests {
         let proxy_core = ProxyCore::new(config, router).await.unwrap();
 
         // Add a security provider that will fail
-        let security_provider = Arc::new(MockSecurityProvider::new("test-security").with_pre_failure());
+        let security_provider =
+            Arc::new(MockSecurityProvider::new("test-security").with_pre_failure());
         proxy_core.add_security_provider(security_provider).await;
 
         let request = create_test_request(HttpMethod::Get, "/test");
 
-        let result = proxy_core.process_request(
-            request,
-            #[cfg(feature = "opentelemetry")]
-            None,
-        ).await;
+        let result = proxy_core
+            .process_request(
+                request,
+                #[cfg(feature = "opentelemetry")]
+                None,
+            )
+            .await;
 
         assert!(result.is_err());
         if let Err(ProxyError::SecurityError(msg)) = result {
-            assert_eq!(msg, "test-security: security error: Mock security pre-auth failure");
+            assert_eq!(
+                msg,
+                "test-security: security error: Mock security pre-auth failure"
+            );
         } else {
             panic!("Expected SecurityError");
         }
@@ -804,11 +881,13 @@ mod tests {
 
         let request = create_test_request(HttpMethod::Get, "/test");
 
-        let result = proxy_core.process_request(
-            request,
-            #[cfg(feature = "opentelemetry")]
-            None,
-        ).await;
+        let result = proxy_core
+            .process_request(
+                request,
+                #[cfg(feature = "opentelemetry")]
+                None,
+            )
+            .await;
 
         assert!(result.is_err());
         if let Err(ProxyError::FilterError(msg)) = result {
@@ -827,11 +906,13 @@ mod tests {
 
         let request = create_test_request(HttpMethod::Get, "/test");
 
-        let result = proxy_core.process_request(
-            request,
-            #[cfg(feature = "opentelemetry")]
-            None,
-        ).await;
+        let result = proxy_core
+            .process_request(
+                request,
+                #[cfg(feature = "opentelemetry")]
+                None,
+            )
+            .await;
 
         assert!(result.is_err());
         if let Err(ProxyError::RoutingError(msg)) = result {
@@ -847,7 +928,8 @@ mod tests {
         let config = Arc::new(Config::builder().with_provider(config_provider).build());
 
         // Create a route with a failing filter
-        let failing_filter = Arc::new(MockFilter::new("route-filter", FilterType::Pre).with_failure());
+        let failing_filter =
+            Arc::new(MockFilter::new("route-filter", FilterType::Pre).with_failure());
         let route = Route {
             id: "test-route".to_string(),
             target_base_url: "http://example.com".to_string(),
@@ -860,11 +942,13 @@ mod tests {
 
         let request = create_test_request(HttpMethod::Get, "/test");
 
-        let result = proxy_core.process_request(
-            request,
-            #[cfg(feature = "opentelemetry")]
-            None,
-        ).await;
+        let result = proxy_core
+            .process_request(
+                request,
+                #[cfg(feature = "opentelemetry")]
+                None,
+            )
+            .await;
 
         assert!(result.is_err());
         if let Err(ProxyError::FilterError(msg)) = result {
@@ -891,11 +975,13 @@ mod tests {
 
         // This test will fail at the HTTP request stage since we're not mocking the HTTP client
         // But it will test the custom target logic
-        let result = proxy_core.process_request(
-            request,
-            #[cfg(feature = "opentelemetry")]
-            None,
-        ).await;
+        let result = proxy_core
+            .process_request(
+                request,
+                #[cfg(feature = "opentelemetry")]
+                None,
+            )
+            .await;
 
         // We expect this to fail with a client error since we can't actually make HTTP requests
         assert!(result.is_err());
@@ -918,11 +1004,13 @@ mod tests {
         let mut request = create_test_request(HttpMethod::Get, "/test");
         request.query = Some("param1=value1&param2=value2".to_string());
 
-        let result = proxy_core.process_request(
-            request,
-            #[cfg(feature = "opentelemetry")]
-            None,
-        ).await;
+        let result = proxy_core
+            .process_request(
+                request,
+                #[cfg(feature = "opentelemetry")]
+                None,
+            )
+            .await;
 
         // Should fail with client error since we can't make real HTTP requests
         assert!(result.is_err());
@@ -946,14 +1034,17 @@ mod tests {
         // Set a custom timeout in the request context
         {
             let mut ctx = request.context.write().await;
-            ctx.attributes.insert("timeout_ms".to_string(), Value::Number(1000.into()));
+            ctx.attributes
+                .insert("timeout_ms".to_string(), Value::Number(1000.into()));
         }
 
-        let result = proxy_core.process_request(
-            request,
-            #[cfg(feature = "opentelemetry")]
-            None,
-        ).await;
+        let result = proxy_core
+            .process_request(
+                request,
+                #[cfg(feature = "opentelemetry")]
+                None,
+            )
+            .await;
 
         // Should fail with client error since we can't make real HTTP requests
         assert!(result.is_err());
@@ -966,7 +1057,8 @@ mod tests {
         let config = Arc::new(Config::builder().with_provider(config_provider).build());
 
         // Create a route with a failing post filter
-        let failing_filter = Arc::new(MockFilter::new("route-post-filter", FilterType::Post).with_failure());
+        let failing_filter =
+            Arc::new(MockFilter::new("route-post-filter", FilterType::Post).with_failure());
         let route = Route {
             id: "test-route".to_string(),
             target_base_url: "http://httpbin.org".to_string(), // Use a real endpoint
@@ -979,11 +1071,13 @@ mod tests {
 
         let request = create_test_request(HttpMethod::Get, "/get");
 
-        let result = proxy_core.process_request(
-            request,
-            #[cfg(feature = "opentelemetry")]
-            None,
-        ).await;
+        let result = proxy_core
+            .process_request(
+                request,
+                #[cfg(feature = "opentelemetry")]
+                None,
+            )
+            .await;
 
         // This might succeed or fail depending on network, but if it gets to post-filter stage
         // and the filter fails, we should get a FilterError
@@ -1008,16 +1102,19 @@ mod tests {
         let proxy_core = ProxyCore::new(config, router).await.unwrap();
 
         // Add a global post filter that will fail
-        let filter = Arc::new(MockFilter::new("failing-post-filter", FilterType::Post).with_failure());
+        let filter =
+            Arc::new(MockFilter::new("failing-post-filter", FilterType::Post).with_failure());
         proxy_core.add_global_filter(filter).await;
 
         let request = create_test_request(HttpMethod::Get, "/get");
 
-        let result = proxy_core.process_request(
-            request,
-            #[cfg(feature = "opentelemetry")]
-            None,
-        ).await;
+        let result = proxy_core
+            .process_request(
+                request,
+                #[cfg(feature = "opentelemetry")]
+                None,
+            )
+            .await;
 
         // This might succeed or fail depending on network, but if it gets to post-filter stage
         // and the filter fails, we should get a FilterError
@@ -1042,16 +1139,19 @@ mod tests {
         let proxy_core = ProxyCore::new(config, router).await.unwrap();
 
         // Add a security provider that will fail post-auth
-        let security_provider = Arc::new(MockSecurityProvider::new("test-security").with_post_failure());
+        let security_provider =
+            Arc::new(MockSecurityProvider::new("test-security").with_post_failure());
         proxy_core.add_security_provider(security_provider).await;
 
         let request = create_test_request(HttpMethod::Get, "/get");
 
-        let result = proxy_core.process_request(
-            request,
-            #[cfg(feature = "opentelemetry")]
-            None,
-        ).await;
+        let result = proxy_core
+            .process_request(
+                request,
+                #[cfg(feature = "opentelemetry")]
+                None,
+            )
+            .await;
 
         // This might succeed or fail depending on network, but if it gets to post-auth stage
         // and the security provider fails, we should get a SecurityError
@@ -1065,7 +1165,8 @@ mod tests {
 
     #[test]
     fn test_proxy_error_from_config_error() {
-        let config_error = crate::config::error::ConfigError::ParseError("Invalid format".to_string());
+        let config_error =
+            crate::config::error::ConfigError::ParseError("Invalid format".to_string());
         let proxy_error = ProxyError::from(config_error);
         assert!(proxy_error.to_string().contains("configuration error"));
         assert!(proxy_error.to_string().contains("Invalid format"));
@@ -1083,7 +1184,8 @@ mod tests {
 
     #[test]
     fn test_proxy_error_from_jwt_error() {
-        let jwt_error = jsonwebtoken::errors::Error::from(jsonwebtoken::errors::ErrorKind::InvalidToken);
+        let jwt_error =
+            jsonwebtoken::errors::Error::from(jsonwebtoken::errors::ErrorKind::InvalidToken);
         let proxy_error = ProxyError::from(jwt_error);
         assert!(proxy_error.to_string().contains("security error"));
     }
@@ -1099,14 +1201,35 @@ mod tests {
     #[test]
     fn test_http_method_into_reqwest() {
         assert_eq!(reqwest::Method::from(HttpMethod::Get), reqwest::Method::GET);
-        assert_eq!(reqwest::Method::from(HttpMethod::Post), reqwest::Method::POST);
+        assert_eq!(
+            reqwest::Method::from(HttpMethod::Post),
+            reqwest::Method::POST
+        );
         assert_eq!(reqwest::Method::from(HttpMethod::Put), reqwest::Method::PUT);
-        assert_eq!(reqwest::Method::from(HttpMethod::Delete), reqwest::Method::DELETE);
-        assert_eq!(reqwest::Method::from(HttpMethod::Head), reqwest::Method::HEAD);
-        assert_eq!(reqwest::Method::from(HttpMethod::Options), reqwest::Method::OPTIONS);
-        assert_eq!(reqwest::Method::from(HttpMethod::Patch), reqwest::Method::PATCH);
-        assert_eq!(reqwest::Method::from(HttpMethod::Trace), reqwest::Method::TRACE);
-        assert_eq!(reqwest::Method::from(HttpMethod::Connect), reqwest::Method::CONNECT);
+        assert_eq!(
+            reqwest::Method::from(HttpMethod::Delete),
+            reqwest::Method::DELETE
+        );
+        assert_eq!(
+            reqwest::Method::from(HttpMethod::Head),
+            reqwest::Method::HEAD
+        );
+        assert_eq!(
+            reqwest::Method::from(HttpMethod::Options),
+            reqwest::Method::OPTIONS
+        );
+        assert_eq!(
+            reqwest::Method::from(HttpMethod::Patch),
+            reqwest::Method::PATCH
+        );
+        assert_eq!(
+            reqwest::Method::from(HttpMethod::Trace),
+            reqwest::Method::TRACE
+        );
+        assert_eq!(
+            reqwest::Method::from(HttpMethod::Connect),
+            reqwest::Method::CONNECT
+        );
     }
 
     #[test]
@@ -1149,8 +1272,8 @@ mod tests {
     #[tokio::test]
     async fn test_proxy_core_client_builder_error() {
         // Test with an invalid timeout value that might cause client builder to fail
-        let config_provider = MockConfigProvider::new()
-            .with_value("proxy.timeout", Value::Number(u64::MAX.into()));
+        let config_provider =
+            MockConfigProvider::new().with_value("proxy.timeout", Value::Number(u64::MAX.into()));
         let config = Arc::new(Config::builder().with_provider(config_provider).build());
         let router = Arc::new(MockRouter::new());
 
@@ -1180,10 +1303,14 @@ mod tests {
 
     #[test]
     fn test_request_context_clone() {
-        let mut context = RequestContext::default();
-        context.client_ip = Some("192.168.1.1".to_string());
+        let mut context = RequestContext {
+            client_ip: Some("192.168.1.1".to_string()),
+            ..Default::default()
+        };
         context.start_time = Some(std::time::Instant::now());
-        context.attributes.insert("key".to_string(), Value::String("value".to_string()));
+        context
+            .attributes
+            .insert("key".to_string(), Value::String("value".to_string()));
 
         let cloned = context.clone();
         assert_eq!(cloned.client_ip, context.client_ip);
@@ -1194,9 +1321,13 @@ mod tests {
 
     #[test]
     fn test_response_context_clone() {
-        let mut context = ResponseContext::default();
-        context.receive_time = Some(std::time::Instant::now());
-        context.attributes.insert("key".to_string(), Value::String("value".to_string()));
+        let mut context = ResponseContext {
+            receive_time: Some(std::time::Instant::now()),
+            ..Default::default()
+        };
+        context
+            .attributes
+            .insert("key".to_string(), Value::String("value".to_string()));
 
         let cloned = context.clone();
         assert_eq!(cloned.attributes, context.attributes);
