@@ -459,7 +459,7 @@ mod config_tests {
     #[test]
     fn test_config_provider_debug() {
         let provider = MockConfigProvider::new("test-provider", 0);
-        let debug_str = format!("{:?}", provider);
+        let debug_str = format!("{provider:?}");
         assert!(debug_str.contains("MockConfigProvider"));
         assert!(debug_str.contains("test-provider"));
     }
@@ -468,7 +468,7 @@ mod config_tests {
     fn test_config_builder_debug() {
         let provider = MockConfigProvider::new("test", 0);
         let builder = ConfigBuilder::new().with_provider(provider);
-        let debug_str = format!("{:?}", builder);
+        let debug_str = format!("{builder:?}");
         assert!(debug_str.contains("ConfigBuilder"));
     }
 
@@ -476,7 +476,7 @@ mod config_tests {
     fn test_config_debug() {
         let provider = MockConfigProvider::new("test", 0);
         let config = Config::builder().with_provider(provider).build();
-        let debug_str = format!("{:?}", config);
+        let debug_str = format!("{config:?}");
         assert!(debug_str.contains("Config"));
     }
 
@@ -928,14 +928,14 @@ mod config_tests {
     #[test]
     fn test_config_error_debug() {
         let error = ConfigError::NotFound;
-        let debug_str = format!("{:?}", error);
+        let debug_str = format!("{error:?}");
         assert!(debug_str.contains("NotFound"));
     }
 
     #[test]
     fn test_config_error_debug_with_data() {
         let error = ConfigError::ParseError("test".to_string());
-        let debug_str = format!("{:?}", error);
+        let debug_str = format!("{error:?}");
         assert!(debug_str.contains("ParseError"));
         assert!(debug_str.contains("test"));
     }
@@ -1503,7 +1503,7 @@ server:
     #[test]
     fn test_server_config_debug() {
         let config = ServerConfig::default();
-        let debug_str = format!("{:?}", config);
+        let debug_str = format!("{config:?}");
 
         assert!(debug_str.contains("ServerConfig"));
         assert!(debug_str.contains("[::]:8080"));
@@ -1514,7 +1514,7 @@ server:
     #[test]
     fn test_proxy_config_debug() {
         let config = ProxyConfig::default();
-        let debug_str = format!("{:?}", config);
+        let debug_str = format!("{config:?}");
 
         assert!(debug_str.contains("ProxyConfig"));
         assert!(debug_str.contains("server"));

@@ -277,7 +277,7 @@ mod loader_tests {
                 // Expected error type
             }
             other => {
-                panic!("Expected ConfigError, got: {:?}", other);
+                panic!("Expected ConfigError, got: {other:?}");
             }
         }
     }
@@ -310,7 +310,7 @@ mod loader_tests {
     async fn test_loader_error_display() {
         let config_error = crate::config::ConfigError::ParseError("test error".to_string());
         let loader_error = crate::loader::LoaderError::ConfigError(config_error);
-        let error_string = format!("{}", loader_error);
+        let error_string = format!("{loader_error}");
         assert!(error_string.contains("configuration error"));
         assert!(error_string.contains("test error"));
     }
@@ -319,7 +319,7 @@ mod loader_tests {
     async fn test_loader_error_from_proxy_error() {
         let proxy_error = crate::ProxyError::ConfigError("proxy config error".to_string());
         let loader_error = crate::loader::LoaderError::ProxyError(proxy_error);
-        let error_string = format!("{}", loader_error);
+        let error_string = format!("{loader_error}");
         assert!(error_string.contains("proxy error"));
     }
 
@@ -327,7 +327,7 @@ mod loader_tests {
     async fn test_loader_error_from_io_error() {
         let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
         let loader_error = crate::loader::LoaderError::IoError(io_error);
-        let error_string = format!("{}", loader_error);
+        let error_string = format!("{loader_error}");
         assert!(error_string.contains("IO error"));
         assert!(error_string.contains("file not found"));
     }
@@ -335,7 +335,7 @@ mod loader_tests {
     #[tokio::test]
     async fn test_loader_error_other() {
         let loader_error = crate::loader::LoaderError::Other("custom error message".to_string());
-        let error_string = format!("{}", loader_error);
+        let error_string = format!("{loader_error}");
         assert_eq!(error_string, "custom error message");
     }
 
@@ -345,7 +345,7 @@ mod loader_tests {
         let loader = FoxyLoader::new().with_provider(provider);
         let foxy = loader.build().await.unwrap();
 
-        let debug_string = format!("{:?}", foxy);
+        let debug_string = format!("{foxy:?}");
         assert!(debug_string.contains("Foxy"));
     }
 

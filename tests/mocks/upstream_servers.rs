@@ -408,7 +408,7 @@ impl MockServerPresets {
 
         // Various HTTP status codes
         for status in [400, 401, 403, 404, 429, 500, 502, 503] {
-            let path = format!("/status/{}", status);
+            let path = format!("/status/{status}");
             builder.with_status_code_endpoint(&path, status).await;
         }
 

@@ -119,7 +119,7 @@ mod tests {
         port: u16,
         path: &str,
     ) -> Result<(u16, String), Box<dyn std::error::Error + Send + Sync>> {
-        let url = format!("http://127.0.0.1:{}{}", port, path);
+        let url = format!("http://127.0.0.1:{port}{path}");
         let response = reqwest::get(&url).await?;
         let status = response.status().as_u16();
         let body = response.text().await?;
@@ -323,7 +323,7 @@ mod tests {
         let health_server = HealthServer::new(port);
 
         // Test Debug implementation
-        let debug_str = format!("{:?}", health_server);
+        let debug_str = format!("{health_server:?}");
         assert!(debug_str.contains("HealthServer"));
         assert!(debug_str.contains("is_ready"));
         assert!(debug_str.contains("_handle"));

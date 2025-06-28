@@ -134,7 +134,7 @@ async fn test_binary_with_default_config_path() {
             assert_ne!(output.status.code().unwrap_or(0), 0);
         }
         Ok(Err(e)) => {
-            panic!("Failed to run binary: {}", e);
+            panic!("Failed to run binary: {e}");
         }
         Err(_) => {
             panic!("Binary should exit quickly when no config file is found, but it timed out");
@@ -190,7 +190,7 @@ async fn test_binary_missing_config_file_error() {
             );
         }
         Ok(Err(e)) => {
-            panic!("Failed to run binary: {}", e);
+            panic!("Failed to run binary: {e}");
         }
         Err(_) => {
             panic!("Binary should exit quickly with error, but it timed out");
@@ -249,7 +249,7 @@ async fn test_binary_invalid_config_format() {
             );
         }
         Ok(Err(e)) => {
-            panic!("Failed to run binary: {}", e);
+            panic!("Failed to run binary: {e}");
         }
         Err(_) => {
             panic!("Binary should exit quickly with error, but it timed out");
@@ -269,5 +269,5 @@ async fn wait_for_port(addr: &str, timeout_duration: Duration) -> Result<(), Str
             }
         }
     }
-    Err(format!("Timed out waiting for port {} to open", addr))
+    Err(format!("Timed out waiting for port {addr} to open"))
 }

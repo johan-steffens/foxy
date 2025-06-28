@@ -112,7 +112,7 @@ pub async fn run_load_test(proxy_url: &str, path: &str, config: LoadTestConfig) 
     let mut response_times = Vec::new();
 
     let start_time = Instant::now();
-    let url = format!("{}{}", proxy_url, path);
+    let url = format!("{proxy_url}{path}");
 
     for i in 0..config.total_requests {
         let client = client.clone();

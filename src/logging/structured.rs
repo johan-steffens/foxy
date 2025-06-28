@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn test_logger_config_debug() {
         let config = LoggerConfig::default();
-        let debug_str = format!("{:?}", config);
+        let debug_str = format!("{config:?}");
 
         assert!(debug_str.contains("LoggerConfig"));
         assert!(debug_str.contains("format"));
@@ -328,7 +328,7 @@ mod tests {
             start_time_ms: 1234567890,
         };
 
-        let debug_str = format!("{:?}", request_info);
+        let debug_str = format!("{request_info:?}");
         assert!(debug_str.contains("RequestInfo"));
         assert!(debug_str.contains("debug-test"));
         assert!(debug_str.contains("POST"));

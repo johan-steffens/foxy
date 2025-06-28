@@ -1334,7 +1334,7 @@ mod tests {
             .encode(header_json.to_string().as_bytes());
         let payload_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(json!({"sub": "test"}).to_string().as_bytes());
-        let token = format!("{}.{}.signature", header_b64, payload_b64);
+        let token = format!("{header_b64}.{payload_b64}.signature");
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_err());
@@ -1387,7 +1387,7 @@ mod tests {
             .encode(header_json.to_string().as_bytes());
         let payload_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(json!({"sub": "test"}).to_string().as_bytes());
-        let token = format!("{}.{}.signature", header_b64, payload_b64);
+        let token = format!("{header_b64}.{payload_b64}.signature");
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_err());
@@ -1764,7 +1764,7 @@ mod tests {
 
         let result = provider.validate_token(&token).await;
         if result.is_err() {
-            println!("Long expiration test error: {:?}", result);
+            println!("Long expiration test error: {result:?}");
         }
         assert!(result.is_ok()); // Should succeed with very long expiration
 
@@ -1826,7 +1826,7 @@ mod tests {
             .encode(header_json.to_string().as_bytes());
         let payload_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(json!({"sub": "test"}).to_string().as_bytes());
-        let token = format!("{}.{}.signature", header_b64, payload_b64);
+        let token = format!("{header_b64}.{payload_b64}.signature");
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_err());
@@ -1891,7 +1891,7 @@ mod tests {
             .encode(header_json.to_string().as_bytes());
         let payload_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(json!({"sub": "test"}).to_string().as_bytes());
-        let token = format!("{}.{}.signature", header_b64, payload_b64);
+        let token = format!("{header_b64}.{payload_b64}.signature");
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_err());
@@ -2501,7 +2501,7 @@ mod tests {
             .encode(header_json.to_string().as_bytes());
         let payload_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(json!({"sub": "test"}).to_string().as_bytes());
-        let token = format!("{}.{}.signature", header_b64, payload_b64);
+        let token = format!("{header_b64}.{payload_b64}.signature");
 
         let result = provider.validate_token(&token).await;
         assert!(result.is_err());
