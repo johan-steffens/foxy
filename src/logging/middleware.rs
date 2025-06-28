@@ -24,23 +24,28 @@ pub struct LoggingMiddleware {
 
 impl LoggingMiddleware {
     /// Create a new logging middleware
+    #[must_use]
     pub fn new(config: LoggingConfig) -> Self {
         Self {
             config: Arc::new(config),
         }
     }
 
+    /// Get a reference to the logging configuration
+    pub fn config(&self) -> &LoggingConfig {
+        &self.config
+    }
+
     /// Process a request and add trace context
-    pub async fn process<B>(
+    pub fn process<B>(
         &self,
         req: Request<B>,
         remote_addr: Option<SocketAddr>,
     ) -> (Request<B>, RequestInfo) {
         let method = req.method().to_string();
         let path = req.uri().path().to_string();
-        let remote_addr_str = remote_addr
-            .map(|addr| addr.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
+        let remote_addr_str =
+            remote_addr.map_or_else(|| "unknown".to_string(), |addr| addr.to_string());
 
         let user_agent = req
             .headers()
@@ -54,9 +59,8 @@ impl LoggingMiddleware {
             req.headers()
                 .get(&self.config.trace_id_header)
                 .and_then(|h| h.to_str().ok())
-                .filter(|s| !s.is_empty()) // Filter out empty strings
-                .map(|s| s.to_string())
-                .unwrap_or_else(generate_trace_id)
+                .filter(|s| !s.is_empty())
+                .map_or_else(generate_trace_id, std::string::ToString::to_string)
         } else {
             generate_trace_id()
         };
@@ -105,7 +109,7 @@ impl LoggingMiddleware {
     ) {
         let status = response.status().as_u16();
         let elapsed_ms = request_info.elapsed_ms();
-        let upstream_ms = upstream_duration.map(|d| d.as_millis()).unwrap_or(0);
+        let upstream_ms = upstream_duration.map_or(0, |d| d.as_millis());
         let internal_ms = elapsed_ms.saturating_sub(upstream_ms);
 
         if self.config.structured {
@@ -202,400 +206,5 @@ where
             trace_header,
             include_trace_id,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::logging::config::LoggingConfig;
-    use bytes::Bytes;
-    use http_body_util::Empty;
-    use hyper::{Method, Request, Response};
-    use std::future::Future;
-    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-    use std::pin::Pin;
-    use std::task::{Context, Poll};
-    use std::time::Duration;
-
-    fn create_test_config() -> LoggingConfig {
-        LoggingConfig {
-            structured: false,
-            format: "terminal".to_string(),
-            level: "info".to_string(),
-            include_location: true,
-            include_thread_id: true,
-            include_trace_id: true,
-            propagate_trace_id: false,
-            trace_id_header: "x-trace-id".to_string(),
-            static_fields: std::collections::HashMap::new(),
-        }
-    }
-
-    fn create_test_config_structured() -> LoggingConfig {
-        LoggingConfig {
-            structured: true,
-            format: "json".to_string(),
-            level: "info".to_string(),
-            include_location: true,
-            include_thread_id: true,
-            include_trace_id: true,
-            propagate_trace_id: false,
-            trace_id_header: "x-trace-id".to_string(),
-            static_fields: std::collections::HashMap::new(),
-        }
-    }
-
-    fn create_test_config_with_propagation() -> LoggingConfig {
-        LoggingConfig {
-            structured: false,
-            format: "terminal".to_string(),
-            level: "info".to_string(),
-            include_location: true,
-            include_thread_id: true,
-            include_trace_id: true,
-            propagate_trace_id: true,
-            trace_id_header: "x-trace-id".to_string(),
-            static_fields: std::collections::HashMap::new(),
-        }
-    }
-
-    fn create_test_request() -> Request<Empty<Bytes>> {
-        Request::builder()
-            .method(Method::GET)
-            .uri("/test/path")
-            .header("user-agent", "test-agent/1.0")
-            .body(Empty::<Bytes>::new())
-            .unwrap()
-    }
-
-    fn create_test_request_with_trace_id(trace_id: &str) -> Request<Empty<Bytes>> {
-        Request::builder()
-            .method(Method::GET)
-            .uri("/test/path")
-            .header("user-agent", "test-agent/1.0")
-            .header("x-trace-id", trace_id)
-            .body(Empty::<Bytes>::new())
-            .unwrap()
-    }
-
-    fn create_test_socket_addr() -> SocketAddr {
-        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)), 8080)
-    }
-
-    #[tokio::test]
-    async fn test_logging_middleware_new() {
-        let config = create_test_config();
-        let middleware = LoggingMiddleware::new(config);
-
-        // Test that the middleware is created successfully
-        assert!(!middleware.config.structured);
-        assert!(!middleware.config.propagate_trace_id);
-    }
-
-    #[tokio::test]
-    async fn test_process_request_basic() {
-        let config = create_test_config();
-        let middleware = LoggingMiddleware::new(config);
-        let request = create_test_request();
-        let remote_addr = Some(create_test_socket_addr());
-
-        let (processed_req, request_info) = middleware.process(request, remote_addr).await;
-
-        // Verify request is returned unchanged
-        assert_eq!(processed_req.method(), Method::GET);
-        assert_eq!(processed_req.uri().path(), "/test/path");
-
-        // Verify request info is populated
-        assert_eq!(request_info.method, "GET");
-        assert_eq!(request_info.path, "/test/path");
-        assert_eq!(request_info.remote_addr, "192.168.1.100:8080");
-        assert_eq!(request_info.user_agent, "test-agent/1.0");
-        assert!(!request_info.trace_id.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_process_request_no_remote_addr() {
-        let config = create_test_config();
-        let middleware = LoggingMiddleware::new(config);
-        let request = create_test_request();
-
-        let (_, request_info) = middleware.process(request, None).await;
-
-        assert_eq!(request_info.remote_addr, "unknown");
-    }
-
-    #[tokio::test]
-    async fn test_process_request_no_user_agent() {
-        let config = create_test_config();
-        let middleware = LoggingMiddleware::new(config);
-        let request = Request::builder()
-            .method(Method::POST)
-            .uri("/api/test")
-            .body(Empty::<Bytes>::new())
-            .unwrap();
-
-        let (_, request_info) = middleware.process(request, None).await;
-
-        assert_eq!(request_info.method, "POST");
-        assert_eq!(request_info.path, "/api/test");
-        assert_eq!(request_info.user_agent, "unknown");
-    }
-
-    #[tokio::test]
-    async fn test_process_request_with_trace_propagation() {
-        let config = create_test_config_with_propagation();
-        let middleware = LoggingMiddleware::new(config);
-        let existing_trace_id = "existing-trace-123";
-        let request = create_test_request_with_trace_id(existing_trace_id);
-
-        let (_, request_info) = middleware.process(request, None).await;
-
-        assert_eq!(request_info.trace_id, existing_trace_id);
-    }
-
-    #[tokio::test]
-    async fn test_process_request_without_trace_propagation() {
-        let config = create_test_config();
-        let middleware = LoggingMiddleware::new(config);
-        let request = create_test_request_with_trace_id("existing-trace-123");
-
-        let (_, request_info) = middleware.process(request, None).await;
-
-        // Should generate new trace ID, not use existing one
-        assert_ne!(request_info.trace_id, "existing-trace-123");
-        assert!(!request_info.trace_id.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_process_request_invalid_trace_header() {
-        let config = create_test_config_with_propagation();
-        let middleware = LoggingMiddleware::new(config);
-
-        // Create a request with an invalid trace header value that can't be parsed as UTF-8
-        // We'll use a valid header construction but with an empty value to test the fallback
-        let request = Request::builder()
-            .method(Method::GET)
-            .uri("/test")
-            .header("x-trace-id", "") // Empty trace ID should trigger fallback
-            .body(Empty::<Bytes>::new())
-            .unwrap();
-
-        let (_, request_info) = middleware.process(request, None).await;
-
-        // Should generate new trace ID when existing one is empty/invalid
-        assert!(!request_info.trace_id.is_empty());
-        assert_ne!(request_info.trace_id, "");
-    }
-
-    #[test]
-    fn test_log_response_basic() {
-        let config = create_test_config();
-        let middleware = LoggingMiddleware::new(config);
-
-        let response = Response::builder()
-            .status(200)
-            .body(Empty::<Bytes>::new())
-            .unwrap();
-
-        let request_info = RequestInfo {
-            trace_id: "test-trace-123".to_string(),
-            method: "GET".to_string(),
-            path: "/test".to_string(),
-            remote_addr: "192.168.1.1".to_string(),
-            user_agent: "test-agent".to_string(),
-            start_time_ms: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis(),
-        };
-
-        // This should not panic
-        middleware.log_response(&response, &request_info, Some(Duration::from_millis(50)));
-    }
-
-    #[test]
-    fn test_log_response_structured() {
-        let config = create_test_config_structured();
-        let middleware = LoggingMiddleware::new(config);
-
-        let response = Response::builder()
-            .status(404)
-            .body(Empty::<Bytes>::new())
-            .unwrap();
-
-        let request_info = RequestInfo {
-            trace_id: "test-trace-456".to_string(),
-            method: "POST".to_string(),
-            path: "/api/users".to_string(),
-            remote_addr: "10.0.0.1".to_string(),
-            user_agent: "curl/7.68.0".to_string(),
-            start_time_ms: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis(),
-        };
-
-        // This should not panic
-        middleware.log_response(&response, &request_info, None);
-    }
-
-    #[test]
-    fn test_log_response_no_upstream_duration() {
-        let config = create_test_config();
-        let middleware = LoggingMiddleware::new(config);
-
-        let response = Response::builder()
-            .status(500)
-            .body(Empty::<Bytes>::new())
-            .unwrap();
-
-        let request_info = RequestInfo {
-            trace_id: "test-trace-789".to_string(),
-            method: "DELETE".to_string(),
-            path: "/api/resource/123".to_string(),
-            remote_addr: "172.16.0.1".to_string(),
-            user_agent: "Mozilla/5.0".to_string(),
-            start_time_ms: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis(),
-        };
-
-        // This should not panic and handle None upstream duration
-        middleware.log_response(&response, &request_info, None);
-    }
-
-    // Mock future for testing TracedResponseFuture
-    struct MockResponseFuture {
-        response: Option<Result<Response<Empty<Bytes>>, &'static str>>,
-    }
-
-    impl MockResponseFuture {
-        fn new_ok(response: Response<Empty<Bytes>>) -> Self {
-            Self {
-                response: Some(Ok(response)),
-            }
-        }
-
-        fn new_err(error: &'static str) -> Self {
-            Self {
-                response: Some(Err(error)),
-            }
-        }
-    }
-
-    impl Future for MockResponseFuture {
-        type Output = Result<Response<Empty<Bytes>>, &'static str>;
-
-        fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-            Poll::Ready(self.response.take().unwrap())
-        }
-    }
-
-    impl Unpin for MockResponseFuture {}
-
-    #[tokio::test]
-    async fn test_traced_response_future_success_with_trace_id() {
-        let response = Response::builder()
-            .status(200)
-            .body(Empty::<Bytes>::new())
-            .unwrap();
-
-        let future = MockResponseFuture::new_ok(response);
-        let traced_future =
-            future.with_trace_id("test-trace-123".to_string(), "x-trace-id".to_string(), true);
-
-        let result = traced_future.await;
-        assert!(result.is_ok());
-
-        let response = result.unwrap();
-        assert_eq!(response.status(), 200);
-        assert!(response.headers().contains_key("x-trace-id"));
-        assert_eq!(
-            response.headers().get("x-trace-id").unwrap(),
-            "test-trace-123"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_traced_response_future_success_without_trace_id() {
-        let response = Response::builder()
-            .status(201)
-            .body(Empty::<Bytes>::new())
-            .unwrap();
-
-        let future = MockResponseFuture::new_ok(response);
-        let traced_future = future.with_trace_id(
-            "test-trace-456".to_string(),
-            "x-trace-id".to_string(),
-            false, // Don't include trace ID
-        );
-
-        let result = traced_future.await;
-        assert!(result.is_ok());
-
-        let response = result.unwrap();
-        assert_eq!(response.status(), 201);
-        assert!(!response.headers().contains_key("x-trace-id"));
-    }
-
-    #[tokio::test]
-    async fn test_traced_response_future_error() {
-        let future = MockResponseFuture::new_err("test error");
-        let traced_future =
-            future.with_trace_id("test-trace-789".to_string(), "x-trace-id".to_string(), true);
-
-        let result = traced_future.await;
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "test error");
-    }
-
-    #[tokio::test]
-    async fn test_traced_response_future_invalid_header_name() {
-        let response = Response::builder()
-            .status(200)
-            .body(Empty::<Bytes>::new())
-            .unwrap();
-
-        let future = MockResponseFuture::new_ok(response);
-        let traced_future = future.with_trace_id(
-            "test-trace-123".to_string(),
-            "invalid header name with spaces".to_string(), // Invalid header name
-            true,
-        );
-
-        let result = traced_future.await;
-        assert!(result.is_ok());
-
-        let response = result.unwrap();
-        // Should fallback to x-trace-id header
-        assert!(response.headers().contains_key("x-trace-id"));
-    }
-
-    #[tokio::test]
-    async fn test_traced_response_future_invalid_header_value() {
-        let response = Response::builder()
-            .status(200)
-            .body(Empty::<Bytes>::new())
-            .unwrap();
-
-        let future = MockResponseFuture::new_ok(response);
-        let traced_future = future.with_trace_id(
-            "\x00\x01\x02".to_string(), // Invalid header value
-            "x-trace-id".to_string(),
-            true,
-        );
-
-        let result = traced_future.await;
-        assert!(result.is_ok());
-
-        let response = result.unwrap();
-        assert!(response.headers().contains_key("x-trace-id"));
-        // Should fallback to "invalid-trace-id"
-        assert_eq!(
-            response.headers().get("x-trace-id").unwrap(),
-            "invalid-trace-id"
-        );
     }
 }

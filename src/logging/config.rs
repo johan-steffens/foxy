@@ -48,11 +48,11 @@ pub struct LoggingConfig {
     pub static_fields: HashMap<String, String>,
 }
 
-fn default_false() -> bool {
+const fn default_false() -> bool {
     false
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 
@@ -86,6 +86,7 @@ impl Default for LoggingConfig {
 
 impl LoggingConfig {
     /// Convert to logger config
+    #[must_use]
     pub fn to_logger_config(&self) -> LoggerConfig {
         LoggerConfig {
             format: match self.format.to_lowercase().as_str() {
@@ -95,11 +96,10 @@ impl LoggingConfig {
             level: match self.level.to_lowercase().as_str() {
                 "trace" => slog::Level::Trace,
                 "debug" => slog::Level::Debug,
-                "info" => slog::Level::Info,
                 "warn" => slog::Level::Warning,
                 "error" => slog::Level::Error,
                 "critical" => slog::Level::Critical,
-                _ => slog::Level::Info,
+                _ => slog::Level::Info, // Default for "info" and unknown levels
             },
             include_location: self.include_location,
             include_thread_id: self.include_thread_id,

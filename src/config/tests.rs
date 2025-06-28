@@ -823,7 +823,7 @@ mod config_tests {
         assert_eq!(negative, -42);
 
         let large: i64 = provider.get("large.number").unwrap().unwrap();
-        assert_eq!(large, 9223372036854775807);
+        assert_eq!(large, 9_223_372_036_854_775_807);
 
         let decimal: f64 = provider.get("decimal").unwrap().unwrap();
         assert_eq!(decimal, 123.456);
@@ -1180,7 +1180,7 @@ server:
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("config.json");
 
-        let content = r#"{ invalid json }"#;
+        let content = r"{ invalid json }";
 
         let mut file = File::create(&file_path).unwrap();
         file.write_all(content.as_bytes()).unwrap();
@@ -1351,7 +1351,7 @@ server:
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("config.json");
 
-        let content = r#"{}"#;
+        let content = r"{}";
 
         let mut file = File::create(&file_path).unwrap();
         file.write_all(content.as_bytes()).unwrap();
@@ -1481,8 +1481,8 @@ server:
             serde_json::from_str(full_json).expect("Failed to deserialize full ServerConfig");
 
         assert_eq!(config.listen, "192.168.1.100:8888");
-        assert_eq!(config.body_limit, 1048576); // 1MB
-        assert_eq!(config.header_limit, 131072); // 128KB
+        assert_eq!(config.body_limit, 1_048_576); // 1MB
+        assert_eq!(config.header_limit, 131_072); // 128KB
     }
 
     #[test]
