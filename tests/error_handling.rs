@@ -136,10 +136,7 @@ async fn test_config_error_handling() {
             // Config error wrapped in ProxyError - also expected
         }
         other => {
-            panic!(
-                "Expected ConfigError or ProxyError(ConfigError), got: {:?}",
-                other
-            );
+            panic!("Expected ConfigError or ProxyError(ConfigError), got: {other:?}");
         }
     }
 }
@@ -208,7 +205,7 @@ async fn test_network_timeout_error() {
         }
         Err(e) => {
             // Network error is also acceptable
-            println!("Expected network error: {}", e);
+            println!("Expected network error: {e}");
         }
     }
 
@@ -251,7 +248,7 @@ async fn test_upstream_server_unavailable() {
         }
         Err(e) => {
             // Connection error is also acceptable
-            println!("Expected connection error: {}", e);
+            println!("Expected connection error: {e}");
         }
     }
 
@@ -291,7 +288,7 @@ async fn test_malformed_request_handling() {
     // Test with extremely long URL
     let long_path = "/api/".to_string() + &"x".repeat(10000);
     let response = client
-        .get(format!("http://127.0.0.1:8080{}", long_path))
+        .get(format!("http://127.0.0.1:8080{long_path}"))
         .send()
         .await;
 
@@ -302,7 +299,7 @@ async fn test_malformed_request_handling() {
         }
         Err(e) => {
             // URL too long error is acceptable
-            println!("Expected URL error: {}", e);
+            println!("Expected URL error: {e}");
         }
     }
 
@@ -355,7 +352,7 @@ async fn test_large_request_body_handling() {
         }
         Err(e) => {
             // Request too large error is acceptable
-            println!("Expected body size error: {}", e);
+            println!("Expected body size error: {e}");
         }
     }
 
