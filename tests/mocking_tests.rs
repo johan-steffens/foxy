@@ -398,7 +398,7 @@ async fn test_mock_server_presets_error_server() {
 
     for status in status_codes {
         let response = client
-            .get(format!("http://127.0.0.1:8080/status/{}", status))
+            .get(format!("http://127.0.0.1:8080/status/{status}"))
             .send()
             .await
             .expect("Request failed");

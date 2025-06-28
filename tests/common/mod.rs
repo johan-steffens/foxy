@@ -77,7 +77,7 @@ impl TestConfigProvider {
                     let new_key = if prefix.is_empty() {
                         key.clone()
                     } else {
-                        format!("{}.{}", prefix, key)
+                        format!("{prefix}.{key}")
                     };
 
                     match val {
@@ -158,7 +158,7 @@ impl TestConfigProvider {
         }
 
         // Try to build nested object from individual keys
-        let prefix = format!("{}.", key_path);
+        let prefix = format!("{key_path}.");
         let mut nested_obj = serde_json::Map::new();
 
         for (key, value) in &self.values {
@@ -464,7 +464,7 @@ pub fn create_temp_config_file(
     format: &str,
 ) -> Result<(TempDir, String), std::io::Error> {
     let temp_dir = TempDir::new()?;
-    let file_name = format!("test_config.{}", format);
+    let file_name = format!("test_config.{format}");
     let file_path = temp_dir.path().join(&file_name);
 
     fs::write(&file_path, content)?;

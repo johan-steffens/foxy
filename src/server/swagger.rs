@@ -78,7 +78,7 @@ fn generate_html(config: &SwaggerUIConfig) -> String {
     let urls_config = generate_urls_config(&config.sources);
 
     // Set the `url` parameter to the first source to ensure a default is loaded.
-    let default_url = config.sources.get(0).map_or("", |s| &s.url);
+    let default_url = config.sources.first().map_or("", |s| &s.url);
 
     format!(
         r#"
@@ -131,7 +131,7 @@ pub async fn handle_swagger_request(
     let index_path = format!("{}/index.html", root_path);
 
     // Serve the main HTML file for the root index path (with trailing slash) or index.html
-    if path == format!("{}", root_path) || path == format!("{}/", root_path) || path == index_path {
+    if path == *root_path || path == format!("{root_path}/") || path == index_path {
         let html = generate_html(config);
         return Ok(Response::builder()
             .status(StatusCode::OK)

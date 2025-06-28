@@ -119,7 +119,7 @@ mod server_tests {
         assert_eq!(config.health_port, cloned.health_port);
 
         // Test Debug implementation
-        let debug_str = format!("{:?}", config);
+        let debug_str = format!("{config:?}");
         assert!(debug_str.contains("ServerConfig"));
         assert!(debug_str.contains("0.0.0.0"));
         assert!(debug_str.contains("9000"));
@@ -472,7 +472,7 @@ mod server_tests {
         let server = ProxyServer::new(config, core);
 
         // Test Debug implementation
-        let debug_str = format!("{:?}", server);
+        let debug_str = format!("{server:?}");
         assert!(debug_str.contains("ProxyServer"));
         assert!(debug_str.contains("config"));
         assert!(debug_str.contains("core"));
@@ -507,8 +507,8 @@ mod server_tests {
 
         // Add many headers to test header handling
         for i in 0..50 {
-            let header_name = format!("x-custom-header-{}", i);
-            let header_value = format!("value-{}", i);
+            let header_name = format!("x-custom-header-{i}");
+            let header_value = format!("value-{i}");
             headers.insert(
                 header_name.parse::<hyper::header::HeaderName>().unwrap(),
                 header_value.parse().unwrap(),

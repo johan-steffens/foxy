@@ -359,8 +359,10 @@ mod tests {
     #[cfg(feature = "opentelemetry")]
     #[test]
     fn test_init_with_empty_endpoint() {
-        let mut config = OpenTelemetryConfig::default();
-        config.endpoint = "".to_string();
+        let config = OpenTelemetryConfig {
+            endpoint: "".to_string(),
+            ..Default::default()
+        };
 
         let result = init(Some(config));
         assert!(result.is_ok());
@@ -376,8 +378,10 @@ mod tests {
     #[cfg(feature = "opentelemetry")]
     #[tokio::test]
     async fn test_init_with_custom_headers() {
-        let mut config = OpenTelemetryConfig::default();
-        config.endpoint = "http://localhost:4317".to_string();
+        let mut config = OpenTelemetryConfig {
+            endpoint: "http://localhost:4317".to_string(),
+            ..Default::default()
+        };
         config
             .collector_headers
             .insert("x-api-key".to_string(), "test-key".to_string());
@@ -392,8 +396,10 @@ mod tests {
     #[cfg(feature = "opentelemetry")]
     #[tokio::test]
     async fn test_init_with_custom_resource_attributes() {
-        let mut config = OpenTelemetryConfig::default();
-        config.endpoint = "http://localhost:4317".to_string();
+        let mut config = OpenTelemetryConfig {
+            endpoint: "http://localhost:4317".to_string(),
+            ..Default::default()
+        };
         config
             .resource_attributes
             .insert("service.version".to_string(), "1.0.0".to_string());
@@ -408,8 +414,10 @@ mod tests {
     #[cfg(feature = "opentelemetry")]
     #[tokio::test]
     async fn test_init_with_invalid_headers() {
-        let mut config = OpenTelemetryConfig::default();
-        config.endpoint = "http://localhost:4317".to_string();
+        let mut config = OpenTelemetryConfig {
+            endpoint: "http://localhost:4317".to_string(),
+            ..Default::default()
+        };
         // Add headers with invalid characters that should be filtered out
         config
             .collector_headers
