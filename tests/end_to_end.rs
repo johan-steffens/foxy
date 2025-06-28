@@ -335,7 +335,7 @@ async fn test_basic_proxy_functionality() {
             let body = resp.text().await.expect("Failed to read body");
             assert!(body.contains("httpbin") || body.contains("origin") || body.contains("url"));
         }
-        Ok(Err(e)) => panic!("Request failed: {}", e),
+        Ok(Err(e)) => panic!("Request failed: {e}"),
         Err(_) => panic!("Request timed out"),
     }
 
@@ -396,7 +396,7 @@ async fn test_anything_endpoint() {
                 "Response should contain proxy_test marker from mock server"
             );
         }
-        Ok(Err(e)) => panic!("Request failed: {}", e),
+        Ok(Err(e)) => panic!("Request failed: {e}"),
         Err(_) => panic!("Request timed out"),
     }
 
@@ -445,7 +445,7 @@ async fn test_post_method() {
             let body = resp.text().await.expect("Failed to read body");
             assert!(body.contains("httpbin") || body.contains("origin") || body.contains("url"));
         }
-        Ok(Err(e)) => panic!("Request failed: {}", e),
+        Ok(Err(e)) => panic!("Request failed: {e}"),
         Err(_) => panic!("Request timed out"),
     }
 
@@ -494,7 +494,7 @@ async fn test_put_method() {
             let body = resp.text().await.unwrap();
             assert!(body.contains("httpbin") || body.contains("origin") || body.contains("url"));
         }
-        Ok(Err(e)) => panic!("Request failed: {}", e),
+        Ok(Err(e)) => panic!("Request failed: {e}"),
         Err(_) => panic!("Request timed out"),
     }
 
@@ -543,7 +543,7 @@ async fn test_delete_method() {
             let body = resp.text().await.expect("Failed to read body");
             assert!(body.contains("httpbin") || body.contains("origin") || body.contains("url"));
         }
-        Ok(Err(e)) => panic!("Request failed: {}", e),
+        Ok(Err(e)) => panic!("Request failed: {e}"),
         Err(_) => panic!("Request timed out"),
     }
 
