@@ -21,7 +21,7 @@ async fn start_mock_server() -> (tokio::task::JoinHandle<()>, u16) {
         .and(warp::header::headers_cloned())
         .map(|headers: warp::http::HeaderMap| {
             println!("🔍 Mock server received GET /get request");
-            println!("📋 Headers: {:?}", headers);
+            println!("📋 Headers: {headers:?}");
 
             // Check if request came through Foxy proxy by looking for forwarded headers
             let via_foxy = headers.get("x-forwarded-for").is_some()
@@ -112,7 +112,7 @@ async fn start_mock_server() -> (tokio::task::JoinHandle<()>, u16) {
                 "🔍 Mock server received GET /anything/{} request",
                 tail.as_str()
             );
-            println!("📋 Headers: {:?}", headers);
+            println!("📋 Headers: {headers:?}");
 
             warp::reply::json(&json!({
                 "args": {},
@@ -167,7 +167,7 @@ fn create_test_config(mock_server_port: u16) -> serde_json::Value {
         "routes": [
             {
                 "id": "httpbin-get",
-                "target": format!("http://127.0.0.1:{}", mock_server_port),
+                "target": format!("http://127.0.0.1:{mock_server_port}"),
                 "filters": [
                     {
                         "type": "path_rewrite",
@@ -195,7 +195,7 @@ fn create_test_config(mock_server_port: u16) -> serde_json::Value {
             },
             {
                 "id": "httpbin-post",
-                "target": format!("http://127.0.0.1:{}", mock_server_port),
+                "target": format!("http://127.0.0.1:{mock_server_port}"),
                 "filters": [
                     {
                         "type": "path_rewrite",
@@ -223,7 +223,7 @@ fn create_test_config(mock_server_port: u16) -> serde_json::Value {
             },
             {
                 "id": "httpbin-put",
-                "target": format!("http://127.0.0.1:{}", mock_server_port),
+                "target": format!("http://127.0.0.1:{mock_server_port}"),
                 "filters": [
                     {
                         "type": "path_rewrite",
