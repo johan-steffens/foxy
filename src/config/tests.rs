@@ -4,17 +4,20 @@
 
 #[cfg(test)]
 mod config_tests {
-    use crate::config::proxy::{ProxyConfig, ServerConfig};
-    use crate::config::{Config, ConfigBuilder, ConfigError, ConfigProvider, ConfigProviderExt, EnvConfigProvider, FileConfigProvider};
     use crate::config::file::FileFormat;
+    use crate::config::proxy::{ProxyConfig, ServerConfig};
+    use crate::config::{
+        Config, ConfigBuilder, ConfigError, ConfigProvider, ConfigProviderExt, EnvConfigProvider,
+        FileConfigProvider,
+    };
+    use serde_json;
     use serde_json::Value;
     use std::env;
     use std::fs::File;
     use std::io::Write;
     use std::path::Path;
     use tempfile::tempdir;
-    use serde_json;
-    
+
     // Simple mock config provider for testing
     #[derive(Debug)]
     struct MockConfigProvider {
@@ -476,7 +479,7 @@ mod config_tests {
         let debug_str = format!("{:?}", config);
         assert!(debug_str.contains("Config"));
     }
-    
+
     /* Environment tests */
 
     #[test]
@@ -1496,8 +1499,6 @@ server:
         assert_eq!(config.server.body_limit, 5 * 1024 * 1024); // default
         assert_eq!(config.server.header_limit, 256 * 1024); // default
     }
-
-
 
     #[test]
     fn test_server_config_debug() {
