@@ -452,7 +452,7 @@ async fn handle_request(
 ) -> Result<Response<Body>, Infallible> {
     // Process the request through the logging middleware
     let remote_addr = req.extensions().get::<SocketAddr>().cloned();
-    let (req, request_info) = logging_middleware.process(req, remote_addr).await;
+    let (req, request_info) = logging_middleware.process(req, remote_addr);
 
     // Start Swagger UI Handling
     #[cfg(feature = "swagger-ui")]
