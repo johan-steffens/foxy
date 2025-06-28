@@ -372,7 +372,7 @@ async fn test_anything_endpoint() {
 
     // Make request to mock anything endpoint
     println!("🚀 Making request to Foxy proxy at http://127.0.0.1:8080/anything/test");
-    println!("📡 Mock server running on port: {}", mock_port);
+    println!("📡 Mock server running on port: {mock_port}");
 
     let client = reqwest::Client::new();
     let response = timeout(
@@ -387,7 +387,7 @@ async fn test_anything_endpoint() {
             println!("✅ Response status: {}", resp.status());
             assert_eq!(resp.status(), 200);
             let body = resp.text().await.expect("Failed to read body");
-            println!("📄 Response body: {}", body);
+            println!("📄 Response body: {body}");
             assert!(body.contains("httpbin") || body.contains("origin") || body.contains("url"));
 
             // Verify it contains our proxy test marker
