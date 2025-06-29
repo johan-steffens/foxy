@@ -154,7 +154,7 @@ fn create_test_config(mock_server_port: u16) -> serde_json::Value {
     json!({
         "server": {
             "host": "127.0.0.1",
-            "port": 6868
+            "port": 8080
         },
         "proxy": {
             "timeout": 30,

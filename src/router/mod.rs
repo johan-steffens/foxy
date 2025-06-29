@@ -19,6 +19,7 @@
 mod predicates;
 
 #[cfg(test)]
+#[path = "../../tests/unit/router/tests.rs"]
 mod tests;
 
 pub use predicates::*;

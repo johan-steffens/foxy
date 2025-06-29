@@ -32,6 +32,7 @@ mod file;
 mod proxy;
 
 #[cfg(test)]
+#[path = "../../tests/unit/config/tests.rs"]
 mod tests;
 
 pub use env::EnvConfigProvider;

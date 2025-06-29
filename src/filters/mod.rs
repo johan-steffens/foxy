@@ -9,6 +9,7 @@
 //! with its configuration schema.
 
 #[cfg(test)]
+#[path = "../../tests/unit/filters/tests.rs"]
 mod tests;
 
 use crate::{debug_fmt, error_fmt, info_fmt, trace_fmt, warn_fmt};

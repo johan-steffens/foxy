@@ -22,6 +22,7 @@ mod health;
 #[cfg(feature = "swagger-ui")]
 pub mod swagger;
 #[cfg(test)]
+#[path = "../../tests/unit/server/tests.rs"]
 mod tests;
 
 use crate::core::{HttpMethod, ProxyCore, ProxyError, ProxyRequest, ProxyResponse, RequestContext};
@@ -76,26 +77,26 @@ use opentelemetry_semantic_conventions::attribute::{
 pub struct ServerConfig {
     /// Host to bind to
     #[serde(default = "default_host")]
-    pub host: String,
+    pub(crate) host: String,
 
     /// Port to listen on
     #[serde(default = "default_port")]
-    pub port: u16,
+    pub(crate) port: u16,
 
     /// Port to listen on for health/readiness checks
     #[serde(default = "default_health_port")]
-    pub health_port: u16,
+    pub(crate) health_port: u16,
 }
 
-fn default_host() -> String {
+pub(crate) fn default_host() -> String {
     "127.0.0.1".to_string()
 }
 
-fn default_port() -> u16 {
+pub(crate) fn default_port() -> u16 {
     8080
 }
 
-fn default_health_port() -> u16 {
+pub(crate) fn default_health_port() -> u16 {
     8081
 }
 
@@ -113,7 +114,7 @@ impl Default for ServerConfig {
 #[derive(Debug, Clone)]
 pub struct ProxyServer {
     /// Server configuration
-    config: ServerConfig,
+    pub(crate) config: ServerConfig,
     /// Proxy core
     core: Arc<ProxyCore>,
     /// Shutdown senders for each connection task
@@ -140,6 +141,11 @@ impl ProxyServer {
             shutdown_senders: Arc::new(RwLock::new(HashMap::new())),
             logging_middleware,
         }
+    }
+
+    /// Get access to the proxy core.
+    pub fn core(&self) -> &Arc<ProxyCore> {
+        &self.core
     }
 
     /// Start the proxy server.
