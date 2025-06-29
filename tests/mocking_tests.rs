@@ -30,7 +30,7 @@ async fn test_mock_upstream_json_endpoint() {
         .await;
 
     let config = TestConfigProvider::new("mock_test")
-        .with_value("server.port", 0)
+        .with_value("server.port", 8080)
         .with_routes(vec![
             TestRoute::new(&mock_upstream.uri()).with_path("/api/*"),
         ]);
@@ -70,7 +70,7 @@ async fn test_mock_upstream_header_echo() {
     mock_upstream.with_header_echo_endpoint("/echo").await;
 
     let config = TestConfigProvider::new("header_echo_test")
-        .with_value("server.port", 0)
+        .with_value("server.port", 8080)
         .with_routes(vec![
             TestRoute::new(&mock_upstream.uri()).with_path("/echo"),
         ]);
@@ -121,7 +121,7 @@ async fn test_mock_upstream_header_requirement() {
         .await;
 
     let config = TestConfigProvider::new("auth_test")
-        .with_value("server.port", 0)
+        .with_value("server.port", 8080)
         .with_routes(vec![
             TestRoute::new(&mock_upstream.uri()).with_path("/protected"),
         ]);
@@ -178,7 +178,7 @@ async fn test_mock_upstream_slow_endpoint() {
         .await;
 
     let config = TestConfigProvider::new("slow_test")
-        .with_value("server.port", 0)
+        .with_value("server.port", 8080)
         .with_routes(vec![
             TestRoute::new(&mock_upstream.uri()).with_path("/slow"),
         ]);
@@ -222,7 +222,7 @@ async fn test_mock_upstream_flaky_endpoint() {
     mock_upstream.with_flaky_endpoint("/flaky").await;
 
     let config = TestConfigProvider::new("flaky_test")
-        .with_value("server.port", 0)
+        .with_value("server.port", 8080)
         .with_routes(vec![
             TestRoute::new(&mock_upstream.uri()).with_path("/flaky"),
         ]);
@@ -271,7 +271,7 @@ async fn test_mock_server_presets_rest_api() {
     let mock_upstream = MockServerPresets::rest_api().await;
 
     let config = TestConfigProvider::new("rest_api_test")
-        .with_value("server.port", 0)
+        .with_value("server.port", 8080)
         .with_routes(vec![TestRoute::new(&mock_upstream.uri()).with_path("/*")]);
 
     let foxy = Foxy::loader()
@@ -323,7 +323,7 @@ async fn test_mock_server_presets_auth_server() {
     let mock_upstream = MockServerPresets::auth_server().await;
 
     let config = TestConfigProvider::new("auth_server_test")
-        .with_value("server.port", 0)
+        .with_value("server.port", 8080)
         .with_routes(vec![TestRoute::new(&mock_upstream.uri()).with_path("/*")]);
 
     let foxy = Foxy::loader()
@@ -378,7 +378,7 @@ async fn test_mock_server_presets_error_server() {
     let mock_upstream = MockServerPresets::error_server().await;
 
     let config = TestConfigProvider::new("error_server_test")
-        .with_value("server.port", 0)
+        .with_value("server.port", 8080)
         .with_routes(vec![TestRoute::new(&mock_upstream.uri()).with_path("/*")]);
 
     let foxy = Foxy::loader()
@@ -465,7 +465,7 @@ async fn test_mock_upstream_text_endpoint() {
         .await;
 
     let config = TestConfigProvider::new("text_endpoint_test")
-        .with_value("server.port", 0)
+        .with_value("server.port", 8080)
         .with_routes(vec![TestRoute::new(&mock_upstream.uri()).with_path("/*")]);
 
     let foxy = Foxy::loader()
@@ -514,7 +514,7 @@ async fn test_mock_upstream_query_requirement() {
         .await;
 
     let config = TestConfigProvider::new("query_requirement_test")
-        .with_value("server.port", 0)
+        .with_value("server.port", 8080)
         .with_routes(vec![TestRoute::new(&mock_upstream.uri()).with_path("/*")]);
 
     let foxy = Foxy::loader()
@@ -565,7 +565,7 @@ async fn test_mock_upstream_large_response() {
         .await; // 10KB response
 
     let config = TestConfigProvider::new("large_response_test")
-        .with_value("server.port", 0)
+        .with_value("server.port", 8080)
         .with_routes(vec![TestRoute::new(&mock_upstream.uri()).with_path("/*")]);
 
     let foxy = Foxy::loader()
@@ -610,7 +610,7 @@ async fn test_mock_upstream_cors_endpoint() {
         .await;
 
     let config = TestConfigProvider::new("cors_test")
-        .with_value("server.port", 0)
+        .with_value("server.port", 8080)
         .with_routes(vec![TestRoute::new(&mock_upstream.uri()).with_path("/*")]);
 
     let foxy = Foxy::loader()

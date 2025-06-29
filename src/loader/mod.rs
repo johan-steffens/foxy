@@ -9,6 +9,7 @@
 //! passed into [`ProxyServer::serve`].
 
 #[cfg(test)]
+#[path = "../../tests/unit/loader/tests.rs"]
 mod tests;
 
 use log::LevelFilter;
@@ -234,6 +235,11 @@ impl Foxy {
     /// Get the configuration.
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    /// Get access to the proxy core for adding security providers and global filters.
+    pub fn core(&self) -> &Arc<ProxyCore> {
+        self.server.core()
     }
 
     /// Start the proxy server.

@@ -150,13 +150,6 @@ impl TestConfigProvider {
             return Some(value.clone());
         }
 
-        // If not, try to build a nested object from individual keys
-        let parts: Vec<&str> = key_path.split('.').collect();
-        if parts.len() == 1 {
-            // Single key, already checked above
-            return None;
-        }
-
         // Try to build nested object from individual keys
         let prefix = format!("{key_path}.");
         let mut nested_obj = serde_json::Map::new();
@@ -201,6 +194,7 @@ pub struct TestRoute {
     pub predicates: Vec<TestPredicate>,
     pub target: String,
     pub filters: Vec<TestFilter>,
+    pub raw_filters: Vec<serde_json::Value>,
 }
 
 #[allow(dead_code)]
@@ -215,6 +209,7 @@ impl TestRoute {
             predicates: Vec::new(),
             target: target.to_string(),
             filters: Vec::new(),
+            raw_filters: Vec::new(),
         }
     }
 
@@ -239,6 +234,17 @@ impl TestRoute {
         self.filters.push(filter);
         self
     }
+
+    /// Add a raw filter configuration (for testing custom filters)
+    pub fn with_raw_filter(mut self, filter_type: &str, config: serde_json::Value) -> Self {
+        // Create a custom TestFilter variant that holds raw configuration
+        // We'll add this to the filters list as a JSON object directly
+        self.raw_filters.push(serde_json::json!({
+            "type": filter_type,
+            "config": config
+        }));
+        self
+    }
 }
 
 impl From<TestRoute> for Value {
@@ -252,9 +258,10 @@ impl From<TestRoute> for Value {
             route.insert("predicates".to_string(), Value::Array(predicates));
         }
 
-        if !val.filters.is_empty() {
-            let filters: Vec<Value> = val.filters.into_iter().map(|f| f.into()).collect();
-            route.insert("filters".to_string(), Value::Array(filters));
+        if !val.filters.is_empty() || !val.raw_filters.is_empty() {
+            let mut all_filters: Vec<Value> = val.filters.into_iter().map(|f| f.into()).collect();
+            all_filters.extend(val.raw_filters);
+            route.insert("filters".to_string(), Value::Array(all_filters));
         }
 
         // Add default priority

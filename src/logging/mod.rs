@@ -18,6 +18,7 @@ pub mod test_logger;
 pub mod wrapper;
 
 #[cfg(test)]
+#[path = "../../tests/unit/logging/tests.rs"]
 mod tests;
 
 use crate::logging::config::LoggingConfig;

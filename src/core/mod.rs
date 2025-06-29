@@ -9,6 +9,7 @@
 //! `server.rs` (IO) and `filters.rs` (behaviour).
 
 #[cfg(test)]
+#[path = "../../tests/unit/core/tests.rs"]
 mod tests;
 
 use crate::security::{ProviderConfig, SecurityChain, SecurityProvider};

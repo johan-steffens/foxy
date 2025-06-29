@@ -11,6 +11,7 @@ pub mod basic;
 pub mod oidc;
 
 #[cfg(test)]
+#[path = "../../tests/unit/security/tests.rs"]
 mod tests;
 
 use crate::core::{ProxyError, ProxyRequest, ProxyResponse};
