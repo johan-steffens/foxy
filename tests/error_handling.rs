@@ -456,8 +456,7 @@ async fn test_request_timeout_error_path() {
             // The specific error depends on timing and network conditions
             assert!(
                 status == 504 || status == 502,
-                "Expected 504 or 502, got: {}",
-                status
+                "Expected server error, got: {status}"
             );
             // Check for either timeout or gateway error message
             assert!(body.contains("Gateway Timeout") || body.contains("Bad Gateway"));
@@ -667,8 +666,7 @@ async fn test_global_post_filter_error_path() {
             // Should get an error status due to global filter failure
             assert!(
                 status.is_server_error(),
-                "Expected server error, got: {}",
-                status
+                "Expected server error, got: {status}"
             );
         }
         Err(e) => {
