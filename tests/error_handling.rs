@@ -449,9 +449,9 @@ async fn test_request_timeout_error_path() {
     match response {
         Ok(resp) => {
             let status = resp.status();
-            println!("Response status: {}", status);
+            println!("Response status: {status}");
             let body = resp.text().await.unwrap();
-            println!("Response body: {}", body);
+            println!("Response body: {body}");
             // Accept both 504 (timeout) and 502 (bad gateway) as valid error responses
             // The specific error depends on timing and network conditions
             assert!(
@@ -663,7 +663,7 @@ async fn test_global_post_filter_error_path() {
     match response {
         Ok(resp) => {
             let status = resp.status();
-            println!("Response status: {}", status);
+            println!("Response status: {status}");
             // Should get an error status due to global filter failure
             assert!(
                 status.is_server_error(),
@@ -917,7 +917,7 @@ async fn test_debug_route_matching() {
         Ok(resp) => {
             println!("Response status: {}", resp.status());
             let body = resp.text().await.unwrap();
-            println!("Response body: {}", body);
+            println!("Response body: {body}");
         }
         Err(e) => {
             println!("Request error: {e}");
