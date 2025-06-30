@@ -4,14 +4,14 @@
 
 #[cfg(test)]
 mod config_tests {
+    #[cfg(feature = "vault-config")]
+    use crate::config::VaultConfigProvider;
     use crate::config::file::FileFormat;
     use crate::config::proxy::{ProxyConfig, ServerConfig};
     use crate::config::{
         Config, ConfigBuilder, ConfigError, ConfigProvider, ConfigProviderExt, EnvConfigProvider,
         FileConfigProvider,
     };
-    #[cfg(feature = "vault-config")]
-    use crate::config::VaultConfigProvider;
     use serde_json;
     use serde_json::Value;
     use std::env;
@@ -1626,7 +1626,8 @@ server:
             );
 
             // Wrap with vault provider
-            let vault_provider = VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
 
             // Test interpolation
             let secret: String = vault_provider.get("server.secret").unwrap().unwrap();
@@ -1646,10 +1647,13 @@ server:
             let mut mock_provider = MockConfigProvider::new("test", 0);
             mock_provider.values.insert(
                 "database.url".to_string(),
-                serde_json::json!("postgresql://${secret.username}:${secret.password}@localhost:5432/db"),
+                serde_json::json!(
+                    "postgresql://${secret.username}:${secret.password}@localhost:5432/db"
+                ),
             );
 
-            let vault_provider = VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
 
             let url: String = vault_provider.get("database.url").unwrap().unwrap();
             assert_eq!(url, "postgresql://admin:secret123@localhost:5432/db");
@@ -1677,7 +1681,8 @@ server:
                 }),
             );
 
-            let vault_provider = VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
 
             #[derive(serde::Deserialize, Debug, PartialEq)]
             struct Config {
@@ -1715,10 +1720,18 @@ server:
                 serde_json::json!(["${secret.host1}", "${secret.host2}", "static.example.com"]),
             );
 
-            let vault_provider = VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
 
             let servers: Vec<String> = vault_provider.get("servers").unwrap().unwrap();
-            assert_eq!(servers, vec!["server1.example.com", "server2.example.com", "static.example.com"]);
+            assert_eq!(
+                servers,
+                vec![
+                    "server1.example.com",
+                    "server2.example.com",
+                    "static.example.com"
+                ]
+            );
         }
 
         #[test]
@@ -1728,12 +1741,12 @@ server:
             fs::create_dir_all(&vault_dir).unwrap();
 
             let mut mock_provider = MockConfigProvider::new("test", 0);
-            mock_provider.values.insert(
-                "server.host".to_string(),
-                serde_json::json!("localhost"),
-            );
+            mock_provider
+                .values
+                .insert("server.host".to_string(), serde_json::json!("localhost"));
 
-            let vault_provider = VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
 
             let host: String = vault_provider.get("server.host").unwrap().unwrap();
             assert_eq!(host, "localhost");
@@ -1751,12 +1764,17 @@ server:
                 serde_json::json!("${secret.nonexistent}"),
             );
 
-            let vault_provider = VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
 
             let result = vault_provider.get::<String>("server.secret");
             assert!(result.is_err());
             let error = result.unwrap_err();
-            assert!(error.to_string().contains("secret file not found: nonexistent"));
+            assert!(
+                error
+                    .to_string()
+                    .contains("secret file not found: nonexistent")
+            );
         }
 
         #[test]
@@ -1771,7 +1789,8 @@ server:
                 serde_json::json!("${secret.../etc/passwd}"),
             );
 
-            let vault_provider = VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
 
             let result = vault_provider.get::<String>("server.secret");
             assert!(result.is_err());
@@ -1786,12 +1805,12 @@ server:
             fs::create_dir_all(&vault_dir).unwrap();
 
             let mut mock_provider = MockConfigProvider::new("test", 0);
-            mock_provider.values.insert(
-                "server.secret".to_string(),
-                serde_json::json!("${secret.}"),
-            );
+            mock_provider
+                .values
+                .insert("server.secret".to_string(), serde_json::json!("${secret.}"));
 
-            let vault_provider = VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
 
             let result = vault_provider.get::<String>("server.secret");
             assert!(result.is_err());
@@ -1815,7 +1834,8 @@ server:
                 serde_json::json!("${secret.padded_secret}"),
             );
 
-            let vault_provider = VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
 
             let secret: String = vault_provider.get("server.secret").unwrap().unwrap();
             assert_eq!(secret, "mysecret"); // Should be trimmed
@@ -1835,7 +1855,8 @@ server:
                 serde_json::json!("Bearer ${secret.token} ${secret.token}"),
             );
 
-            let vault_provider = VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
 
             let header: String = vault_provider.get("auth.header").unwrap().unwrap();
             assert_eq!(header, "Bearer abc123 abc123");
@@ -1848,7 +1869,8 @@ server:
             fs::create_dir_all(&vault_dir).unwrap();
 
             let mock_provider = MockConfigProvider::new("test", 0);
-            let vault_provider = VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
 
             assert_eq!(vault_provider.provider_name(), "vault");
         }
@@ -1860,7 +1882,8 @@ server:
             fs::create_dir_all(&vault_dir).unwrap();
 
             let mock_provider = MockConfigProvider::new("test", 0);
-            let vault_provider = VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
 
             // Should delegate to inner provider
             assert!(vault_provider.has("server.port"));
@@ -1888,7 +1911,8 @@ server:
 
             // Create file provider and wrap with vault
             let file_provider = FileConfigProvider::new(config_file.to_str().unwrap()).unwrap();
-            let vault_provider = VaultConfigProvider::wrap(file_provider, vault_dir.to_str().unwrap());
+            let vault_provider =
+                VaultConfigProvider::wrap(file_provider, vault_dir.to_str().unwrap());
 
             let host: String = vault_provider.get("database.host").unwrap().unwrap();
             assert_eq!(host, "localhost");

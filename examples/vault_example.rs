@@ -75,10 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create the configuration with vault interpolation
     let file_provider = FileConfigProvider::new(config_file.to_str().unwrap())?;
-    let vault_provider = VaultConfigProvider::wrap(
-        file_provider,
-        vault_dir.to_str().unwrap(),
-    );
+    let vault_provider = VaultConfigProvider::wrap(file_provider, vault_dir.to_str().unwrap());
 
     let config = Config::builder().with_provider(vault_provider).build();
 
