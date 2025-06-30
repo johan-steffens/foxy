@@ -15,6 +15,7 @@ mod logging_tests {
     use http_body_util::Empty;
     use hyper::{Method, Request, Response};
     use log::LevelFilter;
+    use serial_test::serial;
     use std::collections::HashMap;
     use std::future::Future;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -108,6 +109,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_is_structured_logging() {
         // Test the atomic boolean getter
         let initial_state = is_structured_logging();
@@ -125,6 +127,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_error_structured() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
@@ -142,6 +145,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_error_non_structured() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
 
@@ -154,6 +158,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_warning_structured() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
@@ -170,6 +175,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_warning_non_structured() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
 
@@ -181,6 +187,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_debug_structured() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
@@ -197,6 +204,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_debug_non_structured() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
 
@@ -208,6 +216,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_trace_structured() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
@@ -224,6 +233,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_trace_non_structured() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
 
@@ -235,6 +245,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_info_structured() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
@@ -251,6 +262,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_info_non_structured() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
 
@@ -262,6 +274,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_with_context_all_levels_structured() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
@@ -292,6 +305,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_with_context_all_levels_non_structured() {
         // Initialize env_logger for non-structured logging
         let _ = env_logger::builder().is_test(true).try_init();
@@ -327,6 +341,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_with_context_empty_fields() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
@@ -406,6 +421,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     #[allow(clippy::approx_constant)]
     fn test_logging_functions_with_different_types() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
@@ -424,6 +440,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_logging_functions_with_empty_context() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
 
@@ -436,6 +453,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_logging_functions_with_special_characters() {
         USING_STRUCTURED.store(false, Ordering::SeqCst);
 
@@ -448,6 +466,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_log_with_context_special_field_values() {
         // Set up a minimal structured logger for testing
         let drain = slog::Discard;
@@ -529,6 +548,7 @@ mod logging_tests {
     }
 
     #[test]
+    #[serial]
     fn test_atomic_operations_thread_safety() {
         use std::thread;
 
