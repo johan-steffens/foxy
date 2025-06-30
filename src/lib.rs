@@ -55,6 +55,8 @@ pub mod server;
 // Re-export key types at the crate root for convenience
 #[cfg(feature = "opentelemetry")]
 pub use crate::opentelemetry::init;
+#[cfg(feature = "vault-config")]
+pub use config::VaultConfigProvider;
 pub use config::{ConfigError, ConfigProvider, ConfigProviderExt};
 pub use core::{
     Filter, FilterType, HttpMethod, ProxyError, ProxyRequest, ProxyResponse, RequestContext,

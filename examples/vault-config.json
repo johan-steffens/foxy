@@ -1,0 +1,24 @@
+{
+  "server": {
+    "listen": "0.0.0.0:8080",
+    "secret": "${secret.redis_password}"
+  },
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "username": "admin",
+    "password": "${secret.db_password}",
+    "connection_string": "postgresql://${secret.db_user}:${secret.db_password}@localhost:5432/mydb"
+  },
+  "api": {
+    "key": "${secret.api_key}",
+    "endpoints": [
+      "https://api.example.com",
+      "https://${secret.backup_host}/api"
+    ]
+  },
+  "logging": {
+    "level": "info",
+    "format": "json"
+  }
+}
