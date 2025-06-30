@@ -135,13 +135,6 @@ jobs:
         env:
           RUST_BACKTRACE: 1
         run: |
-          echo "--- Network Diagnostics ---"
-          ipconfig /all
-          ping invalid-host-12345.example.com
-          powershell -Command "Resolve-DnsName -Name invalid-host-12345.example.com"
-          powershell -Command "Test-NetConnection -ComputerName invalid-host-12345.example.com -Port 80"
-          powershell -Command "Get-NetFirewallRule -Action Block -Enabled True | Format-Table Name, DisplayName"
-          echo "--- Running Tests ---"
           cargo test --all-features -- --test-threads=1
 
       - name: Cache cargo registry save
