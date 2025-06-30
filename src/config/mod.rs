@@ -30,6 +30,8 @@ mod env;
 pub mod error;
 mod file;
 mod proxy;
+#[cfg(feature = "vault-config")]
+mod vault;
 
 #[cfg(test)]
 #[path = "../../tests/unit/config/tests.rs"]
@@ -38,6 +40,8 @@ mod tests;
 pub use env::EnvConfigProvider;
 pub use error::ConfigError;
 pub use file::FileConfigProvider;
+#[cfg(feature = "vault-config")]
+pub use vault::VaultConfigProvider;
 
 use serde::de::DeserializeOwned;
 use serde_json::Value;
