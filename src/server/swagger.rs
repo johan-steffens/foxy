@@ -12,7 +12,10 @@
 use bytes::Bytes;
 use std::convert::Infallible;
 
-use hyper::body::Incoming;
+#[cfg(test)]
+#[path = "../../tests/unit/server/swagger_tests.rs"]
+mod tests;
+
 use hyper::{Request, Response, StatusCode, header};
 use reqwest::Body;
 use serde::{Deserialize, Serialize};
@@ -122,8 +125,8 @@ fn generate_html(config: &SwaggerUIConfig) -> String {
 }
 
 /// Handles incoming requests for the Swagger UI.
-pub async fn handle_swagger_request(
-    req: &Request<Incoming>,
+pub async fn handle_swagger_request<T>(
+    req: &Request<T>,
     config: &SwaggerUIConfig,
 ) -> Result<Response<Body>, Infallible> {
     let path = req.uri().path();
