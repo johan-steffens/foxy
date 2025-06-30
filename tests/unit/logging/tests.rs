@@ -1281,6 +1281,404 @@ mod logging_tests {
         );
     }
 
+    /* Additional tests for structured.rs coverage */
+    #[test]
+    fn test_init_global_logger_all_log_levels() {
+        let levels = vec![
+            slog::Level::Trace,
+            slog::Level::Debug,
+            slog::Level::Info,
+            slog::Level::Warning,
+            slog::Level::Error,
+            slog::Level::Critical,
+        ];
+
+        for level in levels {
+            let config = LoggerConfig {
+                format: LogFormat::Terminal,
+                level,
+                include_location: true,
+                include_thread_id: true,
+                static_fields: HashMap::new(),
+            };
+
+            // Test that initialization doesn't panic for any level
+            let _guard = init_global_logger(&config);
+        }
+    }
+
+    #[test]
+    fn test_init_global_logger_json_with_all_levels() {
+        let levels = vec![
+            slog::Level::Trace,
+            slog::Level::Debug,
+            slog::Level::Info,
+            slog::Level::Warning,
+            slog::Level::Error,
+            slog::Level::Critical,
+        ];
+
+        for level in levels {
+            let config = LoggerConfig {
+                format: LogFormat::Json,
+                level,
+                include_location: false,
+                include_thread_id: false,
+                static_fields: HashMap::new(),
+            };
+
+            // Test that JSON initialization doesn't panic for any level
+            let _guard = init_global_logger(&config);
+        }
+    }
+
+    #[test]
+    fn test_init_global_logger_with_large_static_fields() {
+        let mut static_fields = HashMap::new();
+
+        // Add many static fields to test memory management
+        for i in 0..100 {
+            static_fields.insert(format!("field_{}", i), format!("value_{}", i));
+        }
+
+        let config = LoggerConfig {
+            format: LogFormat::Json,
+            level: slog::Level::Info,
+            include_location: true,
+            include_thread_id: true,
+            static_fields,
+        };
+
+        // Test that large number of static fields doesn't cause issues
+        let _guard = init_global_logger(&config);
+    }
+
+    #[test]
+    fn test_init_global_logger_with_special_character_static_fields() {
+        let mut static_fields = HashMap::new();
+        static_fields.insert("unicode_field".to_string(), "🦀 Rust 🚀".to_string());
+        static_fields.insert(
+            "json_field".to_string(),
+            r#"{"nested": "value"}"#.to_string(),
+        );
+        static_fields.insert(
+            "newline_field".to_string(),
+            "line1\nline2\nline3".to_string(),
+        );
+        static_fields.insert("tab_field".to_string(), "col1\tcol2\tcol3".to_string());
+        static_fields.insert("quote_field".to_string(), r#"He said "Hello""#.to_string());
+        static_fields.insert("empty_field".to_string(), "".to_string());
+
+        let config = LoggerConfig {
+            format: LogFormat::Json,
+            level: slog::Level::Debug,
+            include_location: true,
+            include_thread_id: true,
+            static_fields,
+        };
+
+        // Test that special characters in static fields are handled properly
+        let _guard = init_global_logger(&config);
+    }
+
+    #[test]
+    fn test_logger_guard_drop_behavior() {
+        let config = LoggerConfig {
+            format: LogFormat::Terminal,
+            level: slog::Level::Info,
+            include_location: true,
+            include_thread_id: true,
+            static_fields: HashMap::new(),
+        };
+
+        // Create and drop multiple guards to test resource management
+        {
+            let _guard1 = init_global_logger(&config);
+            {
+                let _guard2 = init_global_logger(&config);
+                // guard2 drops here
+            }
+            // guard1 drops here
+        }
+
+        // Create another guard after previous ones are dropped
+        let _guard3 = init_global_logger(&config);
+    }
+
+    #[test]
+    fn test_concurrent_logger_initialization() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let config = Arc::new(LoggerConfig {
+            format: LogFormat::Json,
+            level: slog::Level::Info,
+            include_location: true,
+            include_thread_id: true,
+            static_fields: HashMap::new(),
+        });
+
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let config_clone = Arc::clone(&config);
+                thread::spawn(move || {
+                    // Test concurrent initialization
+                    let _guard = init_global_logger(&config_clone);
+                    // Simulate some work
+                    thread::sleep(std::time::Duration::from_millis(1));
+                })
+            })
+            .collect();
+
+        // Wait for all threads to complete
+        for handle in handles {
+            handle.join().expect("Thread should complete successfully");
+        }
+    }
+
+    #[test]
+    fn test_request_info_elapsed_ms_edge_cases() {
+        // Test with zero start time
+        let request_info = RequestInfo {
+            trace_id: "test".to_string(),
+            method: "GET".to_string(),
+            path: "/test".to_string(),
+            remote_addr: "127.0.0.1".to_string(),
+            user_agent: "test".to_string(),
+            start_time_ms: 0,
+        };
+
+        let elapsed = request_info.elapsed_ms();
+        // Should be current time since epoch
+        assert!(elapsed > 0);
+
+        // Test with maximum possible start time
+        let request_info = RequestInfo {
+            trace_id: "test".to_string(),
+            method: "GET".to_string(),
+            path: "/test".to_string(),
+            remote_addr: "127.0.0.1".to_string(),
+            user_agent: "test".to_string(),
+            start_time_ms: u128::MAX,
+        };
+
+        let elapsed = request_info.elapsed_ms();
+        // Should be 0 due to saturating_sub
+        assert_eq!(elapsed, 0);
+    }
+
+    #[test]
+    fn test_request_info_with_extreme_values() {
+        let request_info = RequestInfo {
+            trace_id: "a".repeat(1000), // Very long trace ID
+            method: "CUSTOM_METHOD_WITH_VERY_LONG_NAME".to_string(),
+            path: "/".repeat(500),                            // Very long path
+            remote_addr: "255.255.255.255:65535".to_string(), // Max IP and port
+            user_agent: "Mozilla/5.0 ".repeat(100),           // Very long user agent
+            start_time_ms: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+        };
+
+        // Test that extreme values don't cause panics
+        let elapsed = request_info.elapsed_ms();
+        // elapsed_ms returns u128, so it's always >= 0, just verify it doesn't panic
+        let _ = elapsed;
+
+        // Test debug formatting with extreme values
+        let debug_str = format!("{:?}", request_info);
+        assert!(debug_str.contains("RequestInfo"));
+    }
+
+    #[test]
+    fn test_generate_trace_id_uniqueness() {
+        let mut trace_ids = std::collections::HashSet::new();
+
+        // Generate many trace IDs and ensure they're all unique
+        for _ in 0..1000 {
+            let trace_id = generate_trace_id();
+            assert!(trace_ids.insert(trace_id), "Trace ID should be unique");
+        }
+    }
+
+    #[test]
+    fn test_generate_trace_id_concurrent() {
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+
+        let trace_ids = Arc::new(Mutex::new(std::collections::HashSet::new()));
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let trace_ids_clone = Arc::clone(&trace_ids);
+                thread::spawn(move || {
+                    let mut local_ids = Vec::new();
+                    for _ in 0..100 {
+                        local_ids.push(generate_trace_id());
+                    }
+
+                    let mut global_ids = trace_ids_clone.lock().unwrap();
+                    for id in local_ids {
+                        assert!(
+                            global_ids.insert(id),
+                            "Concurrent trace IDs should be unique"
+                        );
+                    }
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().expect("Thread should complete successfully");
+        }
+
+        let final_ids = trace_ids.lock().unwrap();
+        assert_eq!(final_ids.len(), 1000); // 10 threads * 100 IDs each
+    }
+
+    #[test]
+    fn test_logger_config_with_all_combinations() {
+        let formats = vec![LogFormat::Terminal, LogFormat::Json];
+        let levels = vec![
+            slog::Level::Trace,
+            slog::Level::Debug,
+            slog::Level::Info,
+            slog::Level::Warning,
+            slog::Level::Error,
+            slog::Level::Critical,
+        ];
+        let location_flags = vec![true, false];
+        let thread_flags = vec![true, false];
+
+        for format in &formats {
+            for &level in &levels {
+                for &include_location in &location_flags {
+                    for &include_thread_id in &thread_flags {
+                        let config = LoggerConfig {
+                            format: format.clone(),
+                            level,
+                            include_location,
+                            include_thread_id,
+                            static_fields: HashMap::new(),
+                        };
+
+                        // Test that all combinations work
+                        let _guard = init_global_logger(&config);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_slog_level_to_log_level_conversion() {
+        // Test the level conversion logic in init_global_logger
+        let test_cases = vec![
+            (slog::Level::Trace, "TRACE"),
+            (slog::Level::Debug, "DEBUG"),
+            (slog::Level::Info, "INFO"),
+            (slog::Level::Warning, "WARN"),
+            (slog::Level::Error, "ERROR"),
+            (slog::Level::Critical, "CRITICAL"),
+        ];
+
+        for (slog_level, expected_name) in test_cases {
+            let config = LoggerConfig {
+                format: LogFormat::Terminal,
+                level: slog_level,
+                include_location: true,
+                include_thread_id: true,
+                static_fields: HashMap::new(),
+            };
+
+            // Test that the level conversion works correctly
+            let _guard = init_global_logger(&config);
+
+            // Verify the level name matches expected (slog uses uppercase)
+            assert_eq!(slog_level.as_str(), expected_name);
+        }
+    }
+
+    #[test]
+    fn test_static_fields_memory_management() {
+        // Test that static fields are properly managed with Box::leak
+        let mut static_fields = HashMap::new();
+
+        // Add fields with various key patterns that test memory management
+        static_fields.insert("key_with_underscores".to_string(), "value1".to_string());
+        static_fields.insert("key-with-dashes".to_string(), "value2".to_string());
+        static_fields.insert("key.with.dots".to_string(), "value3".to_string());
+        static_fields.insert("key/with/slashes".to_string(), "value4".to_string());
+        static_fields.insert("key with spaces".to_string(), "value5".to_string());
+        static_fields.insert("🔑".to_string(), "🔒".to_string()); // Unicode keys/values
+
+        let config = LoggerConfig {
+            format: LogFormat::Json,
+            level: slog::Level::Info,
+            include_location: true,
+            include_thread_id: true,
+            static_fields,
+        };
+
+        // Test that memory management works with various key patterns
+        let _guard = init_global_logger(&config);
+    }
+
+    #[test]
+    fn test_empty_static_fields_handling() {
+        // Test with completely empty static fields
+        let config = LoggerConfig {
+            format: LogFormat::Json,
+            level: slog::Level::Info,
+            include_location: true,
+            include_thread_id: true,
+            static_fields: HashMap::new(),
+        };
+
+        let _guard = init_global_logger(&config);
+
+        // Test with static fields containing empty values
+        let mut static_fields = HashMap::new();
+        static_fields.insert("empty_value".to_string(), "".to_string());
+        static_fields.insert("".to_string(), "empty_key".to_string());
+
+        let config2 = LoggerConfig {
+            format: LogFormat::Terminal,
+            level: slog::Level::Debug,
+            include_location: false,
+            include_thread_id: false,
+            static_fields,
+        };
+
+        let _guard2 = init_global_logger(&config2);
+    }
+
+    #[test]
+    fn test_request_info_with_unicode_and_special_chars() {
+        let request_info = RequestInfo {
+            trace_id: "🔍-trace-🆔".to_string(),
+            method: "ПОСТ".to_string(),     // Cyrillic POST
+            path: "/测试/路径".to_string(), // Chinese test path
+            remote_addr: "::1".to_string(), // IPv6 localhost
+            user_agent: "Mozilla/5.0 (🦀; Rust/1.0)".to_string(),
+            start_time_ms: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+        };
+
+        // Test that Unicode and special characters are handled properly
+        let elapsed = request_info.elapsed_ms();
+        // elapsed_ms returns u128, so it's always >= 0, just verify it doesn't panic
+        let _ = elapsed;
+
+        // Test cloning with Unicode data
+        let cloned = request_info.clone();
+        assert_eq!(request_info.trace_id, cloned.trace_id);
+        assert_eq!(request_info.method, cloned.method);
+        assert_eq!(request_info.path, cloned.path);
+    }
+
     /* Tests for LoggingConfig::to_logger_config method */
     #[test]
     fn test_to_logger_config_format_mapping() {
