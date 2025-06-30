@@ -56,9 +56,8 @@ const MAX_SECRET_SIZE: u64 = 1024 * 1024;
 const MAX_SECRET_NAME_LENGTH: usize = 255;
 
 /// Regex pattern for matching secret interpolation syntax
-static SECRET_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\$\{secret\.([^}]*)\}").expect("Invalid regex pattern")
-});
+static SECRET_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\$\{secret\.([^}]*)\}").expect("Invalid regex pattern"));
 
 /// Configuration provider that interpolates secrets from the filesystem.
 ///
@@ -206,16 +205,16 @@ impl VaultConfigProvider {
         if metadata.len() > MAX_SECRET_SIZE {
             return Err(ConfigError::provider_error(
                 "vault",
-                format!("secret file too large: {} (max: {} bytes)", name, MAX_SECRET_SIZE),
+                format!(
+                    "secret file too large: {} (max: {} bytes)",
+                    name, MAX_SECRET_SIZE
+                ),
             ));
         }
 
         // Read the file contents
         let content = fs::read_to_string(&secret_path).map_err(|e| {
-            ConfigError::provider_error(
-                "vault",
-                format!("failed to read secret '{}': {}", name, e),
-            )
+            ConfigError::provider_error("vault", format!("failed to read secret '{}': {}", name, e))
         })?;
 
         // Return the trimmed content
@@ -242,7 +241,10 @@ impl VaultConfigProvider {
         if name.len() > MAX_SECRET_NAME_LENGTH {
             return Err(ConfigError::provider_error(
                 "vault",
-                format!("secret name too long: {} (max: {} characters)", name, MAX_SECRET_NAME_LENGTH),
+                format!(
+                    "secret name too long: {} (max: {} characters)",
+                    name, MAX_SECRET_NAME_LENGTH
+                ),
             ));
         }
 
