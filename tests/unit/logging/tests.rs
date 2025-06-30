@@ -1338,7 +1338,7 @@ mod logging_tests {
 
         // Add many static fields to test memory management
         for i in 0..100 {
-            static_fields.insert(format!("field_{}", i), format!("value_{}", i));
+            static_fields.insert(format!("field_{i}"), format!("value_{i}"));
         }
 
         let config = LoggerConfig {
@@ -1487,7 +1487,7 @@ mod logging_tests {
         let _ = elapsed;
 
         // Test debug formatting with extreme values
-        let debug_str = format!("{:?}", request_info);
+        let debug_str = format!("{request_info:?}");
         assert!(debug_str.contains("RequestInfo"));
     }
 
