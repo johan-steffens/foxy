@@ -56,6 +56,8 @@ pub mod server;
 #[cfg(feature = "opentelemetry")]
 pub use crate::opentelemetry::init;
 pub use config::{ConfigError, ConfigProvider, ConfigProviderExt};
+#[cfg(feature = "vault-config")]
+pub use config::VaultConfigProvider;
 pub use core::{
     Filter, FilterType, HttpMethod, ProxyError, ProxyRequest, ProxyResponse, RequestContext,
     ResponseContext, Route, Router,
