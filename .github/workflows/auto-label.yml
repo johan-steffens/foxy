@@ -1,0 +1,88 @@
+name: Auto Label PRs
+
+on:
+  pull_request:
+    types: [opened, synchronize, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply labels based on files changed
+        uses: actions/labeler@v5
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          configuration-path: .github/labeler.yml
+
+      - name: Label based on PR title and body
+        uses: github/super-linter@v5
+        env:
+          DEFAULT_BRANCH: main
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_ALL_CODEBASE: false
+          VALIDATE_GITHUB_ACTIONS: false
+        continue-on-error: true
+
+      - name: Smart PR labeling based on content
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo, number } = context.issue;
+            
+            // Get PR details
+            const pr = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: number
+            });
+            
+            const title = pr.data.title.toLowerCase();
+            const body = (pr.data.body || '').toLowerCase();
+            const content = `${title} ${body}`;
+            
+            const labelsToAdd = [];
+            
+            // Feature detection
+            if (content.match(/\b(feat|feature|add|new|implement|introduce)\b/)) {
+              labelsToAdd.push('feature');
+            }
+            
+            // Bug/Fix detection
+            if (content.match(/\b(fix|bug|issue|error|problem|resolve|solve)\b/)) {
+              if (content.match(/\b(bug|issue|error|problem)\b/)) {
+                labelsToAdd.push('bug');
+              } else {
+                labelsToAdd.push('fix');
+              }
+            }
+            
+            // Enhancement detection
+            if (content.match(/\b(improve|enhance|better|optimize|refactor|update)\b/)) {
+              labelsToAdd.push('enhancement');
+            }
+            
+            // Documentation detection
+            if (content.match(/\b(doc|documentation|readme|comment|guide)\b/)) {
+              labelsToAdd.push('documentation');
+            }
+            
+            // Chore detection
+            if (content.match(/\b(chore|cleanup|maintenance|deps|dependencies|version|bump)\b/)) {
+              labelsToAdd.push('chore');
+            }
+            
+            // Apply labels if any were detected
+            if (labelsToAdd.length > 0) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: number,
+                labels: labelsToAdd
+              });
+              
+              console.log(`Applied labels: ${labelsToAdd.join(', ')}`);
+            }

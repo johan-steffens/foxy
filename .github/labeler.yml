@@ -1,0 +1,68 @@
+# Documentation changes
+documentation:
+  - "**/*.md"
+  - "docs/**/*"
+  - "README*"
+  - "CHANGELOG*"
+  - "LICENSE*"
+  - "CONTRIBUTING*"
+  - "CODE_OF_CONDUCT*"
+  - ".github/**/*.md"
+
+# Test-related changes
+enhancement:
+  - "tests/**/*"
+  - "**/*test*.rs"
+  - "**/*_test.rs"
+  - "**/test_*.rs"
+  - "**/*spec*.rs"
+  - "benches/**/*"
+
+# Configuration changes
+chore:
+  - "Cargo.toml"
+  - "Cargo.lock"
+  - ".github/workflows/**/*"
+  - ".github/dependabot.yml"
+  - ".gitignore"
+  - ".gitattributes"
+  - "config/**/*"
+  - "*.toml"
+  - "*.yaml"
+  - "*.yml"
+  - "*.json"
+  - "Dockerfile*"
+  - "docker-compose*"
+
+# Core library changes (likely features or enhancements)
+feature:
+  - "src/lib.rs"
+  - "src/core/**/*"
+  - "src/router/**/*"
+  - "src/filters/**/*"
+  - "src/security/**/*"
+  - "src/server/**/*"
+
+# Binary/CLI changes
+enhancement:
+  - "src/bin/**/*"
+
+# Configuration and loader changes
+enhancement:
+  - "src/config/**/*"
+  - "src/loader/**/*"
+
+# Logging and observability
+enhancement:
+  - "src/logging/**/*"
+  - "src/opentelemetry/**/*"
+
+# Examples and documentation code
+documentation:
+  - "examples/**/*"
+
+# Build and deployment
+chore:
+  - "target/**/*"
+  - ".cargo/**/*"
+  - "build.rs"
