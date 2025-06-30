@@ -8,7 +8,8 @@ on:
         required: false
         default: true
         type: boolean
-  push:
+  pull_request:
+    types: [ closed ]
     branches: [ main ]
     paths:
       - 'src/**'
@@ -24,6 +25,8 @@ jobs:
   coverage:
     name: Generate Coverage Report
     runs-on: ubuntu-latest
+    # Only run on push to main, manual dispatch, or merged PRs (not just closed)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.merged == true }}
     
     steps:
     - name: Checkout code
@@ -78,7 +81,7 @@ jobs:
           --ignore-filename-regex 'benches/.*'
 
     - name: Upload coverage to Codecov
-      if: ${{ inputs.upload_to_codecov }}
+      if: ${{ inputs.upload_to_codecov != 'false' }}
       uses: codecov/codecov-action@v5
       with:
         files: coverage/lcov.info
@@ -86,10 +89,10 @@ jobs:
         fail_ci_if_error: false
 
     - name: Codecov upload skipped
-      if: ${{ !inputs.upload_to_codecov  }}
+      if: ${{ inputs.upload_to_codecov == 'false' }}
       run: |
-        echo "⚠️ Codecov upload skipped: CODECOV_TOKEN secret not configured"
-        echo "To enable Codecov uploads, add your Codecov token as a repository secret named 'CODECOV_TOKEN'"
+        echo "⚠️ Codecov upload skipped by user input"
+        echo "Codecov upload was explicitly disabled via workflow input"
 
     - name: Upload coverage artifacts
       uses: actions/upload-artifact@v4
@@ -107,9 +110,9 @@ jobs:
           echo "📊 [View detailed HTML report in artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
 
           # Add Codecov status
-          if [ "${{ inputs.upload_to_codecov }}" != "false" ]; then
-            echo "✅ Coverage uploaded to Codecov" >> $GITHUB_STEP_SUMMARY
-          else
+          if [ "${{ inputs.upload_to_codecov }}" = "false" ]; then
             echo "ℹ️ Codecov upload disabled by user input" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ Coverage uploaded to Codecov" >> $GITHUB_STEP_SUMMARY
           fi
         fi
