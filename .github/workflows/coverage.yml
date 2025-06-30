@@ -78,7 +78,7 @@ jobs:
           --ignore-filename-regex 'benches/.*'
 
     - name: Upload coverage to Codecov
-      if: ${{ inputs.upload_to_codecov }}
+      if: ${{ !inputs.upload_to_codecov || inputs.upload_to_codecov == 'true' }}
       uses: codecov/codecov-action@v5
       with:
         files: coverage/lcov.info
@@ -86,7 +86,7 @@ jobs:
         fail_ci_if_error: false
 
     - name: Codecov upload skipped
-      if: ${{ !inputs.upload_to_codecov  }}
+      if: ${{ inputs.upload_to_codecov && inputs.upload_to_codecov == 'false'  }}
       run: |
         echo "⚠️ Codecov upload skipped: CODECOV_TOKEN secret not configured"
         echo "To enable Codecov uploads, add your Codecov token as a repository secret named 'CODECOV_TOKEN'"
