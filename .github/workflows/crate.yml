@@ -4,7 +4,7 @@ on:
       - "*-crate"
 
 permissions:
-  contents: read
+  contents: write  # Changed from read to write for release creation
   checks: write
 
 name: Publish Crate Workflow
@@ -169,3 +169,85 @@ jobs:
             --no-confirm \
             --no-verify \
             --execute
+
+  create_github_release:
+    name: Create GitHub Release
+    needs:
+      - audit
+      - build_and_test_linux
+      - build_and_test_windows
+      - crates_io_publish
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for changelog generation
+
+      - name: Extract version from tag
+        id: extract_version
+        run: |
+          # Extract version from tag (remove -crate suffix)
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG_NAME%-crate}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+
+      - name: Build Changelog
+        id: build_changelog
+        uses: mikepenz/release-changelog-builder-action@v4
+        with:
+          configuration: |
+            {
+              "categories": [
+                {
+                  "title": "## 🚀 Features",
+                  "labels": ["feature", "enhancement"]
+                },
+                {
+                  "title": "## 🐛 Bug Fixes",
+                  "labels": ["bug", "fix"]
+                },
+                {
+                  "title": "## 📚 Documentation",
+                  "labels": ["documentation", "docs"]
+                },
+                {
+                  "title": "## 🔧 Maintenance",
+                  "labels": ["maintenance", "chore", "dependencies"]
+                },
+                {
+                  "title": "## 🔒 Security",
+                  "labels": ["security"]
+                },
+                {
+                  "title": "## ⚡ Performance",
+                  "labels": ["performance"]
+                },
+                {
+                  "title": "## 🧪 Testing",
+                  "labels": ["test", "testing"]
+                },
+                {
+                  "title": "## 🔄 Other Changes",
+                  "labels": []
+                }
+              ],
+              "template": "#{{CHANGELOG}}\n\n## 📦 Installation\n\n### Cargo\n```bash\ncargo add foxy-io@${{ steps.extract_version.outputs.version }}\n```\n\n### From Source\n```bash\ngit clone https://github.com/johan-steffens/foxy.git\ncd foxy\ncargo build --release\n```\n\n## 🔗 Links\n- [📦 Crates.io](https://crates.io/crates/foxy-io)\n- [📖 Documentation](https://docs.rs/foxy-io)\n- [🐛 Report Issues](https://github.com/johan-steffens/foxy/issues)\n\n---\n\n**Full Changelog**: https://github.com/johan-steffens/foxy/compare/{{PREVIOUS_TAG}}...{{TO_TAG}}"
+            }
+          toTag: ${{ steps.extract_version.outputs.tag_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.extract_version.outputs.tag_name }}
+          name: "foxy-io v${{ steps.extract_version.outputs.version }}"
+          body: ${{ steps.build_changelog.outputs.changelog }}
+          draft: false
+          prerelease: ${{ contains(steps.extract_version.outputs.version, 'alpha') || contains(steps.extract_version.outputs.version, 'beta') || contains(steps.extract_version.outputs.version, 'rc') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

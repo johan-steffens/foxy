@@ -229,32 +229,35 @@ Add JWT validation with the OIDC security provider:
 
 This configuration validates all requests against the identity provider, while allowing public access to `/health`.
 
-### Basic Auth Provider
+### Structured Logging
 
-Add Basic Authentication to your proxy:
-
+Foxy supports structured JSON logging for better observability in production environments:
+        
 ```json
 {
   "proxy": {
-    "security_chain": [
-      {
-        "type": "basic",
-        "config": {
-          "credentials": [
-            "user1:pass1",
-            "admin:secure_password"
-          ],
-          "bypass": [
-            { "methods": ["GET"], "path": "/public/*" }
-          ]
-        }
+    "logging": {
+      "structured": true,
+      "format": "json",
+      "include_trace_id": true,
+      "static_fields": {
+        "environment": "production",
+        "service": "api-gateway"
       }
-    ]
+    }
   }
 }
 ```
 
-This configuration enables Basic Authentication for all routes, except those matching `/public/*` with a GET method.
+Key benefits:
+- **Trace IDs**: Every request gets a unique ID for end-to-end tracking
+- **JSON Format**: Machine-parseable logs for integration with log aggregation systems
+- **Rich Context**: Detailed request information and timing metrics
+- **Static Fields**: Add environment-specific fields to all logs
+
+For detailed configuration options, see the [Configuration Guide](docs/CONFIGURATION.md#structured-logging).
+
+## Features
 
 ### OpenTelemetry Feature
 
@@ -315,66 +318,73 @@ Configure the OpenAPI schemas to be served on the Swagger UI in your configurati
 }
 ```
 
-### Structured Logging
+### Vault Config Feature
 
-Foxy supports structured JSON logging for better observability in production environments:
-        
+The `vault-config` feature enables secret interpolation from the filesystem into configuration values. This allows you to store sensitive information like passwords, API keys, and tokens in separate files and reference them in your configuration.
+
+## Enabling the Feature
+
+Add the `vault-config` feature to your `Cargo.toml`:
+
+```toml
+[dependencies]
+foxy-io = { version = "0.3.6", features = ["vault-config"] }
+```
+
+Or enable it when building:
+
+```bash
+cargo build --features vault-config
+```
+
+### Usage
+
+#### Basic Setup
+
+1. Create a vault directory structure (default: `/vault/secret/`)
+2. Store your secrets as individual files in the vault directory
+3. Reference secrets in your configuration using `${secret.name}` syntax
+4. Wrap your configuration provider with `VaultConfigProvider`
+
+#### Example
+
+**Vault directory structure:**
+```
+/vault/secret/
+├── redis_password
+```
+
+**Secret files content:**
+```bash
+# /vault/secret/redis_password
+super_secret_redis_password
+```
+
+**Configuration file (config.json):**
 ```json
 {
-  "proxy": {
-    "logging": {
-      "structured": true,
-      "format": "json",
-      "include_trace_id": true,
-      "static_fields": {
-        "environment": "production",
-        "service": "api-gateway"
-      }
-    }
+  "server": {
+    "listen": "0.0.0.0:8080",
+    "redis_url": "redis://localhost:6379",
+    "redis_password": "${secret.redis_password}"
   }
 }
 ```
 
-Key benefits:
-- **Trace IDs**: Every request gets a unique ID for end-to-end tracking
-- **JSON Format**: Machine-parseable logs for integration with log aggregation systems
-- **Rich Context**: Detailed request information and timing metrics
-- **Static Fields**: Add environment-specific fields to all logs
+#### Example Application
 
-For detailed configuration options, see the [Configuration Guide](docs/CONFIGURATION.md#structured-logging).
+See `examples/vault_example.rs` for a complete working example:
 
-
-## Performance Features
-
-### Streaming Architecture
-
-- **Zero-Copy Streaming**: Request and response bodies are streamed end-to-end
-- **Backpressure Support**: Large uploads/downloads propagate backpressure correctly
-- **Memory Efficiency**: Memory usage is bound by socket buffers, not by request/response size
-
-### Detailed Metrics
-
-Foxy logs three high-resolution latencies on every call (DEBUG level):
-
-```
-[timing] GET /api/users -> 200 | total=152ms upstream=148ms internal=4ms
+```bash
+cargo run --example vault_example --features vault-config
 ```
 
-| Metric | Description |
-|--------|-------------|
-| **total** | Wall-clock time from first byte in to last byte out |
-| **upstream** | Time spent awaiting the target server |
-| **internal** | Proxy-side processing time (`total − upstream`) |
+This example demonstrates:
+- Creating a temporary vault directory
+- Setting up secret files
+- Configuring the vault provider
+- Accessing interpolated configuration values
 
-### Request and Response Logging
-
-The `LoggingFilter` can peek and log request/response bodies:
-
-- Logs the first 1,000 bytes/characters (UTF-8 lossy conversion)
-- Safely handles binary or large payloads
-- Configurable log level and content limits
-
-> **Note:** Body logging adds some latency to proxied calls.
 
 ## Extension Points
 
@@ -391,18 +401,6 @@ All extension points follow a similar pattern:
 3.  **Use** your custom component in the configuration file.
 
 For a detailed guide on adding extension points, see the [Extension Guide](docs/EXTENSION.md).
-
-## Development Status
-
-- [x] Configuration System
-- [x] Loader Module
-- [x] Core HTTP Proxy
-- [x] Predicate-based Routing
-- [x] Request/Response Filters
-- [x] Security Chain
-  - [x] OIDC provider
-  - [x] Basic auth provider
-- [x] OpenTelemetry Integration
 
 ## License
 
