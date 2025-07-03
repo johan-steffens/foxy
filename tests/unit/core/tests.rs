@@ -1441,7 +1441,7 @@ mod core_tests {
     #[test]
     fn test_proxy_error_debug_formatting() {
         let error = ProxyError::RoutingError("Test error".to_string());
-        let debug_string = format!("{:?}", error);
+        let debug_string = format!("{error:?}");
         assert!(debug_string.contains("RoutingError"));
         assert!(debug_string.contains("Test error"));
     }
