@@ -18,15 +18,6 @@ jobs:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
           configuration-path: .github/labeler.yml
 
-      - name: Label based on PR title and body
-        uses: github/super-linter@v5
-        env:
-          DEFAULT_BRANCH: main
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VALIDATE_ALL_CODEBASE: false
-          VALIDATE_GITHUB_ACTIONS: false
-        continue-on-error: true
-
       - name: Smart PR labeling based on content
         uses: actions/github-script@v7
         with:
