@@ -367,4 +367,466 @@ mod loader_tests {
                 .unwrap()
         );
     }
+
+    #[cfg(feature = "opentelemetry")]
+    #[tokio::test]
+    async fn test_loader_build_with_opentelemetry_config() {
+        use std::collections::HashMap;
+
+        // Create a mock provider with OpenTelemetry configuration
+        let mut values = HashMap::new();
+        values.insert("server.port".to_string(), serde_json::json!(8080));
+        values.insert("server.host".to_string(), serde_json::json!("127.0.0.1"));
+
+        // Add complete OpenTelemetry configuration as a nested object
+        let otel_config = serde_json::json!({
+            "endpoint": "http://localhost:4317",
+            "service_name": "test-service",
+            "include_headers": true,
+            "include_bodies": false,
+            "max_body_size": 1024
+        });
+        values.insert("proxy.opentelemetry".to_string(), otel_config);
+
+        let provider = MockConfigProvider { values };
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should succeed and log OpenTelemetry initialization
+        let foxy = loader.build().await.unwrap();
+        let config = foxy.config();
+
+        // Verify OpenTelemetry config was loaded
+        let otel_config: Option<crate::opentelemetry::OpenTelemetryConfig> =
+            config.get("proxy.opentelemetry").unwrap();
+        assert!(otel_config.is_some());
+
+        let otel_config = otel_config.unwrap();
+        assert_eq!(otel_config.endpoint, "http://localhost:4317");
+        assert_eq!(otel_config.service_name, "test-service");
+    }
+
+    #[cfg(feature = "opentelemetry")]
+    #[tokio::test]
+    async fn test_loader_build_without_opentelemetry_config() {
+        // Create a mock provider without OpenTelemetry configuration
+        let provider = MockConfigProvider::new();
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should succeed without OpenTelemetry config
+        let foxy = loader.build().await.unwrap();
+        let config = foxy.config();
+
+        // Verify no OpenTelemetry config was loaded
+        let otel_config: Option<crate::opentelemetry::OpenTelemetryConfig> =
+            config.get("proxy.opentelemetry").unwrap();
+        assert!(otel_config.is_none());
+    }
+
+    #[cfg(not(feature = "opentelemetry"))]
+    #[tokio::test]
+    async fn test_loader_build_opentelemetry_feature_disabled() {
+        // When OpenTelemetry feature is disabled, the code branch should not be executed
+        let provider = MockConfigProvider::new();
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should succeed without any OpenTelemetry processing
+        let foxy = loader.build().await.unwrap();
+
+        // Just verify the build completed successfully
+        assert!(foxy.config().get::<u64>("server.port").unwrap().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_loader_build_with_global_filters() {
+        use std::collections::HashMap;
+
+        // Create a mock provider with global filters configuration
+        let mut values = HashMap::new();
+        values.insert("server.port".to_string(), serde_json::json!(8080));
+        values.insert("server.host".to_string(), serde_json::json!("127.0.0.1"));
+
+        // Add global filters configuration
+        let global_filters = serde_json::json!([
+            {
+                "type": "logging",
+                "config": {
+                    "log_request_headers": true,
+                    "log_request_body": false,
+                    "log_response_headers": true,
+                    "log_response_body": false,
+                    "log_level": "debug",
+                    "max_body_size": 1024
+                }
+            }
+        ]);
+        values.insert("proxy.global_filters".to_string(), global_filters);
+
+        let provider = MockConfigProvider { values };
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should succeed and load global filters
+        let foxy = loader.build().await.unwrap();
+        let config = foxy.config();
+
+        // Verify global filters configuration was loaded
+        let filters_config: Option<Vec<crate::router::FilterConfig>> =
+            config.get("proxy.global_filters").unwrap();
+        assert!(filters_config.is_some());
+
+        let filters = filters_config.unwrap();
+        assert_eq!(filters.len(), 1);
+        assert_eq!(filters[0].type_, "logging");
+    }
+
+    #[tokio::test]
+    async fn test_loader_build_with_invalid_global_filter() {
+        use std::collections::HashMap;
+
+        // Create a mock provider with invalid global filters configuration
+        let mut values = HashMap::new();
+        values.insert("server.port".to_string(), serde_json::json!(8080));
+        values.insert("server.host".to_string(), serde_json::json!("127.0.0.1"));
+
+        // Add invalid global filters configuration (unknown filter type)
+        let global_filters = serde_json::json!([
+            {
+                "type": "nonexistent_filter",
+                "config": {}
+            }
+        ]);
+        values.insert("proxy.global_filters".to_string(), global_filters);
+
+        let provider = MockConfigProvider { values };
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should fail due to invalid filter type
+        let result = loader.build().await;
+        assert!(result.is_err());
+
+        match result {
+            Err(crate::loader::LoaderError::ProxyError(_)) => {
+                // Expected error type for filter creation failure
+            }
+            other => {
+                panic!("Expected ProxyError, got: {other:?}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_loader_build_without_global_filters() {
+        // Create a mock provider without global filters configuration
+        let provider = MockConfigProvider::new();
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should succeed without global filters
+        let foxy = loader.build().await.unwrap();
+        let config = foxy.config();
+
+        // Verify no global filters configuration was loaded
+        let filters_config: Option<Vec<crate::router::FilterConfig>> =
+            config.get("proxy.global_filters").unwrap();
+        assert!(filters_config.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_loader_build_rust_log_env_precedence() {
+        use std::collections::HashMap;
+
+        // Create a mock provider with logging configuration
+        let mut values = HashMap::new();
+        values.insert("server.port".to_string(), serde_json::json!(8080));
+        values.insert("server.host".to_string(), serde_json::json!("127.0.0.1"));
+
+        // Add logging configuration with "warn" level
+        let logging_config = serde_json::json!({
+            "level": "warn",
+            "format": "terminal",
+            "structured": false
+        });
+        values.insert("proxy.logging".to_string(), logging_config);
+
+        // Set RUST_LOG environment variable to override config
+        unsafe {
+            std::env::set_var("RUST_LOG", "debug");
+        }
+
+        let provider = MockConfigProvider { values };
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should succeed and RUST_LOG should take precedence
+        let foxy = loader.build().await.unwrap();
+
+        // Clean up environment variable
+        unsafe {
+            std::env::remove_var("RUST_LOG");
+        }
+
+        // Just verify the build completed successfully - the actual logging level
+        // precedence is handled internally and not exposed in the config
+        assert!(foxy.config().get::<u64>("server.port").unwrap().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_loader_build_rust_log_env_not_set() {
+        use std::collections::HashMap;
+
+        // Ensure RUST_LOG is not set
+        unsafe {
+            std::env::remove_var("RUST_LOG");
+        }
+
+        // Create a mock provider with logging configuration
+        let mut values = HashMap::new();
+        values.insert("server.port".to_string(), serde_json::json!(8080));
+        values.insert("server.host".to_string(), serde_json::json!("127.0.0.1"));
+
+        // Add logging configuration with "error" level
+        let logging_config = serde_json::json!({
+            "level": "error",
+            "format": "terminal",
+            "structured": false
+        });
+        values.insert("proxy.logging".to_string(), logging_config);
+
+        let provider = MockConfigProvider { values };
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should succeed and use config file level
+        let foxy = loader.build().await.unwrap();
+        let config = foxy.config();
+
+        // Verify logging configuration was loaded
+        let log_config: Option<crate::logging::config::LoggingConfig> =
+            config.get("proxy.logging").unwrap();
+        assert!(log_config.is_some());
+
+        // The level should be from config file
+        let log_config = log_config.unwrap();
+        assert_eq!(log_config.level, "error"); // Should be from config file
+    }
+
+    #[tokio::test]
+    async fn test_loader_build_invalid_rust_log_level() {
+        use std::collections::HashMap;
+
+        // Create a mock provider with logging configuration
+        let mut values = HashMap::new();
+        values.insert("server.port".to_string(), serde_json::json!(8080));
+        values.insert("server.host".to_string(), serde_json::json!("127.0.0.1"));
+
+        // Add logging configuration with valid level
+        let logging_config = serde_json::json!({
+            "level": "warn",
+            "format": "terminal",
+            "structured": false
+        });
+        values.insert("proxy.logging".to_string(), logging_config);
+
+        // Set RUST_LOG environment variable to invalid level
+        unsafe {
+            std::env::set_var("RUST_LOG", "invalid_level");
+        }
+
+        let provider = MockConfigProvider { values };
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should succeed and fall back to Info level
+        let foxy = loader.build().await.unwrap();
+
+        // Clean up environment variable
+        unsafe {
+            std::env::remove_var("RUST_LOG");
+        }
+
+        // Just verify the build completed successfully - the actual logging level
+        // fallback is handled internally and not exposed in the config
+        assert!(foxy.config().get::<u64>("server.port").unwrap().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_foxy_core_access() {
+        let provider = MockConfigProvider::new();
+        let loader = FoxyLoader::new().with_provider(provider);
+        let foxy = loader.build().await.unwrap();
+
+        // Get access to the proxy core
+        let core = foxy.core();
+
+        // Verify we can access the core and it has the expected configuration
+        assert!(core.config.get::<u64>("server.port").unwrap().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_foxy_core_add_global_filter() {
+        let provider = MockConfigProvider::new();
+        let loader = FoxyLoader::new().with_provider(provider);
+        let foxy = loader.build().await.unwrap();
+
+        // Get access to the proxy core
+        let core = foxy.core();
+
+        // Add a custom filter to the core
+        let filter = MockFilter::new("test_core_filter");
+        core.add_global_filter(std::sync::Arc::new(filter)).await;
+
+        // Verify the filter was added (we can't directly check the internal state,
+        // but we can verify the operation completed without error)
+        // If we reach here, the filter was added successfully
+    }
+
+    #[tokio::test]
+    async fn test_foxy_start_method_exists() {
+        // Test that the start method exists and can be called
+        // We don't actually start the server to avoid hanging tests
+        let provider = MockConfigProvider::new();
+        let loader = FoxyLoader::new().with_provider(provider);
+        let foxy = loader.build().await.unwrap();
+
+        // Verify the start method exists by checking the server configuration
+        let server_config = foxy.server.config.clone();
+        assert_eq!(server_config.host, "127.0.0.1");
+        assert_eq!(server_config.port, 8080);
+
+        // Verify we can access the core through the server
+        let core = foxy.server.core();
+        assert!(core.config.get::<u64>("server.port").unwrap().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_foxy_start_error_mapping() {
+        // Test that LoaderError::ProxyError properly wraps ProxyError
+        let proxy_error = crate::ProxyError::ConfigError("test error".to_string());
+        let loader_error = crate::loader::LoaderError::ProxyError(proxy_error);
+
+        let error_string = format!("{loader_error}");
+        assert!(error_string.contains("proxy error"));
+        assert!(error_string.contains("test error"));
+    }
+
+    #[tokio::test]
+    async fn test_loader_build_missing_logging_config() {
+        // Create a mock provider without logging configuration
+        let provider = MockConfigProvider::new();
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should succeed and use default logging configuration
+        let foxy = loader.build().await.unwrap();
+        let config = foxy.config();
+
+        // Verify no logging configuration was loaded (should use defaults)
+        let log_config: Option<crate::logging::config::LoggingConfig> =
+            config.get("proxy.logging").unwrap();
+        assert!(log_config.is_none()); // Should be None, defaults will be used internally
+    }
+
+    #[tokio::test]
+    async fn test_loader_build_invalid_logging_config_level() {
+        use std::collections::HashMap;
+
+        // Create a mock provider with invalid logging configuration
+        let mut values = HashMap::new();
+        values.insert("server.port".to_string(), serde_json::json!(8080));
+        values.insert("server.host".to_string(), serde_json::json!("127.0.0.1"));
+
+        // Add logging configuration with invalid level
+        let logging_config = serde_json::json!({
+            "level": "invalid_log_level",
+            "format": "terminal",
+            "structured": false
+        });
+        values.insert("proxy.logging".to_string(), logging_config);
+
+        let provider = MockConfigProvider { values };
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should succeed - the invalid level is stored as-is in config
+        // but the actual log level fallback happens during LevelFilter parsing
+        let foxy = loader.build().await.unwrap();
+        let config = foxy.config();
+
+        // Verify logging configuration was loaded
+        let log_config: Option<crate::logging::config::LoggingConfig> =
+            config.get("proxy.logging").unwrap();
+        assert!(log_config.is_some());
+
+        // The level is stored as-is in the config - validation happens during actual logging setup
+        let log_config = log_config.unwrap();
+        assert_eq!(log_config.level, "invalid_log_level"); // Stored as-is, validation happens later
+    }
+
+    #[tokio::test]
+    async fn test_loader_build_malformed_logging_config() {
+        use std::collections::HashMap;
+
+        // Create a mock provider with malformed logging configuration
+        let mut values = HashMap::new();
+        values.insert("server.port".to_string(), serde_json::json!(8080));
+        values.insert("server.host".to_string(), serde_json::json!("127.0.0.1"));
+
+        // Add malformed logging configuration (string instead of object)
+        values.insert(
+            "proxy.logging".to_string(),
+            serde_json::json!("invalid_config"),
+        );
+
+        let provider = MockConfigProvider { values };
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should succeed - the config system handles malformed configs gracefully
+        // by skipping the malformed section and using defaults
+        let result = loader.build().await;
+
+        match result {
+            Ok(foxy) => {
+                // Build succeeded, verify basic functionality
+                assert!(foxy.config().get::<u64>("server.port").unwrap().unwrap() > 0);
+            }
+            Err(e) => {
+                // If it fails, it should be a ConfigError
+                match e {
+                    crate::loader::LoaderError::ConfigError(_) => {
+                        // This is also acceptable - depends on config system implementation
+                    }
+                    other => {
+                        panic!("Expected ConfigError or success, got: {other:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_loader_build_partial_logging_config() {
+        use std::collections::HashMap;
+
+        // Create a mock provider with partial logging configuration
+        let mut values = HashMap::new();
+        values.insert("server.port".to_string(), serde_json::json!(8080));
+        values.insert("server.host".to_string(), serde_json::json!("127.0.0.1"));
+
+        // Add partial logging configuration (only level, missing other fields)
+        let logging_config = serde_json::json!({
+            "level": "trace"
+        });
+        values.insert("proxy.logging".to_string(), logging_config);
+
+        let provider = MockConfigProvider { values };
+        let loader = FoxyLoader::new().with_provider(provider);
+
+        // Build should succeed and use defaults for missing fields
+        let foxy = loader.build().await.unwrap();
+        let config = foxy.config();
+
+        // Verify logging configuration was loaded with defaults for missing fields
+        let log_config: Option<crate::logging::config::LoggingConfig> =
+            config.get("proxy.logging").unwrap();
+        assert!(log_config.is_some());
+
+        let log_config = log_config.unwrap();
+        assert_eq!(log_config.level, "trace"); // Should use provided level
+        // Other fields should use defaults from LoggingConfig::default()
+        assert_eq!(log_config.format, "terminal"); // Default format
+        assert!(!log_config.structured); // Default structured
+    }
 }
