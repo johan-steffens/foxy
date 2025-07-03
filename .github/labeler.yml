@@ -8,9 +8,10 @@ documentation:
   - "CONTRIBUTING*"
   - "CODE_OF_CONDUCT*"
   - ".github/**/*.md"
+  - "examples/**/*"
 
 # Test-related changes
-enhancement:
+tests:
   - "tests/**/*"
   - "**/*test*.rs"
   - "**/*_test.rs"
@@ -33,6 +34,9 @@ chore:
   - "*.json"
   - "Dockerfile*"
   - "docker-compose*"
+  - "target/**/*"
+  - ".cargo/**/*"
+  - "build.rs"
 
 # Core library changes (likely features or enhancements)
 feature:
@@ -43,26 +47,10 @@ feature:
   - "src/security/**/*"
   - "src/server/**/*"
 
-# Binary/CLI changes
+# Enhancement changes (binary, config, logging, etc.)
 enhancement:
   - "src/bin/**/*"
-
-# Configuration and loader changes
-enhancement:
   - "src/config/**/*"
   - "src/loader/**/*"
-
-# Logging and observability
-enhancement:
   - "src/logging/**/*"
   - "src/opentelemetry/**/*"
-
-# Examples and documentation code
-documentation:
-  - "examples/**/*"
-
-# Build and deployment
-chore:
-  - "target/**/*"
-  - ".cargo/**/*"
-  - "build.rs"
