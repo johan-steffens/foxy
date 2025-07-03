@@ -59,12 +59,6 @@ feature:
     - "src/server/**/*"
 - head-branch: ['^feature/', '^feat/', 'feature']
 
-# Security-specific changes
-security:
-- changed-files:
-  - any-glob-to-any-file:
-    - "src/security/**/*"
-
 # Bug fixes (hotfix branches or bug-related file changes)
 bug:
 - any:
@@ -75,22 +69,12 @@ bug:
       - "!src/**/test*.rs"  # Exclude test files
       - "!**/*_test.rs"     # Exclude test files
 
-# Dependency updates (more specific than general chore)
-dependencies:
-- all:
+# Fix label for general fixes (including security, performance, dependencies)
+fix:
+- any:
   - changed-files:
-    - any-glob-to-any-file: ["Cargo.toml"]
-    - all-globs-to-all-files: ["!src/**/*"]  # Only dependency files, no source changes
-
-# Performance-critical changes
-performance:
-- changed-files:
-  - any-glob-to-any-file:
-    - "src/core/**/*"
-    - "src/router/**/*"
-    - "src/filters/**/*"
-    - "src/server/**/*"
-
-# Release-related PRs (targeting main branch)
-release:
-- base-branch: ['main', 'master']
+    - any-glob-to-any-file:
+      - "src/security/**/*"  # Security fixes
+      - "Cargo.toml"         # Dependency fixes
+      - "Cargo.lock"         # Dependency fixes
+  - head-branch: ['^fix/', 'fix']
