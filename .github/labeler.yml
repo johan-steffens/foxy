@@ -1,52 +1,96 @@
 # Documentation changes
 documentation:
-  - "**/*.md"
-  - "docs/**/*"
-  - "README*"
-  - "CHANGELOG*"
-  - "LICENSE*"
-  - "CONTRIBUTING*"
-  - "CODE_OF_CONDUCT*"
-  - ".github/**/*.md"
-  - "examples/**/*"
+- changed-files:
+  - any-glob-to-any-file:
+    - "**/*.md"
+    - "docs/**/*"
+    - "README*"
+    - "CHANGELOG*"
+    - "LICENSE*"
+    - "CONTRIBUTING*"
+    - "CODE_OF_CONDUCT*"
+    - ".github/**/*.md"
+    - "examples/**/*"
 
-# Test-related changes
+# Enhancement changes (tests, binary, config, logging, etc.)
 enhancement:
-  - "tests/**/*"
-  - "**/*test*.rs"
-  - "**/*_test.rs"
-  - "**/test_*.rs"
-  - "**/*spec*.rs"
-  - "src/bin/**/*"
-  - "src/config/**/*"
-  - "src/loader/**/*"
-  - "src/logging/**/*"
-  - "src/opentelemetry/**/*"
+- changed-files:
+  - any-glob-to-any-file:
+    - "tests/**/*"
+    - "**/*test*.rs"
+    - "**/*_test.rs"
+    - "**/test_*.rs"
+    - "**/*spec*.rs"
+    - "src/bin/**/*"
+    - "src/config/**/*"
+    - "src/loader/**/*"
+    - "src/logging/**/*"
+    - "src/opentelemetry/**/*"
 
-# Configuration changes
+# Configuration and maintenance changes
 chore:
-  - "Cargo.toml"
-  - "Cargo.lock"
-  - ".github/workflows/**/*"
-  - ".github/dependabot.yml"
-  - ".gitignore"
-  - ".gitattributes"
-  - "config/**/*"
-  - "*.toml"
-  - "*.yaml"
-  - "*.yml"
-  - "*.json"
-  - "Dockerfile*"
-  - "docker-compose*"
-  - "target/**/*"
-  - ".cargo/**/*"
-  - "build.rs"
+- changed-files:
+  - any-glob-to-any-file:
+    - "Cargo.toml"
+    - "Cargo.lock"
+    - ".github/workflows/**/*"
+    - ".github/dependabot.yml"
+    - ".gitignore"
+    - ".gitattributes"
+    - "config/**/*"
+    - "*.toml"
+    - "*.yaml"
+    - "*.yml"
+    - "*.json"
+    - "Dockerfile*"
+    - "docker-compose*"
+    - "target/**/*"
+    - ".cargo/**/*"
+    - "build.rs"
 
-# Core library changes (likely features or enhancements)
+# Core library changes (new features)
 feature:
-  - "src/lib.rs"
-  - "src/core/**/*"
-  - "src/router/**/*"
-  - "src/filters/**/*"
-  - "src/security/**/*"
-  - "src/server/**/*"
+- changed-files:
+  - any-glob-to-any-file:
+    - "src/lib.rs"
+    - "src/core/**/*"
+    - "src/router/**/*"
+    - "src/filters/**/*"
+    - "src/server/**/*"
+- head-branch: ['^feature/', '^feat/', 'feature']
+
+# Security-specific changes
+security:
+- changed-files:
+  - any-glob-to-any-file:
+    - "src/security/**/*"
+
+# Bug fixes (hotfix branches or bug-related file changes)
+bug:
+- any:
+  - head-branch: ['^hotfix/', '^bugfix/', '^fix/', 'hotfix', 'bugfix']
+  - changed-files:
+    - all-globs-to-any-file:
+      - "src/**/*.rs"
+      - "!src/**/test*.rs"  # Exclude test files
+      - "!**/*_test.rs"     # Exclude test files
+
+# Dependency updates (more specific than general chore)
+dependencies:
+- all:
+  - changed-files:
+    - any-glob-to-any-file: ["Cargo.toml"]
+    - all-globs-to-all-files: ["!src/**/*"]  # Only dependency files, no source changes
+
+# Performance-critical changes
+performance:
+- changed-files:
+  - any-glob-to-any-file:
+    - "src/core/**/*"
+    - "src/router/**/*"
+    - "src/filters/**/*"
+    - "src/server/**/*"
+
+# Release-related PRs (targeting main branch)
+release:
+- base-branch: ['main', 'master']
