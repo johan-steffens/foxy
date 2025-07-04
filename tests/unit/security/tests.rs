@@ -949,7 +949,8 @@ mod security_tests {
     #[test]
     fn test_oidc_config_deserialization() {
         let json = r#"{
-            "issuer-uri": "https://auth.example.com/.well-known/openid-configuration",
+            "issuer-uri": "https://auth.example.com",
+            "jwks-uri": "https://auth.example.com/.well-known/jwks.json",
             "aud": "my-app",
             "shared-secret": "secret123",
             "bypass": [
@@ -961,9 +962,10 @@ mod security_tests {
         }"#;
 
         let config: OidcConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.issuer_uri, "https://auth.example.com");
         assert_eq!(
-            config.issuer_uri,
-            "https://auth.example.com/.well-known/openid-configuration"
+            config.jwks_uri,
+            "https://auth.example.com/.well-known/jwks.json"
         );
         assert_eq!(config.aud, Some("my-app".to_string()));
         assert_eq!(config.shared_secret, Some("secret123".to_string()));
@@ -975,11 +977,16 @@ mod security_tests {
     #[test]
     fn test_oidc_config_minimal() {
         let json = r#"{
-            "issuer-uri": "https://auth.example.com"
+            "issuer-uri": "https://auth.example.com",
+            "jwks-uri": "https://auth.example.com/.well-known/jwks.json"
         }"#;
 
         let config: OidcConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.issuer_uri, "https://auth.example.com");
+        assert_eq!(
+            config.jwks_uri,
+            "https://auth.example.com/.well-known/jwks.json"
+        );
         assert_eq!(config.aud, None);
         assert_eq!(config.shared_secret, None);
         assert!(config.bypass.is_empty());
@@ -989,6 +996,7 @@ mod security_tests {
     fn test_oidc_config_empty_bypass() {
         let json = r#"{
             "issuer-uri": "https://auth.example.com",
+            "jwks-uri": "https://auth.example.com/.well-known/jwks.json",
             "bypass": []
         }"#;
 
@@ -1015,6 +1023,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: Some("test-audience".to_string()),
             shared_secret: Some("test-secret".to_string()),
             bypass: vec![
@@ -1062,6 +1071,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -1095,6 +1105,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: format!("{}/.well-known/openid-configuration", mock_server.uri()),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -1104,8 +1115,11 @@ mod security_tests {
         assert!(result.is_ok());
 
         let provider = result.unwrap();
-        // Should strip the .well-known suffix from issuer
-        assert_eq!(provider.issuer, mock_server.uri());
+        // Should use the issuer as-is (no normalization)
+        assert_eq!(
+            provider.issuer,
+            format!("{}/.well-known/openid-configuration", mock_server.uri())
+        );
         assert_eq!(provider.jwks_uri, format!("{}/jwks", mock_server.uri()));
     }
 
@@ -1113,19 +1127,16 @@ mod security_tests {
     async fn test_oidc_provider_discover_invalid_url() {
         let config = OidcConfig {
             issuer_uri: "invalid-url".to_string(),
+            jwks_uri: "invalid-jwks-url".to_string(),
             aud: None,
             shared_secret: None,
             bypass: vec![],
         };
 
         let result = OidcProvider::discover(config).await;
-        assert!(result.is_err());
-
-        if let Err(ProxyError::SecurityError(msg)) = result {
-            assert!(msg.contains("Failed to connect to OIDC discovery endpoint"));
-        } else {
-            panic!("Expected SecurityError");
-        }
+        // This should succeed during provider creation since we don't validate URLs upfront
+        // The error will occur when trying to refresh JWKS
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -1142,16 +1153,22 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
         };
 
         let result = OidcProvider::discover(config).await;
-        assert!(result.is_err());
+        // Provider creation should succeed, but JWKS refresh should fail
+        assert!(result.is_ok());
 
-        if let Err(ProxyError::SecurityError(msg)) = result {
-            assert!(msg.contains("OIDC discovery endpoint returned error"));
+        let provider = result.unwrap();
+        let jwks_result = provider.refresh_jwks().await;
+        assert!(jwks_result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = jwks_result {
+            assert!(msg.contains("JWKS endpoint returned error"));
         } else {
             panic!("Expected SecurityError");
         }
@@ -1171,48 +1188,27 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
         };
 
         let result = OidcProvider::discover(config).await;
-        assert!(result.is_err());
+        // Provider creation should succeed, but JWKS refresh should fail
+        assert!(result.is_ok());
 
-        if let Err(ProxyError::SecurityError(msg)) = result {
-            assert!(msg.contains("Failed to parse OIDC discovery response"));
-        } else {
-            panic!("Expected SecurityError");
-        }
-    }
+        let provider = result.unwrap();
+        let jwks_result = provider.refresh_jwks().await;
+        assert!(jwks_result.is_err());
 
-    #[tokio::test]
-    async fn test_oidc_provider_discover_missing_jwks_uri() {
-        // Setup mock server
-        let mock_server = MockServer::start().await;
-
-        // Mock the discovery endpoint to return JSON without jwks_uri
-        Mock::given(method("GET"))
-            .and(path("/"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "issuer": mock_server.uri(),
-                "authorization_endpoint": format!("{}/auth", mock_server.uri())
-            })))
-            .mount(&mock_server)
-            .await;
-
-        let config = OidcConfig {
-            issuer_uri: mock_server.uri(),
-            aud: None,
-            shared_secret: None,
-            bypass: vec![],
-        };
-
-        let result = OidcProvider::discover(config).await;
-        assert!(result.is_err());
-
-        if let Err(ProxyError::SecurityError(msg)) = result {
-            assert!(msg.contains("Failed to parse OIDC discovery response"));
+        if let Err(ProxyError::SecurityError(msg)) = jwks_result {
+            // The error could be a connection error, HTTP error, or JSON parsing error
+            assert!(
+                msg.contains("Failed to parse JWKS response as JSON")
+                    || msg.contains("Failed to connect to JWKS endpoint")
+                    || msg.contains("JWKS endpoint returned error")
+            );
         } else {
             panic!("Expected SecurityError");
         }
@@ -1235,6 +1231,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![RouteRuleConfig {
@@ -1270,6 +1267,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![
@@ -1314,6 +1312,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -1371,6 +1370,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -1431,6 +1431,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -1484,6 +1485,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -2076,6 +2078,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -2141,6 +2144,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -2188,6 +2192,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: Some("test-app".to_string()),
             shared_secret: Some("integration-secret".to_string()),
             bypass: vec![
@@ -2256,6 +2261,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: Some("test-secret".to_string()),
             bypass: vec![],
@@ -2520,6 +2526,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -2573,6 +2580,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -2624,6 +2632,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -2676,6 +2685,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -3127,6 +3137,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -3203,6 +3214,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -3283,6 +3295,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -3344,6 +3357,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -3420,6 +3434,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -3505,6 +3520,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -3584,6 +3600,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -3675,6 +3692,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -3766,6 +3784,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -3887,6 +3906,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![],
@@ -3963,6 +3983,196 @@ mod security_tests {
     }
 
     #[tokio::test]
+    async fn test_oidc_provider_with_direct_jwks_uri() {
+        // Test that JWKS URI is used directly
+        let mock_server = MockServer::start().await;
+
+        // Only mock the JWKS endpoint - no discovery needed
+        Mock::given(method("GET"))
+            .and(path("/custom-jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "RSA",
+                        "use": "sig",
+                        "kid": "direct-jwks-key",
+                        "alg": "RS256",
+                        "n": "test-modulus",
+                        "e": "AQAB"
+                    }
+                ]
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: format!("{}/issuer", mock_server.uri()),
+            jwks_uri: format!("{}/custom-jwks", mock_server.uri()),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        // This should succeed using the direct JWKS URI
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Verify the JWKS URI was set correctly
+        assert_eq!(
+            provider.jwks_uri,
+            format!("{}/custom-jwks", mock_server.uri())
+        );
+
+        // Test that JWKS refresh works
+        let result = provider.refresh_jwks().await;
+        assert!(
+            result.is_ok(),
+            "JWKS refresh should succeed with direct URI"
+        );
+
+        // Verify JWKS was loaded
+        let jwks = provider.jwks.read().await;
+        assert!(jwks.is_some());
+        let jwks = jwks.as_ref().unwrap();
+        assert_eq!(jwks.keys.len(), 1);
+        assert_eq!(
+            jwks.keys[0].common.key_id,
+            Some("direct-jwks-key".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_issuer_uri_no_normalization() {
+        // Test that issuer URI is used as-is (no normalization)
+        let mock_server = MockServer::start().await;
+
+        // Mock the JWKS endpoint
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": []
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: format!("{}/.well-known/openid-configuration", mock_server.uri()),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Verify the issuer is used as-is (no normalization)
+        assert_eq!(
+            provider.issuer,
+            format!("{}/.well-known/openid-configuration", mock_server.uri())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_with_audience_and_secret() {
+        // Test provider creation with audience and shared secret
+        let mock_server = MockServer::start().await;
+
+        // Mock the JWKS endpoint
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": []
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
+            aud: Some("test-audience".to_string()),
+            shared_secret: Some("test-secret".to_string()),
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Verify configuration was set correctly
+        assert_eq!(provider.aud, Some("test-audience".to_string()));
+        assert_eq!(provider.shared_secret, Some("test-secret".to_string()));
+        assert_eq!(provider.jwks_uri, format!("{}/jwks", mock_server.uri()));
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_bypass_rules_compilation() {
+        // Test that bypass rules are compiled correctly
+        let mock_server = MockServer::start().await;
+
+        // Mock the JWKS endpoint
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": []
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![
+                RouteRuleConfig {
+                    methods: vec!["GET".to_string(), "POST".to_string()],
+                    path: "/health/*".to_string(),
+                },
+                RouteRuleConfig {
+                    methods: vec!["*".to_string()],
+                    path: "/public".to_string(),
+                },
+            ],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Verify bypass rules were compiled
+        assert_eq!(provider.rules.len(), 2);
+
+        // Test bypass rule matching
+        assert!(provider.is_bypassed("GET", "/health/check"));
+        assert!(provider.is_bypassed("POST", "/health/status"));
+        assert!(!provider.is_bypassed("DELETE", "/health/check")); // DELETE not in methods
+        assert!(provider.is_bypassed("GET", "/public"));
+        assert!(provider.is_bypassed("DELETE", "/public")); // * matches all methods
+        assert!(!provider.is_bypassed("GET", "/private"));
+    }
+
+    #[tokio::test]
+    async fn test_oidc_provider_invalid_bypass_rule() {
+        // Test that invalid bypass rules cause provider creation to fail
+        let mock_server = MockServer::start().await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![RouteRuleConfig {
+                methods: vec!["GET".to_string()],
+                path: "[invalid-glob".to_string(), // Invalid glob pattern
+            }],
+        };
+
+        let result = OidcProvider::discover(config).await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Invalid glob pattern in bypass rule"));
+        } else {
+            panic!("Expected SecurityError with invalid glob pattern");
+        }
+    }
+
+    #[tokio::test]
     async fn test_oidc_provider_discover_glob_set_build_failure() {
         // This test is challenging because GlobSetBuilder::build() rarely fails
         // after Glob::new() succeeds. We'll test the error path by creating
@@ -3983,6 +4193,7 @@ mod security_tests {
         // Create a config with a very complex glob pattern that might stress the builder
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![RouteRuleConfig {
@@ -4012,6 +4223,7 @@ mod security_tests {
 
         let config = OidcConfig {
             issuer_uri: mock_server.uri(),
+            jwks_uri: format!("{}/jwks", mock_server.uri()),
             aud: None,
             shared_secret: None,
             bypass: vec![
