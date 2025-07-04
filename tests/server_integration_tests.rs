@@ -467,7 +467,7 @@ mod server_integration_tests {
             match success_result {
                 Ok(_) => {
                     // This would set span status to Ok
-                    assert!(true);
+                    // Test passed - response received successfully
                 }
                 Err(_) => panic!("Expected success"),
             }

@@ -224,6 +224,92 @@ impl OidcProvider {
 
     /* ---------- helpers -------------------------------------------------- */
 
+    /// Fallback JWKS parsing for different formats that the standard jsonwebtoken crate might not handle
+    fn parse_jwks_fallback(json_value: &serde_json::Value) -> Result<JwkSet, String> {
+        // For now, let's implement a simpler fallback that just tries to clean up the JSON
+        // and retry with the standard parser
+
+        // Extract the keys array
+        let keys_array = json_value
+            .get("keys")
+            .and_then(|v| v.as_array())
+            .ok_or("Missing or invalid 'keys' field")?;
+
+        let mut cleaned_keys = Vec::new();
+
+        for key_value in keys_array {
+            if let Some(cleaned_key) = Self::clean_jwk_for_parsing(key_value) {
+                cleaned_keys.push(cleaned_key);
+            }
+        }
+
+        if cleaned_keys.is_empty() {
+            return Err("No valid keys found in JWKS after cleaning".to_string());
+        }
+
+        let cleaned_jwks = serde_json::json!({
+            "keys": cleaned_keys
+        });
+
+        // Try to parse the cleaned JWKS
+        serde_json::from_value::<JwkSet>(cleaned_jwks)
+            .map_err(|e| format!("Failed to parse cleaned JWKS: {}", e))
+    }
+
+    /// Clean a single JWK by removing unknown fields and ensuring required fields are present
+    fn clean_jwk_for_parsing(key_value: &serde_json::Value) -> Option<serde_json::Value> {
+        let obj = key_value.as_object()?;
+
+        // Extract the key type
+        let kty = obj.get("kty")?.as_str()?;
+
+        let mut cleaned = serde_json::Map::new();
+
+        // Always include these common fields if present
+        for field in &["kty", "kid", "use", "alg"] {
+            if let Some(value) = obj.get(*field) {
+                cleaned.insert(field.to_string(), value.clone());
+            }
+        }
+
+        // Include algorithm-specific fields based on key type
+        match kty {
+            "RSA" => {
+                for field in &["n", "e"] {
+                    if let Some(value) = obj.get(*field) {
+                        cleaned.insert(field.to_string(), value.clone());
+                    }
+                }
+            }
+            "EC" => {
+                for field in &["x", "y", "crv"] {
+                    if let Some(value) = obj.get(*field) {
+                        cleaned.insert(field.to_string(), value.clone());
+                    }
+                }
+            }
+            "oct" => {
+                if let Some(value) = obj.get("k") {
+                    cleaned.insert("k".to_string(), value.clone());
+                }
+            }
+            "OKP" => {
+                for field in &["x", "crv"] {
+                    if let Some(value) = obj.get(*field) {
+                        cleaned.insert(field.to_string(), value.clone());
+                    }
+                }
+            }
+            _ => {
+                // Unknown key type, skip this key
+                warn_fmt!("OidcProvider", "Unknown key type in JWKS: {}", kty);
+                return None;
+            }
+        }
+
+        Some(serde_json::Value::Object(cleaned))
+    }
+
     pub(crate) async fn refresh_jwks(&self) -> Result<(), ProxyError> {
         let now = tokio::time::Instant::now();
 
@@ -245,16 +331,63 @@ impl OidcProvider {
         // Fetch the JWKS
         let jwks = match self.http.get(&self.jwks_uri).send().await {
             Ok(response) => match response.error_for_status() {
-                Ok(response) => match response.json::<JwkSet>().await {
-                    Ok(jwks) => jwks,
-                    Err(e) => {
-                        let err = ProxyError::SecurityError(format!(
-                            "Failed to parse JWKS response: {e}"
-                        ));
-                        error_fmt!("OidcProvider", "{}", err);
-                        return Err(err);
+                Ok(response) => {
+                    // Get the response text first for better error reporting
+                    let response_text = match response.text().await {
+                        Ok(text) => text,
+                        Err(e) => {
+                            let err = ProxyError::SecurityError(format!(
+                                "Failed to read JWKS response body: {e}"
+                            ));
+                            error_fmt!("OidcProvider", "{}", err);
+                            return Err(err);
+                        }
+                    };
+
+                    debug_fmt!("OidcProvider", "JWKS response body: {}", response_text);
+
+                    // Try to parse as JSON first to get better error messages
+                    let json_value: serde_json::Value = match serde_json::from_str(&response_text) {
+                        Ok(value) => value,
+                        Err(e) => {
+                            let err = ProxyError::SecurityError(format!(
+                                "Failed to parse JWKS response as JSON: {e}. Response body: {}",
+                                response_text.chars().take(500).collect::<String>()
+                            ));
+                            error_fmt!("OidcProvider", "{}", err);
+                            return Err(err);
+                        }
+                    };
+
+                    // Now try to deserialize into JwkSet
+                    match serde_json::from_value::<JwkSet>(json_value.clone()) {
+                        Ok(jwks) => jwks,
+                        Err(e) => {
+                            debug_fmt!(
+                                "OidcProvider",
+                                "Standard JwkSet parsing failed: {}, trying fallback",
+                                e
+                            );
+
+                            // Try fallback parsing for different JWKS formats
+                            match Self::parse_jwks_fallback(&json_value) {
+                                Ok(jwks) => {
+                                    debug_fmt!("OidcProvider", "Fallback JWKS parsing successful");
+                                    jwks
+                                }
+                                Err(fallback_err) => {
+                                    let err = ProxyError::SecurityError(format!(
+                                        "Failed to parse JWKS response. Standard error: {e}. Fallback error: {fallback_err}. JSON structure: {}",
+                                        serde_json::to_string_pretty(&json_value)
+                                            .unwrap_or_else(|_| "invalid".to_string())
+                                    ));
+                                    error_fmt!("OidcProvider", "{}", err);
+                                    return Err(err);
+                                }
+                            }
+                        }
                     }
-                },
+                }
                 Err(e) => {
                     let err =
                         ProxyError::SecurityError(format!("JWKS endpoint returned error: {e}"));

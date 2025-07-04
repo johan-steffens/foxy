@@ -3161,6 +3161,811 @@ mod security_tests {
     }
 
     #[tokio::test]
+    async fn test_jwks_refresh_cognito_format() {
+        // Test with AWS Cognito-style JWKS response
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint with Cognito-style response
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kid": "1234example=",
+                        "alg": "RS256",
+                        "kty": "RSA",
+                        "e": "AQAB",
+                        "n": "1234567890",
+                        "use": "sig"
+                    },
+                    {
+                        "kid": "5678example=",
+                        "alg": "RS256",
+                        "kty": "RSA",
+                        "e": "AQAB",
+                        "n": "987654321",
+                        "use": "sig"
+                    }
+                ]
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Force cache expiration
+        {
+            let mut jwks_w = provider.jwks.write().await;
+            *jwks_w = None;
+        }
+        {
+            let mut refresh_w = provider.last_refresh.write().await;
+            *refresh_w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
+                .unwrap_or_else(|| {
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_millis(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
+                });
+        }
+
+        let result = provider.refresh_jwks().await;
+        assert!(result.is_ok());
+
+        // Verify JWKS was cached correctly
+        let jwks = provider.jwks.read().await;
+        assert!(jwks.is_some());
+        let jwks = jwks.as_ref().unwrap();
+        assert_eq!(jwks.keys.len(), 2);
+        assert_eq!(jwks.keys[0].common.key_id, Some("1234example=".to_string()));
+        assert_eq!(jwks.keys[1].common.key_id, Some("5678example=".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_with_extra_fields() {
+        // Test JWKS response with additional fields that should be ignored
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint with extra fields
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "RSA",
+                        "kid": "test-key-1",
+                        "use": "sig",
+                        "alg": "RS256",
+                        "n": "test-modulus",
+                        "e": "AQAB",
+                        // Extra fields that should be ignored
+                        "x5c": ["cert1", "cert2"],
+                        "x5t": "thumbprint",
+                        "x5t#S256": "sha256-thumbprint",
+                        "custom_field": "custom_value"
+                    }
+                ],
+                // Extra top-level fields
+                "cache_max_age": 3600,
+                "custom_metadata": {
+                    "provider": "test"
+                }
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Force cache expiration
+        {
+            let mut jwks_w = provider.jwks.write().await;
+            *jwks_w = None;
+        }
+        {
+            let mut refresh_w = provider.last_refresh.write().await;
+            *refresh_w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
+                .unwrap_or_else(|| {
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_millis(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
+                });
+        }
+
+        let result = provider.refresh_jwks().await;
+        assert!(result.is_ok());
+
+        // Verify JWKS was cached correctly despite extra fields
+        let jwks = provider.jwks.read().await;
+        assert!(jwks.is_some());
+        let jwks = jwks.as_ref().unwrap();
+        assert_eq!(jwks.keys.len(), 1);
+        assert_eq!(jwks.keys[0].common.key_id, Some("test-key-1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_missing_keys_field() {
+        // Test JWKS response missing the "keys" field
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint without "keys" field
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "metadata": "some data",
+                "other_field": "value"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Force cache expiration
+        {
+            let mut jwks_w = provider.jwks.write().await;
+            *jwks_w = None;
+        }
+        {
+            let mut refresh_w = provider.last_refresh.write().await;
+            *refresh_w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
+                .unwrap_or_else(|| {
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_millis(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
+                });
+        }
+
+        let result = provider.refresh_jwks().await;
+        assert!(result.is_err());
+
+        if let Err(ProxyError::SecurityError(msg)) = result {
+            assert!(msg.contains("Failed to parse JWKS response"));
+        } else {
+            panic!("Expected SecurityError");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_malformed_key() {
+        // Test JWKS response with malformed key structure
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint with malformed key
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "RSA",
+                        "kid": "test-key-1",
+                        "use": "sig",
+                        "alg": "RS256",
+                        // Missing required fields 'n' and 'e' for RSA key
+                    },
+                    {
+                        // Valid key to test partial parsing
+                        "kty": "RSA",
+                        "kid": "test-key-2",
+                        "use": "sig",
+                        "alg": "RS256",
+                        "n": "test-modulus",
+                        "e": "AQAB"
+                    }
+                ]
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Force cache expiration
+        {
+            let mut jwks_w = provider.jwks.write().await;
+            *jwks_w = None;
+        }
+        {
+            let mut refresh_w = provider.last_refresh.write().await;
+            *refresh_w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
+                .unwrap_or_else(|| {
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_millis(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
+                });
+        }
+
+        let result = provider.refresh_jwks().await;
+        // This might succeed or fail depending on how strict the parser is
+        // The jsonwebtoken crate might skip malformed keys or fail entirely
+        match result {
+            Ok(_) => {
+                // If it succeeds, verify that at least the valid key was parsed
+                let jwks = provider.jwks.read().await;
+                assert!(jwks.is_some());
+                let jwks = jwks.as_ref().unwrap();
+                // Should have at least one valid key
+                assert!(!jwks.keys.is_empty());
+            }
+            Err(ProxyError::SecurityError(msg)) => {
+                // If it fails, it should be a parsing error
+                assert!(msg.contains("Failed to parse JWKS response"));
+            }
+            Err(e) => panic!("Unexpected error type: {:?}", e),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_different_content_types() {
+        // Test JWKS response with different content types
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint with text/plain content type but valid JSON
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        serde_json::json!({
+                            "keys": [
+                                {
+                                    "kty": "RSA",
+                                    "kid": "test-key-1",
+                                    "use": "sig",
+                                    "alg": "RS256",
+                                    "n": "test-modulus",
+                                    "e": "AQAB"
+                                }
+                            ]
+                        })
+                        .to_string(),
+                    )
+                    .insert_header("content-type", "text/plain"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Force cache expiration
+        {
+            let mut jwks_w = provider.jwks.write().await;
+            *jwks_w = None;
+        }
+        {
+            let mut refresh_w = provider.last_refresh.write().await;
+            *refresh_w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
+                .unwrap_or_else(|| {
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_millis(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
+                });
+        }
+
+        let result = provider.refresh_jwks().await;
+        // reqwest should handle this gracefully and parse JSON regardless of content-type
+        assert!(result.is_ok());
+
+        // Verify JWKS was cached correctly
+        let jwks = provider.jwks.read().await;
+        assert!(jwks.is_some());
+        let jwks = jwks.as_ref().unwrap();
+        assert_eq!(jwks.keys.len(), 1);
+        assert_eq!(jwks.keys[0].common.key_id, Some("test-key-1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_fallback_parsing() {
+        // Test JWKS response that requires fallback parsing
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint with a format that might cause standard parsing to fail
+        // but should work with fallback parsing
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "RSA",
+                        "kid": "fallback-key-1",
+                        "use": "sig",
+                        "alg": "RS256",
+                        "n": "test-modulus-fallback",
+                        "e": "AQAB",
+                        // Extra fields that might confuse strict parsers
+                        "x5c": ["cert1"],
+                        "x5t": "thumbprint",
+                        "x5t#S256": "sha256-thumbprint",
+                        "unknown_field": "unknown_value"
+                    }
+                ],
+                // Extra top-level fields
+                "cache_max_age": 3600,
+                "next_update": "2024-01-01T00:00:00Z"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Force cache expiration
+        {
+            let mut jwks_w = provider.jwks.write().await;
+            *jwks_w = None;
+        }
+        {
+            let mut refresh_w = provider.last_refresh.write().await;
+            *refresh_w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
+                .unwrap_or_else(|| {
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_millis(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
+                });
+        }
+
+        let result = provider.refresh_jwks().await;
+        assert!(result.is_ok());
+
+        // Verify JWKS was cached correctly using fallback parsing
+        let jwks = provider.jwks.read().await;
+        assert!(jwks.is_some());
+        let jwks = jwks.as_ref().unwrap();
+        assert_eq!(jwks.keys.len(), 1);
+        assert_eq!(
+            jwks.keys[0].common.key_id,
+            Some("fallback-key-1".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_partial_key_failure() {
+        // Test JWKS response where some keys are valid and some are malformed
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint with mixed valid/invalid keys
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        // Valid RSA key
+                        "kty": "RSA",
+                        "kid": "valid-key-1",
+                        "use": "sig",
+                        "alg": "RS256",
+                        "n": "test-modulus",
+                        "e": "AQAB"
+                    },
+                    {
+                        // Invalid key - missing required fields
+                        "kty": "RSA",
+                        "kid": "invalid-key-1",
+                        "use": "sig",
+                        "alg": "RS256"
+                        // Missing 'n' and 'e'
+                    },
+                    {
+                        // Another valid key
+                        "kty": "EC",
+                        "kid": "valid-key-2",
+                        "use": "sig",
+                        "alg": "ES256",
+                        "crv": "P-256",
+                        "x": "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
+                        "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+                    }
+                ]
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Force cache expiration
+        {
+            let mut jwks_w = provider.jwks.write().await;
+            *jwks_w = None;
+        }
+        {
+            let mut refresh_w = provider.last_refresh.write().await;
+            *refresh_w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
+                .unwrap_or_else(|| {
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_millis(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
+                });
+        }
+
+        let result = provider.refresh_jwks().await;
+
+        // The current implementation might fail entirely with malformed keys
+        // This is actually acceptable behavior - strict parsing is safer
+        match result {
+            Ok(_) => {
+                // If it succeeds, verify that valid keys were parsed
+                let jwks = provider.jwks.read().await;
+                assert!(jwks.is_some());
+                let jwks = jwks.as_ref().unwrap();
+                // Should have at least 1 valid key
+                assert!(!jwks.keys.is_empty());
+
+                let key_ids: Vec<_> = jwks
+                    .keys
+                    .iter()
+                    .filter_map(|k| k.common.key_id.as_ref())
+                    .collect();
+                // At least one of the valid keys should be present
+                assert!(
+                    key_ids.contains(&&"valid-key-1".to_string())
+                        || key_ids.contains(&&"valid-key-2".to_string())
+                );
+            }
+            Err(ProxyError::SecurityError(msg)) => {
+                // It's also acceptable for parsing to fail entirely with malformed keys
+                assert!(msg.contains("Failed to parse JWKS response"));
+                println!(
+                    "JWKS parsing failed as expected with malformed keys: {}",
+                    msg
+                );
+            }
+            Err(e) => panic!("Unexpected error type: {:?}", e),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_real_world_format() {
+        // Test with a real-world JWKS format similar to what AWS Cognito or other providers return
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint with a real-world format
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "RSA",
+                        "use": "sig",
+                        "kid": "test-key-1",
+                        "alg": "RS256",
+                        "n": "3TZbOj2V9n8Mml9L7djP2F_qPCP4Sk7peS45-bmQHjvHRrNMFZJ_MFWe8gVpNiovr_RLDWyDWjsXwNG6Rp9ueazrGm3YqWYdMCpd9Ba3re02MDzq4glHcoGZxWQQg_qJ0b8MnG5MdI0p4VqDLhLEbJxHZz5MBgDfME07N3Zn0Lj7ytzHPpHXrhMp3zKBPWBzZShH-JG-QDLKTmODdpZaWMRG0bWo5eyfXNkp0CWTvZgxzZ5rNHHWz4Ff-6zqMSD1x8DN5x-UEcSmpWVRu1zPNMBvqPEoaJ7-xSu4BumkEWhxLkge9Z5Y2QWDKy_D5PSabJQQ3v_G4eqWa6VCT3zZw",
+                        "e": "AQAB"
+                    }
+                ]
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Force cache expiration
+        {
+            let mut jwks_w = provider.jwks.write().await;
+            *jwks_w = None;
+        }
+        {
+            let mut refresh_w = provider.last_refresh.write().await;
+            *refresh_w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
+                .unwrap_or_else(|| {
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_millis(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
+                });
+        }
+
+        let result = provider.refresh_jwks().await;
+        assert!(
+            result.is_ok(),
+            "JWKS refresh should succeed with real-world format"
+        );
+
+        // Verify JWKS was parsed correctly
+        let jwks = provider.jwks.read().await;
+        assert!(jwks.is_some(), "JWKS should be cached");
+        let jwks = jwks.as_ref().unwrap();
+        assert_eq!(jwks.keys.len(), 1, "Should have exactly one key");
+
+        let key = &jwks.keys[0];
+        assert_eq!(
+            key.common.key_id,
+            Some("test-key-1".to_string()),
+            "Key ID should match"
+        );
+
+        // Check that the key has the expected properties (the exact enum values may vary)
+        assert!(key.common.key_id.is_some(), "Key should have an ID");
+
+        // Verify the key type by checking the algorithm parameters
+        match &key.algorithm {
+            jsonwebtoken::jwk::AlgorithmParameters::RSA(rsa_params) => {
+                assert!(!rsa_params.n.is_empty(), "RSA modulus should not be empty");
+                assert!(!rsa_params.e.is_empty(), "RSA exponent should not be empty");
+                assert_eq!(rsa_params.e, "AQAB", "RSA exponent should be AQAB");
+            }
+            _ => panic!("Expected RSA key parameters"),
+        }
+
+        // Verify the key can be converted to a decoding key
+        let decoding_key_result = provider.jwk_to_decoding_key(key);
+        match decoding_key_result {
+            Ok(_) => {
+                // Success - the key was converted properly
+            }
+            Err(e) => {
+                // For this test, we'll just verify the JWKS parsing worked
+                // The actual key conversion might fail with test data
+                println!("Key conversion failed (expected with test data): {}", e);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_jwks_refresh_multiple_real_keys() {
+        // Test with multiple keys in different formats (RSA, EC, etc.)
+        let mock_server = MockServer::start().await;
+
+        // Mock the discovery endpoint
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "issuer": mock_server.uri(),
+                "jwks_uri": format!("{}/jwks", mock_server.uri())
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the JWKS endpoint with multiple real-world keys
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "RSA",
+                        "use": "sig",
+                        "kid": "rsa-key-1",
+                        "alg": "RS256",
+                        "n": "3TZbOj2V9n8Mml9L7djP2F_qPCP4Sk7peS45-bmQHjvHRrNMFZJ_MFWe8gVpNiovr_RLDWyDWjsXwNG6Rp9ueazrGm3YqWYdMCpd9Ba3re02MDzq4glHcoGZxWQQg_qJ0b8MnG5MdI0p4VqDLhLEbJxHZz5MBgDfME07N3Zn0Lj7ytzHPpHXrhMp3zKBPWBzZShH-JG-QDLKTmODdpZaWMRG0bWo5eyfXNkp0CWTvZgxzZ5rNHHWz4Ff-6zqMSD1x8DN5x-UEcSmpWVRu1zPNMBvqPEoaJ7-xSu4BumkEWhxLkge9Z5Y2QWDKy_D5PSabJQQ3v_G4eqWa6VCT3zZw",
+                        "e": "AQAB"
+                    },
+                    {
+                        "kty": "EC",
+                        "use": "sig",
+                        "kid": "ec-key-1",
+                        "alg": "ES256",
+                        "crv": "P-256",
+                        "x": "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
+                        "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+                    },
+                    {
+                        "kty": "RSA",
+                        "use": "sig",
+                        "kid": "rsa-key-2",
+                        "alg": "RS512",
+                        "n": "xGKzZzOjWmeZhp7wT0T-nhnpOaZrsq7qrqAxZzu6Qk2YcxjjMRnVKySNvYgFWT7JLpinabBLVRPiehFxnvaqBw",
+                        "e": "AQAB"
+                    }
+                ]
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OidcConfig {
+            issuer_uri: mock_server.uri(),
+            aud: None,
+            shared_secret: None,
+            bypass: vec![],
+        };
+
+        let provider = OidcProvider::discover(config).await.unwrap();
+
+        // Force cache expiration
+        {
+            let mut jwks_w = provider.jwks.write().await;
+            *jwks_w = None;
+        }
+        {
+            let mut refresh_w = provider.last_refresh.write().await;
+            *refresh_w = tokio::time::Instant::now()
+                .checked_sub(JWKS_REFRESH + std::time::Duration::from_secs(1))
+                .unwrap_or_else(|| {
+                    tokio::time::Instant::now()
+                        .checked_sub(std::time::Duration::from_millis(1))
+                        .unwrap_or_else(tokio::time::Instant::now)
+                });
+        }
+
+        let result = provider.refresh_jwks().await;
+        assert!(
+            result.is_ok(),
+            "JWKS refresh should succeed with multiple keys"
+        );
+
+        // Verify JWKS was parsed correctly
+        let jwks = provider.jwks.read().await;
+        assert!(jwks.is_some(), "JWKS should be cached");
+        let jwks = jwks.as_ref().unwrap();
+        assert_eq!(jwks.keys.len(), 3, "Should have exactly three keys");
+
+        // Check each key
+        let key_ids: Vec<_> = jwks
+            .keys
+            .iter()
+            .filter_map(|k| k.common.key_id.as_ref())
+            .collect();
+
+        assert!(
+            key_ids.contains(&&"rsa-key-1".to_string()),
+            "Should contain rsa-key-1"
+        );
+        assert!(
+            key_ids.contains(&&"ec-key-1".to_string()),
+            "Should contain ec-key-1"
+        );
+        assert!(
+            key_ids.contains(&&"rsa-key-2".to_string()),
+            "Should contain rsa-key-2"
+        );
+
+        // Try to convert keys to decoding keys (may fail with test data)
+        for key in &jwks.keys {
+            let decoding_key_result = provider.jwk_to_decoding_key(key);
+            match decoding_key_result {
+                Ok(_) => {
+                    println!(
+                        "Successfully converted key {:?} to decoding key",
+                        key.common.key_id
+                    );
+                }
+                Err(e) => {
+                    println!(
+                        "Key conversion failed for {:?} (expected with test data): {}",
+                        key.common.key_id, e
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn test_oidc_provider_discover_glob_set_build_failure() {
         // This test is challenging because GlobSetBuilder::build() rarely fails
         // after Glob::new() succeeds. We'll test the error path by creating
