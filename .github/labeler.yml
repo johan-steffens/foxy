@@ -1,0 +1,80 @@
+# Documentation changes
+documentation:
+- changed-files:
+  - any-glob-to-any-file:
+    - "**/*.md"
+    - "docs/**/*"
+    - "README*"
+    - "CHANGELOG*"
+    - "LICENSE*"
+    - "CONTRIBUTING*"
+    - "CODE_OF_CONDUCT*"
+    - ".github/**/*.md"
+    - "examples/**/*"
+
+# Enhancement changes (tests, binary, config, logging, etc.)
+enhancement:
+- changed-files:
+  - any-glob-to-any-file:
+    - "tests/**/*"
+    - "**/*test*.rs"
+    - "**/*_test.rs"
+    - "**/test_*.rs"
+    - "**/*spec*.rs"
+    - "src/bin/**/*"
+    - "src/config/**/*"
+    - "src/loader/**/*"
+    - "src/logging/**/*"
+    - "src/opentelemetry/**/*"
+
+# Configuration and maintenance changes
+chore:
+- changed-files:
+  - any-glob-to-any-file:
+    - "Cargo.toml"
+    - "Cargo.lock"
+    - ".github/workflows/**/*"
+    - ".github/dependabot.yml"
+    - ".gitignore"
+    - ".gitattributes"
+    - "config/**/*"
+    - "*.toml"
+    - "*.yaml"
+    - "*.yml"
+    - "*.json"
+    - "Dockerfile*"
+    - "docker-compose*"
+    - "target/**/*"
+    - ".cargo/**/*"
+    - "build.rs"
+
+# Core library changes (new features)
+feature:
+- changed-files:
+  - any-glob-to-any-file:
+    - "src/lib.rs"
+    - "src/core/**/*"
+    - "src/router/**/*"
+    - "src/filters/**/*"
+    - "src/server/**/*"
+- head-branch: ['^feature/', '^feat/', 'feature']
+
+# Bug fixes (hotfix branches or bug-related file changes)
+bug:
+- any:
+  - head-branch: ['^hotfix/', '^bugfix/', '^fix/', 'hotfix', 'bugfix']
+  - changed-files:
+    - all-globs-to-any-file:
+      - "src/**/*.rs"
+      - "!src/**/test*.rs"  # Exclude test files
+      - "!**/*_test.rs"     # Exclude test files
+
+# Fix label for general fixes (including security, performance, dependencies)
+fix:
+- any:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/security/**/*"  # Security fixes
+      - "Cargo.toml"         # Dependency fixes
+      - "Cargo.lock"         # Dependency fixes
+  - head-branch: ['^fix/', 'fix']

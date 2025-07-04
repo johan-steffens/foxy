@@ -1334,4 +1334,260 @@ mod core_tests {
         // receive_time should be cloned but we can't easily test Instant equality
         assert!(cloned.receive_time.is_some());
     }
+
+    // Additional tests for OpenTelemetry feature coverage
+    #[cfg(feature = "opentelemetry")]
+    #[tokio::test]
+    async fn test_proxy_core_process_request_with_opentelemetry_context() {
+        use opentelemetry::{Context, global};
+
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new().with_route(Route {
+            id: "test-route".to_string(),
+            target_base_url: "http://example.com".to_string(),
+            path_pattern: "/test/*".to_string(),
+            filters: None,
+        }));
+        let proxy_core = ProxyCore::new(config, router).await.unwrap();
+
+        let request = create_test_request(HttpMethod::Get, "/test");
+        let parent_context = Context::current();
+
+        let result = proxy_core
+            .process_request(request, Some(parent_context))
+            .await;
+
+        // Should fail with client error since we can't make real HTTP requests
+        // but the OpenTelemetry context should be processed
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), ProxyError::ClientError(_)));
+    }
+
+    #[cfg(feature = "opentelemetry")]
+    #[tokio::test]
+    async fn test_proxy_core_process_request_opentelemetry_error_handling() {
+        use opentelemetry::Context;
+
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new().with_failure());
+        let proxy_core = ProxyCore::new(config, router).await.unwrap();
+
+        let request = create_test_request(HttpMethod::Get, "/test");
+        let parent_context = Context::current();
+
+        let result = proxy_core
+            .process_request(request, Some(parent_context))
+            .await;
+
+        // Should fail with routing error and OpenTelemetry span should be marked as error
+        assert!(result.is_err());
+        if let Err(ProxyError::RoutingError(msg)) = result {
+            assert_eq!(msg, "Mock routing failure");
+        } else {
+            panic!("Expected RoutingError");
+        }
+    }
+
+    // Tests for error conversion edge cases
+    #[test]
+    fn test_proxy_error_comprehensive_display() {
+        use std::time::Duration;
+
+        let errors = vec![
+            ProxyError::Timeout(Duration::from_secs(30)),
+            ProxyError::RoutingError("Route not found".to_string()),
+            ProxyError::FilterError("Filter processing failed".to_string()),
+            ProxyError::ConfigError("Invalid configuration".to_string()),
+            ProxyError::SecurityError("Authentication failed".to_string()),
+            ProxyError::Other("Unknown error occurred".to_string()),
+        ];
+
+        for error in errors {
+            let error_string = error.to_string();
+            assert!(!error_string.is_empty());
+
+            // Verify error formatting
+            match &error {
+                ProxyError::Timeout(duration) => {
+                    assert!(error_string.contains("timed out"));
+                    assert!(error_string.contains(&format!("{duration:?}")));
+                }
+                ProxyError::RoutingError(msg) => {
+                    assert!(error_string.contains("routing error"));
+                    assert!(error_string.contains(msg));
+                }
+                ProxyError::FilterError(msg) => {
+                    assert!(error_string.contains("filter error"));
+                    assert!(error_string.contains(msg));
+                }
+                ProxyError::ConfigError(msg) => {
+                    assert!(error_string.contains("configuration error"));
+                    assert!(error_string.contains(msg));
+                }
+                ProxyError::SecurityError(msg) => {
+                    assert!(error_string.contains("security error"));
+                    assert!(error_string.contains(msg));
+                }
+                ProxyError::Other(msg) => {
+                    assert!(error_string.contains(msg));
+                }
+                _ => {} // Handle other variants like ClientError, IoError
+            }
+        }
+    }
+
+    #[test]
+    fn test_proxy_error_debug_formatting() {
+        let error = ProxyError::RoutingError("Test error".to_string());
+        let debug_string = format!("{error:?}");
+        assert!(debug_string.contains("RoutingError"));
+        assert!(debug_string.contains("Test error"));
+    }
+
+    // Tests for Filter trait default implementations
+    #[tokio::test]
+    async fn test_filter_trait_default_implementations() {
+        #[derive(Debug)]
+        struct MinimalFilter;
+
+        #[async_trait::async_trait]
+        impl Filter for MinimalFilter {
+            fn filter_type(&self) -> FilterType {
+                FilterType::Both
+            }
+
+            fn name(&self) -> &str {
+                "minimal-filter"
+            }
+        }
+
+        let filter = MinimalFilter;
+        let request = create_test_request(HttpMethod::Get, "/test");
+        let response = ProxyResponse {
+            status: 200,
+            headers: reqwest::header::HeaderMap::new(),
+            body: reqwest::Body::from(Vec::new()),
+            context: Arc::new(RwLock::new(ResponseContext::default())),
+        };
+
+        // Test default pre_filter implementation
+        let pre_result = filter.pre_filter(request.clone()).await;
+        assert!(pre_result.is_ok());
+
+        // Test default post_filter implementation
+        let post_result = filter.post_filter(request, response).await;
+        assert!(post_result.is_ok());
+    }
+
+    // Tests for ProxyCore configuration edge cases
+    #[tokio::test]
+    async fn test_proxy_core_with_zero_timeout() {
+        let config_provider = MockConfigProvider::new().with_value("proxy.timeout", 0u64);
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new());
+
+        let proxy_core = ProxyCore::new(config, router).await;
+        assert!(proxy_core.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_with_very_large_timeout() {
+        let config_provider = MockConfigProvider::new().with_value("proxy.timeout", 86400u64); // 24 hours
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new());
+
+        let proxy_core = ProxyCore::new(config, router).await;
+        assert!(proxy_core.is_ok());
+    }
+
+    // Tests for request/response body handling edge cases
+    #[tokio::test]
+    async fn test_proxy_request_with_empty_body() {
+        let request = ProxyRequest {
+            method: HttpMethod::Post,
+            path: "/api/test".to_string(),
+            query: None,
+            headers: reqwest::header::HeaderMap::new(),
+            body: reqwest::Body::from(Vec::new()), // Empty body
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: None,
+        };
+
+        assert_eq!(request.method, HttpMethod::Post);
+        assert_eq!(request.path, "/api/test");
+        assert!(request.query.is_none());
+        assert!(request.custom_target.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_proxy_response_with_large_status_code() {
+        let response = ProxyResponse {
+            status: 599, // Non-standard but valid HTTP status code
+            headers: reqwest::header::HeaderMap::new(),
+            body: reqwest::Body::from("Custom error"),
+            context: Arc::new(RwLock::new(ResponseContext::default())),
+        };
+
+        assert_eq!(response.status, 599);
+    }
+
+    // Tests for concurrent access to ProxyCore
+    #[tokio::test]
+    async fn test_proxy_core_concurrent_filter_access() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new());
+        let proxy_core = Arc::new(ProxyCore::new(config, router).await.unwrap());
+
+        let mut handles = Vec::new();
+
+        // Spawn multiple tasks that add filters concurrently
+        for i in 0..10 {
+            let core = proxy_core.clone();
+            let handle = tokio::spawn(async move {
+                let filter = Arc::new(MockFilter::new(&format!("filter-{i}"), FilterType::Pre));
+                core.add_global_filter(filter).await;
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all tasks to complete
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        // Verify all filters were added
+        let filters = proxy_core.global_filters.read().await;
+        assert_eq!(filters.len(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_proxy_core_concurrent_security_provider_access() {
+        let config_provider = MockConfigProvider::new();
+        let config = Arc::new(Config::builder().with_provider(config_provider).build());
+        let router = Arc::new(MockRouter::new());
+        let proxy_core = Arc::new(ProxyCore::new(config, router).await.unwrap());
+
+        let mut handles = Vec::new();
+
+        // Spawn multiple tasks that add security providers concurrently
+        for i in 0..5 {
+            let core = proxy_core.clone();
+            let handle = tokio::spawn(async move {
+                let provider = Arc::new(MockSecurityProvider::new(&format!("provider-{i}")));
+                core.add_security_provider(provider).await;
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all tasks to complete
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        // Verify security chain was updated (we can't easily inspect the chain directly)
+        // but the operations should have completed without panicking
+    }
 }

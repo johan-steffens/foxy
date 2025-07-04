@@ -148,8 +148,30 @@ impl ProxyServer {
         &self.core
     }
 
-    /// Start the proxy server.
-    pub async fn start(&self) -> Result<(), ProxyError> {
+    /// Setup signal handlers for graceful shutdown.
+    #[cfg(unix)]
+    fn setup_signal_handlers() -> Result<
+        (
+            impl std::future::Future<Output = Result<(), std::io::Error>>,
+            tokio::signal::unix::Signal,
+        ),
+        ProxyError,
+    > {
+        let ctrl_c = signal::ctrl_c();
+        let term_stream = signal(SignalKind::terminate())
+            .map_err(|e| ProxyError::Other(format!("Cannot install SIGTERM handler: {e}")))?;
+        Ok((ctrl_c, term_stream))
+    }
+
+    /// Setup signal handlers for graceful shutdown (Windows version).
+    #[cfg(not(unix))]
+    fn setup_signal_handlers()
+    -> Result<impl std::future::Future<Output = Result<(), std::io::Error>>, ProxyError> {
+        Ok(signal::ctrl_c())
+    }
+
+    /// Setup TCP listener for the server.
+    async fn setup_listener(&self) -> Result<tokio::net::TcpListener, ProxyError> {
         let addr = format!("{}:{}", self.config.host, self.config.port)
             .parse::<SocketAddr>()
             .map_err(|e| ProxyError::Other(format!("Invalid server address: {e}")))?;
@@ -159,130 +181,83 @@ impl ProxyServer {
             .map_err(|e| ProxyError::Other(format!("Failed to bind: {e}")))?;
 
         info_fmt!("Server", "Foxy proxy listening on http://{}", addr);
+        Ok(listener)
+    }
 
-        let health_server = HealthServer::new(self.config.health_port);
-        health_server.set_ready();
+    /// Handle a new connection by spawning a task for it.
+    async fn handle_new_connection(
+        &self,
+        stream: tokio::net::TcpStream,
+        remote_addr: SocketAddr,
+        core: Arc<ProxyCore>,
+        shutdown_senders: Arc<RwLock<HashMap<Id, oneshot::Sender<()>>>>,
+        join_set: &mut JoinSet<()>,
+    ) {
+        let client_ip = remote_addr.ip().to_string();
+        let logging_middleware = self.logging_middleware.clone();
+        let (tx, rx) = oneshot::channel();
+        let shutdown_senders_clone = shutdown_senders.clone();
 
-        // prepare signal futures (no errors at creation)
-        let ctrl_c = signal::ctrl_c();
+        let handle = join_set.spawn(async move {
+            let task_id = tokio::task::id();
 
-        // On Unix, install the SIGTERM stream once and store it in a variable
-        #[cfg(unix)]
-        let mut term_stream = signal(SignalKind::terminate())
-            .map_err(|e| ProxyError::Other(format!("Cannot install SIGTERM handler: {e}")))?;
+            let service = service_fn(move |req: Request<Incoming>| {
+                debug_fmt!("Server", "Incoming over {:?}", &req.version());
+                handle_request(req, core.clone(), client_ip.clone(), logging_middleware.clone())
+            });
+            let io = TokioIo::new(stream);
 
-        // Build the actual future that we'll await
-        #[cfg(unix)]
-        let sigterm = term_stream.recv();
-        #[cfg(not(unix))]
-        let sigterm = std::future::pending();
+            let builder = AutoBuilder::new(TokioExecutor::new());
 
-        // Pin them on the stack so select! can poll them
-        tokio::pin!(ctrl_c);
-        tokio::pin!(sigterm);
+            // Create the connection
+            let connection = builder.serve_connection(io, service);
 
-        // Create and use the shared shutdown senders map
-        let shutdown_senders = self.shutdown_senders.clone();
+            // Pin the connection and enable graceful shutdown
+            let mut conn = std::pin::pin!(connection);
 
-        // Track spawned connection tasks
-        let mut join_set = JoinSet::new();
-        let core = self.core.clone();
-
-        // Flag to indicate shutdown has been initiated
-        let shutdown_initiated = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let shutdown_initiated_clone = shutdown_initiated.clone();
-
-        loop {
+            // Run the connection with graceful shutdown
             tokio::select! {
-                _ = &mut ctrl_c => {
-                    info_fmt!("Server", "Received Ctrl-C; initiating graceful shutdown");
-                    shutdown_initiated_clone.store(true, std::sync::atomic::Ordering::SeqCst);
-                    break;
+                res = &mut conn => {
+                    Self::handle_connection_result(res);
                 }
-                _ = &mut sigterm => {
-                    info_fmt!("Server", "Received SIGTERM; initiating graceful shutdown");
-                    shutdown_initiated_clone.store(true, std::sync::atomic::Ordering::SeqCst);
-                    break;
+                _ = rx => {
+                    debug_fmt!("Server", "Connection received shutdown signal, waiting for graceful close");
+                    conn.as_mut().graceful_shutdown();
+
+                    // Continue running the connection until it completes
+                    Self::handle_connection_result(conn.await);
                 }
-                accept = listener.accept() => {
-                    match accept {
-                        Ok((stream, remote_addr)) => {
-                            // If shutdown has been initiated, reject new connections
-                            if shutdown_initiated.load(std::sync::atomic::Ordering::SeqCst) {
-                                info_fmt!("Server", "Rejecting new connection during shutdown");
-                                continue;
-                            }
+            }
 
-                            let core = core.clone();
-                            let client_ip = remote_addr.ip().to_string();
-                            let logging_middleware = self.logging_middleware.clone();
-                            let (tx, rx) = oneshot::channel();
-                            let shutdown_senders_clone = shutdown_senders.clone();
+            // Clean up the shutdown sender for this task
+            shutdown_senders_clone.write().await.remove(&task_id);
+            debug_fmt!("Server", "Connection task {:?} completed", task_id);
+        });
 
-                            let handle = join_set.spawn(async move {
-                                let task_id = tokio::task::id();
+        // Store the shutdown sender for this task
+        shutdown_senders.write().await.insert(handle.id(), tx);
+    }
 
-                                let service = service_fn(move |req: Request<Incoming>| {
-                                    debug_fmt!("Server", "Incoming over {:?}", &req.version());
-                                    handle_request(req, core.clone(), client_ip.clone(), logging_middleware.clone())
-                                });
-                                let io = TokioIo::new(stream);
-
-                                let builder = AutoBuilder::new(TokioExecutor::new());
-
-                                // Create the connection
-                                let connection = builder.serve_connection(io, service);
-
-                                // Pin the connection and enable graceful shutdown
-                                let mut conn = std::pin::pin!(connection);
-
-                                // Run the connection with graceful shutdown
-                                tokio::select! {
-                                    res = &mut conn => {
-                                        match res {
-                                            Ok(()) => debug_fmt!("Server", "Connection closed normally"),
-                                            Err(e) => {
-                                                // Check if it's a graceful close by examining the error message
-                                                let err_str = e.to_string();
-                                                if !err_str.contains("connection closed") &&
-                                                   !err_str.contains("connection reset") {
-                                                    error_fmt!("Server", "Connection error: {}", e);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    _ = rx => {
-                                        debug_fmt!("Server", "Connection received shutdown signal, waiting for graceful close");
-                                        conn.as_mut().graceful_shutdown();
-
-                                        // Continue running the connection until it completes
-                                        match conn.await {
-                                            Ok(()) => debug_fmt!("Server", "Connection closed gracefully after shutdown signal"),
-                                            Err(e) => {
-                                                let err_str = e.to_string();
-                                                if !err_str.contains("connection closed") &&
-                                                   !err_str.contains("connection reset") {
-                                                    error_fmt!("Server", "Connection error during graceful shutdown: {}", e);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Clean up the shutdown sender for this task
-                                shutdown_senders_clone.write().await.remove(&task_id);
-                                debug_fmt!("Server", "Connection task {:?} completed", task_id);
-                            });
-
-                            // Store the shutdown sender for this task
-                            shutdown_senders.write().await.insert(handle.id(), tx);
-                        }
-                        Err(e) => error_fmt!("Server", "Accept error: {}", e),
-                    }
+    /// Handle the result of a connection operation.
+    fn handle_connection_result(res: Result<(), Box<dyn std::error::Error + Send + Sync>>) {
+        match res {
+            Ok(()) => debug_fmt!("Server", "Connection closed normally"),
+            Err(e) => {
+                // Check if it's a graceful close by examining the error message
+                let err_str = e.to_string();
+                if !err_str.contains("connection closed") && !err_str.contains("connection reset") {
+                    error_fmt!("Server", "Connection error: {}", e);
                 }
             }
         }
+    }
 
+    /// Perform graceful shutdown of all connections.
+    async fn graceful_shutdown(
+        &self,
+        mut join_set: JoinSet<()>,
+        shutdown_senders: Arc<RwLock<HashMap<Id, oneshot::Sender<()>>>>,
+    ) -> Result<(), ProxyError> {
         // Stop accepting connections and signal existing ones to shut down
         info_fmt!(
             "Server",
@@ -369,10 +344,88 @@ impl ProxyServer {
             }
         }
 
+        info_fmt!("Server", "Shutdown complete");
+        Ok(())
+    }
+
+    /// Start the proxy server.
+    pub async fn start(&self) -> Result<(), ProxyError> {
+        // Setup listener
+        let listener = self.setup_listener().await?;
+
+        // Setup health server
+        let health_server = HealthServer::new(self.config.health_port);
+        health_server.set_ready();
+
+        // Setup signal handlers
+        #[cfg(unix)]
+        let (ctrl_c, mut term_stream) = Self::setup_signal_handlers()?;
+        #[cfg(not(unix))]
+        let ctrl_c = Self::setup_signal_handlers()?;
+
+        // Build the actual future that we'll await
+        #[cfg(unix)]
+        let sigterm = term_stream.recv();
+        #[cfg(not(unix))]
+        let sigterm = std::future::pending();
+
+        // Pin them on the stack so select! can poll them
+        tokio::pin!(ctrl_c);
+        tokio::pin!(sigterm);
+
+        // Create and use the shared shutdown senders map
+        let shutdown_senders = self.shutdown_senders.clone();
+
+        // Track spawned connection tasks
+        let mut join_set = JoinSet::new();
+        let core = self.core.clone();
+
+        // Flag to indicate shutdown has been initiated
+        let shutdown_initiated = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let shutdown_initiated_clone = shutdown_initiated.clone();
+
+        // Main server loop
+        loop {
+            tokio::select! {
+                _ = &mut ctrl_c => {
+                    info_fmt!("Server", "Received Ctrl-C; initiating graceful shutdown");
+                    shutdown_initiated_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+                    break;
+                }
+                _ = &mut sigterm => {
+                    info_fmt!("Server", "Received SIGTERM; initiating graceful shutdown");
+                    shutdown_initiated_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+                    break;
+                }
+                accept = listener.accept() => {
+                    match accept {
+                        Ok((stream, remote_addr)) => {
+                            // If shutdown has been initiated, reject new connections
+                            if shutdown_initiated.load(std::sync::atomic::Ordering::SeqCst) {
+                                info_fmt!("Server", "Rejecting new connection during shutdown");
+                                continue;
+                            }
+
+                            self.handle_new_connection(
+                                stream,
+                                remote_addr,
+                                core.clone(),
+                                shutdown_senders.clone(),
+                                &mut join_set,
+                            ).await;
+                        }
+                        Err(e) => error_fmt!("Server", "Accept error: {}", e),
+                    }
+                }
+            }
+        }
+
+        // Perform graceful shutdown
+        self.graceful_shutdown(join_set, shutdown_senders).await?;
+
         // Ensure health server is also shut down
         drop(health_server);
 
-        info_fmt!("Server", "Shutdown complete");
         Ok(())
     }
 }
