@@ -253,7 +253,7 @@ impl OidcProvider {
 
         // Try to parse the cleaned JWKS
         serde_json::from_value::<JwkSet>(cleaned_jwks)
-            .map_err(|e| format!("Failed to parse cleaned JWKS: {}", e))
+            .map_err(|e| format!("Failed to parse cleaned JWKS: {e}"))
     }
 
     /// Clean a single JWK by removing unknown fields and ensuring required fields are present

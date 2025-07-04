@@ -3459,7 +3459,7 @@ mod security_tests {
                 // If it fails, it should be a parsing error
                 assert!(msg.contains("Failed to parse JWKS response"));
             }
-            Err(e) => panic!("Unexpected error type: {:?}", e),
+            Err(e) => panic!("Unexpected error type: {e:?}"),
         }
     }
 
@@ -3725,12 +3725,9 @@ mod security_tests {
             Err(ProxyError::SecurityError(msg)) => {
                 // It's also acceptable for parsing to fail entirely with malformed keys
                 assert!(msg.contains("Failed to parse JWKS response"));
-                println!(
-                    "JWKS parsing failed as expected with malformed keys: {}",
-                    msg
-                );
+                println!("JWKS parsing failed as expected with malformed keys: {msg}");
             }
-            Err(e) => panic!("Unexpected error type: {:?}", e),
+            Err(e) => panic!("Unexpected error type: {e:?}"),
         }
     }
 
@@ -3833,7 +3830,7 @@ mod security_tests {
             Err(e) => {
                 // For this test, we'll just verify the JWKS parsing worked
                 // The actual key conversion might fail with test data
-                println!("Key conversion failed (expected with test data): {}", e);
+                println!("Key conversion failed (expected with test data): {e}");
             }
         }
     }
@@ -3950,16 +3947,10 @@ mod security_tests {
             let decoding_key_result = provider.jwk_to_decoding_key(key);
             match decoding_key_result {
                 Ok(_) => {
-                    println!(
-                        "Successfully converted key {:?} to decoding key",
-                        key.common.key_id
-                    );
+                    println!("Successfully converted key {:?} to decoding key", key.common.key_id);
                 }
                 Err(e) => {
-                    println!(
-                        "Key conversion failed for {:?} (expected with test data): {}",
-                        key.common.key_id, e
-                    );
+                    println!("Key conversion failed for {:?} (expected with test data): {e}", key.common.key_id);
                 }
             }
         }
