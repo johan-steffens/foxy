@@ -1930,5 +1930,330 @@ server:
             // without creating /vault/secret/ which we shouldn't do in tests
             assert_eq!(vault_provider.provider_name(), "vault");
         }
+
+        #[test]
+        fn test_vault_metadata_read_failure() {
+            let dir = tempdir().unwrap();
+            let vault_dir = dir.path().join("vault");
+            fs::create_dir_all(&vault_dir).unwrap();
+
+            // Create a directory instead of a file to cause metadata read issues
+            // On Windows, reading metadata of a directory when expecting a file
+            // will succeed but then fail when trying to read as string
+            let secret_dir = vault_dir.join("invalid_secret");
+            fs::create_dir_all(&secret_dir).unwrap();
+
+            let mut mock_provider = MockConfigProvider::new("test", 0);
+            mock_provider.values.insert(
+                "server.secret".to_string(),
+                serde_json::json!("${secret.invalid_secret}"),
+            );
+
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+
+            let result = vault_provider.get::<String>("server.secret");
+            assert!(result.is_err());
+            let error = result.unwrap_err();
+            // On Windows, this will fail when trying to read the directory as a string
+            assert!(error.to_string().contains("failed to read secret"));
+        }
+
+        #[test]
+        fn test_vault_file_too_large() {
+            let dir = tempdir().unwrap();
+            let vault_dir = dir.path().join("vault");
+            fs::create_dir_all(&vault_dir).unwrap();
+
+            // Create a large secret file (larger than MAX_SECRET_SIZE)
+            let secret_file = vault_dir.join("large_secret");
+            let large_content = "x".repeat(1024 * 1024 + 1); // 1MB + 1 byte
+            fs::write(&secret_file, large_content).unwrap();
+
+            let mut mock_provider = MockConfigProvider::new("test", 0);
+            mock_provider.values.insert(
+                "server.secret".to_string(),
+                serde_json::json!("${secret.large_secret}"),
+            );
+
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+
+            let result = vault_provider.get::<String>("server.secret");
+            assert!(result.is_err());
+            let error = result.unwrap_err();
+            assert!(error.to_string().contains("secret file too large"));
+            assert!(error.to_string().contains("max: 1048576 bytes"));
+        }
+
+        #[test]
+        fn test_vault_file_read_failure() {
+            let dir = tempdir().unwrap();
+            let vault_dir = dir.path().join("vault");
+            fs::create_dir_all(&vault_dir).unwrap();
+
+            // Create a file with restricted permissions to cause read failure
+            let secret_file = vault_dir.join("unreadable_secret");
+
+            // On Windows, we'll create a file and then try to make it unreadable
+            // This is a bit tricky on Windows, so we'll use a different approach
+            fs::write(&secret_file, "secret").unwrap();
+
+            // Remove the file after creating it to simulate read failure
+            fs::remove_file(&secret_file).unwrap();
+
+            let mut mock_provider = MockConfigProvider::new("test", 0);
+            mock_provider.values.insert(
+                "server.secret".to_string(),
+                serde_json::json!("${secret.unreadable_secret}"),
+            );
+
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+
+            let result = vault_provider.get::<String>("server.secret");
+            assert!(result.is_err());
+            let error = result.unwrap_err();
+            assert!(error.to_string().contains("secret file not found"));
+        }
+
+        #[test]
+        fn test_vault_secret_name_too_long() {
+            let dir = tempdir().unwrap();
+            let vault_dir = dir.path().join("vault");
+            fs::create_dir_all(&vault_dir).unwrap();
+
+            // Create a secret name that exceeds MAX_SECRET_NAME_LENGTH (255 characters)
+            let long_name = "a".repeat(256);
+            let secret_pattern = format!("${{secret.{}}}", long_name);
+
+            let mut mock_provider = MockConfigProvider::new("test", 0);
+            mock_provider.values.insert(
+                "server.secret".to_string(),
+                serde_json::json!(secret_pattern),
+            );
+
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+
+            let result = vault_provider.get::<String>("server.secret");
+            assert!(result.is_err());
+            let error = result.unwrap_err();
+            assert!(error.to_string().contains("secret name too long"));
+            assert!(error.to_string().contains("max: 255 characters"));
+        }
+
+        #[test]
+        fn test_vault_secret_name_with_dot_traversal() {
+            let dir = tempdir().unwrap();
+            let vault_dir = dir.path().join("vault");
+            fs::create_dir_all(&vault_dir).unwrap();
+
+            let mut mock_provider = MockConfigProvider::new("test", 0);
+            mock_provider.values.insert(
+                "server.secret".to_string(),
+                serde_json::json!("${secret.../etc/passwd}"),
+            );
+
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+
+            let result = vault_provider.get::<String>("server.secret");
+            assert!(result.is_err());
+            let error = result.unwrap_err();
+            assert!(error.to_string().contains("invalid secret name"));
+        }
+
+        #[test]
+        fn test_vault_secret_name_with_forward_slash() {
+            let dir = tempdir().unwrap();
+            let vault_dir = dir.path().join("vault");
+            fs::create_dir_all(&vault_dir).unwrap();
+
+            let mut mock_provider = MockConfigProvider::new("test", 0);
+            mock_provider.values.insert(
+                "server.secret".to_string(),
+                serde_json::json!("${secret.path/to/secret}"),
+            );
+
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+
+            let result = vault_provider.get::<String>("server.secret");
+            assert!(result.is_err());
+            let error = result.unwrap_err();
+            assert!(error.to_string().contains("invalid secret name"));
+        }
+
+        #[test]
+        fn test_vault_secret_name_with_backslash() {
+            let dir = tempdir().unwrap();
+            let vault_dir = dir.path().join("vault");
+            fs::create_dir_all(&vault_dir).unwrap();
+
+            let mut mock_provider = MockConfigProvider::new("test", 0);
+            mock_provider.values.insert(
+                "server.secret".to_string(),
+                serde_json::json!("${secret.path\\to\\secret}"),
+            );
+
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+
+            let result = vault_provider.get::<String>("server.secret");
+            assert!(result.is_err());
+            let error = result.unwrap_err();
+            assert!(error.to_string().contains("invalid secret name"));
+        }
+
+        #[test]
+        fn test_vault_get_raw_returns_none() {
+            let dir = tempdir().unwrap();
+            let vault_dir = dir.path().join("vault");
+            fs::create_dir_all(&vault_dir).unwrap();
+
+            let mock_provider = MockConfigProvider::new("test", 0);
+            // Don't add any values to the mock provider
+
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+
+            // Test that get_raw returns None when inner provider returns None
+            let result = vault_provider.get_raw("nonexistent.key");
+            assert!(result.is_ok());
+            assert!(result.unwrap().is_none());
+        }
+
+        #[test]
+        fn test_vault_interpolate_non_string_values() {
+            let dir = tempdir().unwrap();
+            let vault_dir = dir.path().join("vault");
+            fs::create_dir_all(&vault_dir).unwrap();
+
+            let mut mock_provider = MockConfigProvider::new("test", 0);
+
+            // Test with number
+            mock_provider
+                .values
+                .insert("config.port".to_string(), serde_json::json!(8080));
+
+            // Test with boolean
+            mock_provider
+                .values
+                .insert("config.enabled".to_string(), serde_json::json!(true));
+
+            // Test with null - use raw value instead of trying to deserialize
+            mock_provider
+                .values
+                .insert("config.optional".to_string(), serde_json::json!(null));
+
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+
+            // Test that non-string values pass through unchanged
+            let port: u16 = vault_provider.get("config.port").unwrap().unwrap();
+            assert_eq!(port, 8080);
+
+            let enabled: bool = vault_provider.get("config.enabled").unwrap().unwrap();
+            assert_eq!(enabled, true);
+
+            // Test null value using raw access
+            let optional_raw = vault_provider.get_raw("config.optional").unwrap().unwrap();
+            assert!(optional_raw.is_null());
+        }
+
+        #[test]
+        fn test_vault_interpolate_mixed_types_in_object() {
+            let dir = tempdir().unwrap();
+            let vault_dir = dir.path().join("vault");
+            fs::create_dir_all(&vault_dir).unwrap();
+
+            // Create a secret file
+            fs::write(vault_dir.join("api_key"), "secret123").unwrap();
+
+            let mut mock_provider = MockConfigProvider::new("test", 0);
+            mock_provider.values.insert(
+                "config".to_string(),
+                serde_json::json!({
+                    "api_key": "${secret.api_key}",  // String with interpolation
+                    "port": 8080,                    // Number
+                    "enabled": true,                 // Boolean
+                    "timeout": null,                 // Null
+                    "nested": {
+                        "value": "${secret.api_key}", // Nested string with interpolation
+                        "count": 42                   // Nested number
+                    }
+                }),
+            );
+
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+
+            #[derive(serde::Deserialize, Debug, PartialEq)]
+            struct Config {
+                api_key: String,
+                port: u16,
+                enabled: bool,
+                timeout: Option<String>,
+                nested: NestedConfig,
+            }
+
+            #[derive(serde::Deserialize, Debug, PartialEq)]
+            struct NestedConfig {
+                value: String,
+                count: u32,
+            }
+
+            let config: Config = vault_provider.get("config").unwrap().unwrap();
+            assert_eq!(config.api_key, "secret123");
+            assert_eq!(config.port, 8080);
+            assert_eq!(config.enabled, true);
+            assert!(config.timeout.is_none());
+            assert_eq!(config.nested.value, "secret123");
+            assert_eq!(config.nested.count, 42);
+        }
+
+        #[test]
+        fn test_vault_interpolate_mixed_types_in_array() {
+            let dir = tempdir().unwrap();
+            let vault_dir = dir.path().join("vault");
+            fs::create_dir_all(&vault_dir).unwrap();
+
+            // Create a secret file
+            fs::write(vault_dir.join("host"), "example.com").unwrap();
+
+            let mut mock_provider = MockConfigProvider::new("test", 0);
+            mock_provider.values.insert(
+                "config.mixed_array".to_string(),
+                serde_json::json!([
+                    "${secret.host}",  // String with interpolation
+                    8080,              // Number
+                    true,              // Boolean
+                    null,              // Null
+                    {                  // Object
+                        "name": "${secret.host}",
+                        "port": 443
+                    }
+                ]),
+            );
+
+            let vault_provider =
+                VaultConfigProvider::wrap(mock_provider, vault_dir.to_str().unwrap());
+
+            let raw_value = vault_provider
+                .get_raw("config.mixed_array")
+                .unwrap()
+                .unwrap();
+            let array = raw_value.as_array().unwrap();
+
+            assert_eq!(array[0].as_str().unwrap(), "example.com");
+            assert_eq!(array[1].as_u64().unwrap(), 8080);
+            assert_eq!(array[2].as_bool().unwrap(), true);
+            assert!(array[3].is_null());
+
+            let obj = array[4].as_object().unwrap();
+            assert_eq!(obj["name"].as_str().unwrap(), "example.com");
+            assert_eq!(obj["port"].as_u64().unwrap(), 443);
+        }
     }
 }
