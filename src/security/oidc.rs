@@ -65,6 +65,10 @@ pub struct OidcConfig {
     #[serde(rename = "issuer-uri")]
     pub issuer_uri: String,
 
+    /// JWKS URI (required)
+    #[serde(rename = "jwks-uri")]
+    pub jwks_uri: String,
+
     /// Expected audience claim (optional)
     pub aud: Option<String>,
 
@@ -108,9 +112,6 @@ pub struct OidcProvider {
 impl OidcProvider {
     /// Discover OIDC configuration from the issuer URI.
     pub async fn discover(cfg: OidcConfig) -> Result<Self, ProxyError> {
-        // --- minimal discovery ---
-        debug_fmt!("OidcProvider", "OIDC discovery from {}", cfg.issuer_uri);
-
         let client = Client::builder()
             .user_agent("foxy/oidc")
             .build()
@@ -120,45 +121,9 @@ impl OidcProvider {
                 err
             })?;
 
-        #[derive(Deserialize)]
-        struct Discovery {
-            jwks_uri: String,
-        }
-
-        let meta: Discovery = match client.get(&cfg.issuer_uri).send().await {
-            Ok(response) => match response.error_for_status() {
-                Ok(response) => match response.json().await {
-                    Ok(meta) => meta,
-                    Err(e) => {
-                        let err = ProxyError::SecurityError(format!(
-                            "Failed to parse OIDC discovery response: {e}"
-                        ));
-                        error_fmt!("OidcProvider", "{}", err);
-                        return Err(err);
-                    }
-                },
-                Err(e) => {
-                    let err = ProxyError::SecurityError(format!(
-                        "OIDC discovery endpoint returned error: {e}"
-                    ));
-                    error_fmt!("OidcProvider", "{}", err);
-                    return Err(err);
-                }
-            },
-            Err(e) => {
-                let err = ProxyError::SecurityError(format!(
-                    "Failed to connect to OIDC discovery endpoint: {e}"
-                ));
-                error_fmt!("OidcProvider", "{}", err);
-                return Err(err);
-            }
-        };
-
-        debug_fmt!(
-            "OidcProvider",
-            "OIDC discovery successful, JWKS URI: {}",
-            meta.jwks_uri
-        );
+        // Use the provided JWKS URI
+        let jwks_uri = cfg.jwks_uri.clone();
+        debug_fmt!("OidcProvider", "Using JWKS URI: {}", jwks_uri);
 
         // --- compile bypass rules ---
         let mut rules = Vec::with_capacity(cfg.bypass.len());
@@ -199,13 +164,10 @@ impl OidcProvider {
         }
 
         Ok(Self {
-            issuer: cfg
-                .issuer_uri
-                .trim_end_matches("/.well-known/openid-configuration")
-                .to_owned(),
+            issuer: cfg.issuer_uri,
             aud: cfg.aud,
             shared_secret: cfg.shared_secret,
-            jwks_uri: meta.jwks_uri,
+            jwks_uri,
             jwks: Arc::new(RwLock::new(None)),
             last_refresh: Arc::new(RwLock::new(
                 tokio::time::Instant::now()
