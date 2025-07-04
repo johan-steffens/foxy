@@ -3947,10 +3947,16 @@ mod security_tests {
             let decoding_key_result = provider.jwk_to_decoding_key(key);
             match decoding_key_result {
                 Ok(_) => {
-                    println!("Successfully converted key {:?} to decoding key", key.common.key_id);
+                    println!(
+                        "Successfully converted key {:?} to decoding key",
+                        key.common.key_id
+                    );
                 }
                 Err(e) => {
-                    println!("Key conversion failed for {:?} (expected with test data): {e}", key.common.key_id);
+                    println!(
+                        "Key conversion failed for {:?} (expected with test data): {e}",
+                        key.common.key_id
+                    );
                 }
             }
         }
