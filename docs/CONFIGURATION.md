@@ -367,13 +367,14 @@ If a request matches a provider's bypass rules, the provider is skipped, but the
 
 ## OIDC Provider
 
-The OIDC provider authenticates requests with JWT tokens using OpenID Connect discovery:
+The OIDC provider authenticates requests with JWT tokens:
 
 ```json
 {
   "type": "oidc",
   "config": {
-    "issuer-uri": "https://id.example.com/.well-known/openid-configuration",
+    "issuer-uri": "https://id.example.com",
+    "jwks-uri": "https://id.example.com/.well-known/jwks.json",
     "aud": "my-api",
     "shared-secret": "base64url-or-hex-encoded-secret",
     "bypass": [
@@ -390,21 +391,52 @@ The OIDC provider authenticates requests with JWT tokens using OpenID Connect di
 }
 ```
 
+### Configuration Properties
+
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `issuer-uri` | String | Required | OIDC discovery endpoint ending with `/.well-known/openid-configuration` |
+| `issuer-uri` | String | Required | OIDC issuer URI used to validate the `iss` claim in JWTs |
+| `jwks-uri` | String | Required | JWKS endpoint URI for retrieving public keys to verify JWT signatures |
 | `aud` | String\|null | `null` | Expected audience (`aud`) claim. Omit to disable audience checking |
 | `shared-secret` | String\|null | `null` | Shared secret for HS* algorithms. Ignored for RSA/EC/EdDSA |
-| `bypass-routes` | Array | `[]` | List of routes that skip OIDC checks |
+| `bypass` | Array | `[]` | List of routes that skip OIDC checks |
+
+
 
 ### Bypass Route Rules
 
-Each object inside `bypass-routes` has:
+Each object inside `bypass` has:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `methods` | String[] | List of HTTP methods to match. Use `"*"` to match any method |
 | `path` | String | Glob pattern applied to the request path |
+
+### Common Provider Configurations
+
+**AWS Cognito:**
+```json
+{
+  "type": "oidc",
+  "config": {
+    "issuer-uri": "https://cognito-idp.us-west-2.amazonaws.com/us-west-2_EXAMPLE",
+    "jwks-uri": "https://cognito-idp.us-west-2.amazonaws.com/us-west-2_EXAMPLE/.well-known/jwks.json",
+    "aud": "your-app-client-id"
+  }
+}
+```
+
+**Auth0:**
+```json
+{
+  "type": "oidc",
+  "config": {
+    "issuer-uri": "https://your-domain.auth0.com",
+    "jwks-uri": "https://your-domain.auth0.com/.well-known/jwks.json",
+    "aud": "your-api-identifier"
+  }
+}
+```
 
 > **Tip:** You can have multiple OIDC providers in the chain—for example, one for first-party tokens and another for partner identities.
 
@@ -511,9 +543,10 @@ Examples:
       {
         "type": "oidc",
         "config": {
-          "issuer-uri": "https://id.example.com/.well-known/openid-configuration",
+          "issuer-uri": "https://id.example.com",
+          "jwks-uri": "https://id.example.com/.well-known/jwks.json",
           "aud": "my-api",
-          "bypass-routes": [
+          "bypass": [
             { "methods": ["GET"], "path": "/health" },
             { "methods": ["*"], "path": "/public/**" }
           ]

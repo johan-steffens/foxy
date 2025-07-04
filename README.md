@@ -215,7 +215,8 @@ Add JWT validation with the OIDC security provider:
       {
         "type": "oidc",
         "config": {
-          "issuer-uri": "https://id.example.com/.well-known/openid-configuration",
+          "issuer-uri": "https://id.example.com",
+          "jwks-uri": "https://id.example.com/.well-known/jwks.json",
           "aud": "my-api",
           "bypass": [
             { "methods": ["GET"], "path": "/health" }
