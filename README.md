@@ -323,7 +323,7 @@ Configure the OpenAPI schemas to be served on the Swagger UI in your configurati
 
 The `vault-config` feature enables secret interpolation from the filesystem into configuration values. This allows you to store sensitive information like passwords, API keys, and tokens in separate files and reference them in your configuration.
 
-## Enabling the Feature
+#### Enabling the Feature
 
 Add the `vault-config` feature to your `Cargo.toml`:
 
@@ -338,9 +338,9 @@ Or enable it when building:
 cargo build --features vault-config
 ```
 
-### Usage
+#### Usage
 
-#### Basic Setup
+##### Basic Setup
 
 1. Create a vault directory structure (default: `/vault/secret/`)
 2. Store your secrets as individual files in the vault directory
