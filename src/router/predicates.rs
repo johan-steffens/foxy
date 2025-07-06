@@ -248,7 +248,13 @@ impl QueryPredicate {
         }
 
         // SECURITY: Check for SQL injection patterns
-        let sql_patterns = ["union select", "drop table", "insert into", "delete from", "'or'1'='1"];
+        let sql_patterns = [
+            "union select",
+            "drop table",
+            "insert into",
+            "delete from",
+            "'or'1'='1",
+        ];
         for pattern in &sql_patterns {
             if value.to_lowercase().contains(pattern) {
                 warnings.push("potential SQL injection");

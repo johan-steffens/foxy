@@ -460,6 +460,50 @@ impl OidcProvider {
             return Err(err);
         }
 
+        // SECURITY: Validate algorithm consistency to prevent algorithm confusion attacks
+        match header.alg {
+            Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512 => {
+                // HMAC algorithms require shared secret and should not have kid when using shared secret
+                if self.shared_secret.is_none() {
+                    let err = ProxyError::SecurityError(
+                        "HMAC algorithms require shared secret configuration".to_string(),
+                    );
+                    warn_fmt!("OidcProvider", "{}", err);
+                    return Err(err);
+                }
+                // SECURITY: For HMAC algorithms, if kid is present, it must exist in JWKS
+                // This prevents fallback to shared secret when kid is specified
+                if let Some(ref kid) = header.kid {
+                    // Ensure we have a fresh JWKS when we need to look up a key
+                    self.refresh_jwks().await?;
+                    let jwks = self.jwks.read().await;
+                    if let Some(jwks) = &*jwks {
+                        if !jwks
+                            .keys
+                            .iter()
+                            .any(|k| k.common.key_id == Some(kid.clone()))
+                        {
+                            let err = ProxyError::SecurityError(format!(
+                                "HMAC algorithm with kid '{kid}' not found in JWKS - potential algorithm confusion attack"
+                            ));
+                            warn_fmt!("OidcProvider", "{}", err);
+                            return Err(err);
+                        }
+                    }
+                }
+            }
+            _ => {
+                // Asymmetric algorithms must have kid
+                if header.kid.is_none() {
+                    let err = ProxyError::SecurityError(
+                        "Asymmetric algorithms require 'kid' (key ID) header".to_string(),
+                    );
+                    warn_fmt!("OidcProvider", "{}", err);
+                    return Err(err);
+                }
+            }
+        }
+
         // Get the key
         let key = match &header.kid {
             Some(kid) => {
@@ -498,17 +542,23 @@ impl OidcProvider {
                         }
                     }
                     None => {
-                        // If we have a shared secret, use that for HS* algorithms
+                        // SECURITY: Only allow shared secret fallback for HMAC algorithms
+                        // and only when explicitly configured
                         if let Some(ref secret) = self.shared_secret {
                             if matches!(
                                 header.alg,
                                 Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512
                             ) {
-                                trace_fmt!("OidcProvider", "Using shared secret for HS* algorithm");
+                                trace_fmt!(
+                                    "OidcProvider",
+                                    "Using shared secret for HS* algorithm with kid {}",
+                                    kid
+                                );
                                 DecodingKey::from_secret(secret.as_bytes())
                             } else {
                                 let err = ProxyError::SecurityError(format!(
-                                    "Key ID {kid} not found in JWKS"
+                                    "Key ID {kid} not found in JWKS and algorithm {:?} requires asymmetric key",
+                                    header.alg
                                 ));
                                 warn_fmt!("OidcProvider", "{}", err);
                                 return Err(err);
@@ -524,10 +574,26 @@ impl OidcProvider {
                 }
             }
             None => {
-                // No key ID, try to use shared secret if available
+                // SECURITY: Only allow shared secret for HMAC algorithms without kid
+                // This is the only safe fallback scenario
                 if let Some(ref secret) = self.shared_secret {
-                    trace_fmt!("OidcProvider", "No key ID in token, using shared secret");
-                    DecodingKey::from_secret(secret.as_bytes())
+                    if matches!(
+                        header.alg,
+                        Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512
+                    ) {
+                        trace_fmt!(
+                            "OidcProvider",
+                            "No key ID in token, using shared secret for HMAC algorithm"
+                        );
+                        DecodingKey::from_secret(secret.as_bytes())
+                    } else {
+                        let err = ProxyError::SecurityError(format!(
+                            "Algorithm {:?} requires 'kid' (key ID) header for security",
+                            header.alg
+                        ));
+                        warn_fmt!("OidcProvider", "{}", err);
+                        return Err(err);
+                    }
                 } else {
                     let err = ProxyError::SecurityError(
                         "No key ID in token and no shared secret configured".to_string(),
