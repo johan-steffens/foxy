@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 use super::Predicate;
 use crate::core::{HttpMethod, ProxyError, ProxyRequest};
+use crate::warn_fmt;
 
 /// Configuration for a path predicate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -218,14 +219,105 @@ impl QueryPredicate {
         Self { config }
     }
 
-    /// Parse query parameters from a query string.
+    /// Validate and sanitize a query parameter value to prevent injection attacks.
+    ///
+    /// This function checks for dangerous patterns that could be used in various
+    /// injection attacks and logs warnings when suspicious content is detected.
+    fn validate_query_value(key: &str, value: &str) -> String {
+        let mut sanitized = value.to_string();
+        let mut warnings = Vec::new();
+
+        // SECURITY: Check for CRLF injection patterns
+        if value.contains('\r') || value.contains('\n') {
+            warnings.push("CRLF injection");
+            sanitized = sanitized.replace(['\r', '\n'], "");
+        }
+
+        // SECURITY: Check for path traversal patterns
+        if value.contains("../") || value.contains("..\\") {
+            warnings.push("path traversal");
+        }
+
+        // SECURITY: Check for XSS patterns
+        let xss_patterns = ["<script", "javascript:", "onload=", "onerror=", "onclick="];
+        for pattern in &xss_patterns {
+            if value.to_lowercase().contains(pattern) {
+                warnings.push("potential XSS");
+                break;
+            }
+        }
+
+        // SECURITY: Check for SQL injection patterns
+        let sql_patterns = ["union select", "drop table", "insert into", "delete from", "'or'1'='1"];
+        for pattern in &sql_patterns {
+            if value.to_lowercase().contains(pattern) {
+                warnings.push("potential SQL injection");
+                break;
+            }
+        }
+
+        // SECURITY: Check for command injection patterns
+        let cmd_patterns = [";", "|", "&", "`", "$", "$("];
+        for pattern in &cmd_patterns {
+            if value.contains(pattern) {
+                warnings.push("potential command injection");
+                break;
+            }
+        }
+
+        // SECURITY: Check for null byte injection
+        if value.contains('\0') {
+            warnings.push("null byte injection");
+            sanitized = sanitized.replace('\0', "");
+        }
+
+        // Log warnings for suspicious patterns
+        if !warnings.is_empty() {
+            warn_fmt!(
+                "QueryPredicate",
+                "Suspicious query parameter detected - key: '{}', value: '{}', patterns: [{}]",
+                key,
+                value,
+                warnings.join(", ")
+            );
+        }
+
+        sanitized
+    }
+
+    /// Parse query parameters from a query string with input validation.
     fn parse_query_params(query: &str) -> HashMap<String, String> {
         let mut params = HashMap::new();
+
+        // SECURITY: Limit query string length to prevent DoS
+        const MAX_QUERY_LENGTH: usize = 8192;
+        if query.len() > MAX_QUERY_LENGTH {
+            warn_fmt!(
+                "QueryPredicate",
+                "Query string too long: {} bytes (max: {})",
+                query.len(),
+                MAX_QUERY_LENGTH
+            );
+            return params;
+        }
 
         for pair in query.split('&') {
             let mut iter = pair.split('=');
             if let (Some(key), Some(value)) = (iter.next(), iter.next()) {
-                params.insert(key.to_string(), value.to_string());
+                // SECURITY: URL decode the key and value
+                let decoded_key = urlencoding::decode(key).unwrap_or_else(|_| {
+                    warn_fmt!("QueryPredicate", "Failed to URL decode key: {}", key);
+                    key.into()
+                });
+                let decoded_value = urlencoding::decode(value).unwrap_or_else(|_| {
+                    warn_fmt!("QueryPredicate", "Failed to URL decode value: {}", value);
+                    value.into()
+                });
+
+                // SECURITY: Validate and sanitize the parameter value
+                let sanitized_value = Self::validate_query_value(&decoded_key, &decoded_value);
+
+                params.insert(decoded_key.to_string(), sanitized_value);
             }
         }
 
