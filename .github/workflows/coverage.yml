@@ -8,8 +8,7 @@ on:
         required: false
         default: true
         type: boolean
-  pull_request:
-    types: [ closed ]
+  push: 
     branches: [ main ]
     paths:
       - 'src/**'
@@ -74,11 +73,11 @@ jobs:
       run: |
         # Generate both HTML and LCOV formats for comprehensive coverage reporting
         cargo llvm-cov --html --output-dir coverage \
-          --ignore-filename-regex 'benches/.*'
+          --ignore-filename-regex 'benches/.*' -- --test-threads=1
         cargo llvm-cov --lcov --output-path coverage/lcov.info \
-          --ignore-filename-regex 'benches/.*'
+          --ignore-filename-regex 'benches/.*' -- --test-threads=1
         cargo llvm-cov --json --output-path coverage/coverage.json \
-          --ignore-filename-regex 'benches/.*'
+          --ignore-filename-regex 'benches/.*' -- --test-threads=1
 
     - name: Upload coverage to Codecov
       if: ${{ inputs.upload_to_codecov != 'false' }}
