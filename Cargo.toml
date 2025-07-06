@@ -69,7 +69,7 @@ opentelemetry-http = { version = "0.29", optional = true }
 opentelemetry_sdk = { version = "0.29", optional = true }
 tonic = { version = "0.12.3", optional = true }
 hostname = { version = "0.4.1", optional = true }
-mockall = "0.13.1"
+# mockall = "0.13.1"
 
 [dev-dependencies]
 # Testing frameworks and utilities
