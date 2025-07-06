@@ -16,7 +16,7 @@
 //! | `HeaderPredicate` | `header.<NAME>`       | `"X-Request-Id" = "^[0-9a-f-]{36}$"` |
 //! | `QueryPredicate`  | `query.<NAME>`        | `"tenant"` = `"acme-corp"`           |
 
-mod predicates;
+pub mod predicates;
 
 #[cfg(test)]
 #[path = "../../tests/unit/router/tests.rs"]

@@ -1,0 +1,15 @@
+{
+  "terminal.integrated.env.windows": {
+    "OPENSSL_DIR": "C:\\\\Program Files\\\\OpenSSL-Win64",
+    "OPENSSL_NO_VENDOR": "1"
+  },
+  "rust-analyzer.cargo.features": [
+    "vault-config"
+  ],
+  "rust-analyzer.checkOnSave.command": "clippy",
+  "rust-analyzer.checkOnSave.extraArgs": [
+    "--",
+    "-D",
+    "warnings"
+  ]
+}

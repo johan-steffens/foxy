@@ -14,6 +14,7 @@ use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::Deserialize;
+use subtle::ConstantTimeEq;
 
 const BASIC: &str = "basic ";
 
@@ -122,6 +123,29 @@ impl BasicAuthProvider {
         })
     }
 
+    /// Validate credentials using constant-time comparison to prevent timing attacks.
+    ///
+    /// This method performs constant-time comparison of both username and password
+    /// to prevent timing-based username enumeration attacks.
+    pub fn validate_credentials_constant_time(&self, username: &str, password: &str) -> bool {
+        let mut valid = false;
+
+        // SECURITY: Always check against all credentials to maintain constant time
+        // This prevents timing attacks that could enumerate valid usernames
+        for (stored_username, stored_password) in &self.valid_credentials {
+            let username_match = stored_username.as_bytes().ct_eq(username.as_bytes());
+            let password_match = stored_password.as_bytes().ct_eq(password.as_bytes());
+
+            // Use constant-time AND operation
+            let both_match = username_match & password_match;
+
+            // Use constant-time OR to accumulate the result
+            valid |= bool::from(both_match);
+        }
+
+        valid
+    }
+
     #[inline]
     fn is_bypassed(&self, method: &str, path: &str) -> bool {
         let bypassed = self.rules.iter().any(|r| r.matches(method, path));
@@ -228,12 +252,9 @@ impl SecurityProvider for BasicAuthProvider {
         let username = parts[0];
         let password = parts[1];
 
-        // 3) Validate credentials
-        if self
-            .valid_credentials
-            .iter()
-            .any(|(u, p)| u == username && p == password)
-        {
+        // 3) Validate credentials using constant-time comparison
+        // SECURITY: Use constant-time comparison to prevent timing attacks
+        if self.validate_credentials_constant_time(username, password) {
             debug_fmt!(
                 "BasicAuthProvider",
                 "Basic Auth validation successful for user: {}",
