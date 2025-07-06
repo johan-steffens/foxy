@@ -42,6 +42,7 @@ use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::server::conn::auto::Builder as AutoBuilder;
 use reqwest::Body;
+use reqwest::header::{HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "opentelemetry")]
 use std::borrow::Cow;
@@ -430,6 +431,94 @@ impl ProxyServer {
     }
 }
 
+/// Validate HTTP headers to prevent request smuggling attacks.
+///
+/// This function checks for dangerous header combinations and malformed headers
+/// that could be used in HTTP request smuggling attacks.
+pub fn validate_headers(headers: &mut HeaderMap) -> Result<(), ProxyError> {
+    // SECURITY: Check for conflicting Content-Length and Transfer-Encoding headers
+    let has_content_length = headers.contains_key("content-length");
+    let has_transfer_encoding = headers.contains_key("transfer-encoding");
+
+    if has_content_length && has_transfer_encoding {
+        // RFC 7230 Section 3.3.3: If a message is received with both a Transfer-Encoding
+        // and a Content-Length header field, the Transfer-Encoding overrides the Content-Length.
+        // However, this is a common vector for request smuggling attacks.
+        warn_fmt!(
+            "Server",
+            "Request contains both Content-Length and Transfer-Encoding headers - removing Content-Length to prevent request smuggling"
+        );
+        headers.remove("content-length");
+    }
+
+    // SECURITY: Validate Transfer-Encoding header values
+    if let Some(te_header) = headers.get("transfer-encoding") {
+        if let Ok(te_value) = te_header.to_str() {
+            // Check for dangerous Transfer-Encoding values
+            let te_lower = te_value.to_lowercase();
+            if te_lower.contains("chunked") && te_lower != "chunked" {
+                // Transfer-Encoding with chunked and other values can cause confusion
+                warn_fmt!(
+                    "Server",
+                    "Suspicious Transfer-Encoding header value: {} - normalizing to 'chunked'",
+                    te_value
+                );
+                headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
+            }
+        }
+    }
+
+    // SECURITY: Check for CRLF injection in header values
+    for (name, value) in headers.iter() {
+        if let Ok(value_str) = value.to_str() {
+            if value_str.contains('\r') || value_str.contains('\n') {
+                let err = ProxyError::SecurityError(format!(
+                    "CRLF injection detected in header '{}': contains newline characters",
+                    name
+                ));
+                warn_fmt!("Server", "{}", err);
+                return Err(err);
+            }
+        }
+    }
+
+    // SECURITY: Check for multiple Host headers
+    let host_headers: Vec<_> = headers.get_all("host").iter().collect();
+    if host_headers.len() > 1 {
+        let err = ProxyError::SecurityError(
+            "Multiple Host headers detected - potential request smuggling attack".to_string()
+        );
+        warn_fmt!("Server", "{}", err);
+        return Err(err);
+    }
+
+    // SECURITY: Validate Content-Length header format
+    if let Some(cl_header) = headers.get("content-length") {
+        if let Ok(cl_value) = cl_header.to_str() {
+            // Check for multiple Content-Length values (comma-separated)
+            if cl_value.contains(',') {
+                let err = ProxyError::SecurityError(
+                    "Multiple Content-Length values detected - potential request smuggling attack".to_string()
+                );
+                warn_fmt!("Server", "{}", err);
+                return Err(err);
+            }
+
+            // Validate that Content-Length is a valid number
+            if cl_value.parse::<u64>().is_err() {
+                let err = ProxyError::SecurityError(format!(
+                    "Invalid Content-Length header value: {}",
+                    cl_value
+                ));
+                warn_fmt!("Server", "{}", err);
+                return Err(err);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Convert a hyper request to a proxy request.
 async fn convert_hyper_request(
     req: Request<Incoming>,
@@ -439,7 +528,7 @@ async fn convert_hyper_request(
     let uri = req.uri().clone();
     let path = uri.path().to_owned();
     let query = uri.query().map(|q| q.to_owned());
-    let headers = req.headers().clone();
+    let mut headers = req.headers().clone();
 
     trace_fmt!(
         "Server",
@@ -448,6 +537,9 @@ async fn convert_hyper_request(
         path,
         headers.len()
     );
+
+    // SECURITY: Validate headers to prevent request smuggling attacks
+    validate_headers(&mut headers)?;
 
     // Incoming → Stream → reqwest::Body
     let hyper_stream = req.into_body().into_data_stream();
