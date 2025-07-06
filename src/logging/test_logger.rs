@@ -1,6 +1,6 @@
-use std::sync::{Once, Mutex};
 use slog::{Discard, Logger, o};
 use slog_scope::GlobalLoggerGuard;
+use std::sync::{Mutex, Once};
 
 static INIT: Once = Once::new();
 static GUARD: Mutex<Option<GlobalLoggerGuard>> = Mutex::new(None);
