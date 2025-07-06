@@ -473,8 +473,7 @@ pub fn validate_headers(headers: &mut HeaderMap) -> Result<(), ProxyError> {
         if let Ok(value_str) = value.to_str() {
             if value_str.contains('\r') || value_str.contains('\n') {
                 let err = ProxyError::SecurityError(format!(
-                    "CRLF injection detected in header '{}': contains newline characters",
-                    name
+                    "CRLF injection detected in header '{name}': contains newline characters"
                 ));
                 warn_fmt!("Server", "{}", err);
                 return Err(err);
@@ -486,7 +485,7 @@ pub fn validate_headers(headers: &mut HeaderMap) -> Result<(), ProxyError> {
     let host_headers: Vec<_> = headers.get_all("host").iter().collect();
     if host_headers.len() > 1 {
         let err = ProxyError::SecurityError(
-            "Multiple Host headers detected - potential request smuggling attack".to_string()
+            "Multiple Host headers detected - potential request smuggling attack".to_string(),
         );
         warn_fmt!("Server", "{}", err);
         return Err(err);
@@ -498,7 +497,8 @@ pub fn validate_headers(headers: &mut HeaderMap) -> Result<(), ProxyError> {
             // Check for multiple Content-Length values (comma-separated)
             if cl_value.contains(',') {
                 let err = ProxyError::SecurityError(
-                    "Multiple Content-Length values detected - potential request smuggling attack".to_string()
+                    "Multiple Content-Length values detected - potential request smuggling attack"
+                        .to_string(),
                 );
                 warn_fmt!("Server", "{}", err);
                 return Err(err);
@@ -507,8 +507,7 @@ pub fn validate_headers(headers: &mut HeaderMap) -> Result<(), ProxyError> {
             // Validate that Content-Length is a valid number
             if cl_value.parse::<u64>().is_err() {
                 let err = ProxyError::SecurityError(format!(
-                    "Invalid Content-Length header value: {}",
-                    cl_value
+                    "Invalid Content-Length header value: {cl_value}"
                 ));
                 warn_fmt!("Server", "{}", err);
                 return Err(err);
