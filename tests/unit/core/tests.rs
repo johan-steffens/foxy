@@ -1339,7 +1339,7 @@ mod core_tests {
     #[cfg(feature = "opentelemetry")]
     #[tokio::test]
     async fn test_proxy_core_process_request_with_opentelemetry_context() {
-        use opentelemetry::{Context, global};
+        use opentelemetry::Context;
 
         let config_provider = MockConfigProvider::new();
         let config = Arc::new(Config::builder().with_provider(config_provider).build());
