@@ -83,8 +83,7 @@ mod logging_tests {
         let current_level = log::max_level();
         assert!(
             current_level >= LevelFilter::Info,
-            "Expected log level to be at least Info, but got {:?}",
-            current_level
+            "Expected log level to be at least Info, but got {current_level:?}"
         );
     }
 
