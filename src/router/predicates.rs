@@ -255,8 +255,9 @@ impl QueryPredicate {
             "delete from",
             "'or'1'='1",
         ];
+        let lower = value.to_lowercase();
         for pattern in &sql_patterns {
-            if value.to_lowercase().contains(pattern) {
+            if lower.contains(pattern) {
                 warnings.push("potential SQL injection");
                 break;
             }
