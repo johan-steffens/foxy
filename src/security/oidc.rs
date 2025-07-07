@@ -551,8 +551,7 @@ impl OidcProvider {
                             ) {
                                 trace_fmt!(
                                     "OidcProvider",
-                                    "Using shared secret for HS* algorithm with kid {}",
-                                    kid
+                                    "Using shared secret for HS* algorithm (no kid provided)"
                                 );
                                 DecodingKey::from_secret(secret.as_bytes())
                             } else {
