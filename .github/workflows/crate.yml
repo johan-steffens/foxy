@@ -172,6 +172,65 @@ jobs:
             --no-verify \
             --execute
 
+  tag_docker_version:
+    name: Tag Docker Version
+    needs:
+      - crates_io_publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: extract_version
+        run: |
+          # Extract version from tag (remove -crate suffix)
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG_NAME%-crate}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "docker_tag_name=${VERSION}-docker" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+          echo "Docker tag name will be: ${VERSION}-docker"
+
+      - name: Check if Docker tag exists
+        id: check_docker_tag
+        run: |
+          DOCKER_TAG_NAME="${{ steps.extract_version.outputs.docker_tag_name }}"
+          if git rev-parse "refs/tags/$DOCKER_TAG_NAME" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Docker tag $DOCKER_TAG_NAME already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Docker tag $DOCKER_TAG_NAME does not exist"
+          fi
+
+      - name: Create and push Docker tag
+        if: steps.check_docker_tag.outputs.exists == 'false'
+        run: |
+          DOCKER_TAG_NAME="${{ steps.extract_version.outputs.docker_tag_name }}"
+          VERSION="${{ steps.extract_version.outputs.version }}"
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create annotated tag
+          git tag -a "$DOCKER_TAG_NAME" -m "Auto-tag for Docker version $VERSION"
+
+          # Push the tag
+          git push origin "$DOCKER_TAG_NAME"
+
+          echo "Created and pushed Docker tag: $DOCKER_TAG_NAME"
+
+      - name: Docker tag already exists
+        if: steps.check_docker_tag.outputs.exists == 'true'
+        run: |
+          echo "Docker tag ${{ steps.extract_version.outputs.docker_tag_name }} already exists, skipping tag creation"
+
   create_github_release:
     name: Create GitHub Release
     needs:
@@ -179,6 +238,7 @@ jobs:
       - build_and_test_linux
       - build_and_test_windows
       - crates_io_publish
+      - tag_docker_version
 
     runs-on: ubuntu-latest
     timeout-minutes: 10
