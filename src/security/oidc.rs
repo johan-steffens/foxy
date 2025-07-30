@@ -635,7 +635,6 @@ impl OidcProvider {
             req.path
         );
 
-        // 1) Extract bearer token
         let auth_header = if let Some(h) = req.headers.get("authorization") {
             match h.to_str() {
                 Ok(s) => s,
@@ -693,6 +692,7 @@ impl SecurityProvider for OidcProvider {
             return Ok(req);
         }
 
+        // 1) Extract bearer token
         let token = match self.extract_bearer_token(&req) {
             Ok(value) => value,
             Err(value) => return Err(value),
