@@ -2492,6 +2492,42 @@ mod security_tests {
     }
 
     #[tokio::test]
+    async fn test_oidc_provider_extract_bearer_token_ensure_token_isnt_altered() {
+        let provider = OidcProvider {
+            issuer: "https://auth.example.com".to_string(),
+            jwks_uri: "https://auth.example.com/jwks".to_string(),
+            aud: None,
+            shared_secret: None,
+            jwks: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(tokio::time::Instant::now())),
+            http: reqwest::Client::new(),
+            rules: vec![],
+        };
+
+        let expected_token = "abcAbcABCaBcabC";
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "authorization",
+            format!("Bearer {expected_token}").parse().unwrap(),
+        );
+
+        let request = ProxyRequest {
+            method: HttpMethod::Get,
+            path: "/".to_string(),
+            query: None,
+            headers,
+            body: reqwest::Body::from(""),
+            context: Arc::new(RwLock::new(RequestContext::default())),
+            custom_target: None,
+        };
+
+        let Ok(actual_token) = provider.extract_bearer_token(&request) else {
+            panic!("Error obtaining token");
+        };
+        assert_eq!(actual_token, expected_token);
+    }
+
+    #[tokio::test]
     async fn test_jwk_to_decoding_key_rsa_success() {
         // Setup mock server for discovery
         let mock_server = MockServer::start().await;
