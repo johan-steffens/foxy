@@ -688,6 +688,52 @@ impl OidcProvider {
         }
         bypassed
     }
+
+    pub(crate) fn extract_bearer_token<'a>(
+        &self,
+        req: &'a ProxyRequest,
+    ) -> Result<&'a str, ProxyError> {
+        debug_fmt!(
+            "OidcProvider",
+            "OIDC validating request: {} {}",
+            req.method,
+            req.path
+        );
+
+        // 1) Extract bearer token
+        let auth_header = if let Some(h) = req.headers.get("authorization") {
+            match h.to_str() {
+                Ok(s) => s,
+                Err(e) => {
+                    let err =
+                        ProxyError::SecurityError(format!("Invalid authorization header: {e}"));
+                    warn_fmt!("OidcProvider", "{}", err);
+                    return Err(err);
+                }
+            }
+        } else {
+            let err = ProxyError::SecurityError("Missing authorization header".to_string());
+            warn_fmt!("OidcProvider", "{}", err);
+            return Err(err);
+        };
+
+        if !auth_header.to_lowercase().starts_with(BEARER) {
+            let err = ProxyError::SecurityError(format!(
+                "Invalid authorization scheme: expected 'Bearer', got '{}'",
+                auth_header.split_whitespace().next().unwrap_or("")
+            ));
+            warn_fmt!("OidcProvider", "{}", err);
+            return Err(err);
+        }
+
+        let token = &auth_header[BEARER.len()..];
+        if token.is_empty() {
+            let err = ProxyError::SecurityError("Empty bearer token".to_string());
+            warn_fmt!("OidcProvider", "{}", err);
+            return Err(err);
+        }
+        Ok(token)
+    }
 }
 
 #[async_trait]
@@ -712,45 +758,10 @@ impl SecurityProvider for OidcProvider {
             return Ok(req);
         }
 
-        debug_fmt!(
-            "OidcProvider",
-            "OIDC validating request: {} {}",
-            req.method,
-            req.path
-        );
-
-        // 1) Extract bearer token
-        let auth_header = if let Some(h) = req.headers.get("authorization") {
-            match h.to_str() {
-                Ok(s) => s.to_lowercase(),
-                Err(e) => {
-                    let err =
-                        ProxyError::SecurityError(format!("Invalid authorization header: {e}"));
-                    warn_fmt!("OidcProvider", "{}", err);
-                    return Err(err);
-                }
-            }
-        } else {
-            let err = ProxyError::SecurityError("Missing authorization header".to_string());
-            warn_fmt!("OidcProvider", "{}", err);
-            return Err(err);
+        let token = match self.extract_bearer_token(&req) {
+            Ok(value) => value,
+            Err(value) => return Err(value),
         };
-
-        if !auth_header.starts_with(BEARER) {
-            let err = ProxyError::SecurityError(format!(
-                "Invalid authorization scheme: expected 'Bearer', got '{}'",
-                auth_header.split_whitespace().next().unwrap_or("")
-            ));
-            warn_fmt!("OidcProvider", "{}", err);
-            return Err(err);
-        }
-
-        let token = &auth_header[BEARER.len()..];
-        if token.is_empty() {
-            let err = ProxyError::SecurityError("Empty bearer token".to_string());
-            warn_fmt!("OidcProvider", "{}", err);
-            return Err(err);
-        }
 
         // 2) Validate the token
         trace_fmt!("OidcProvider", "Validating token: {}", token);
