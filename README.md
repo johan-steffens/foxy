@@ -418,3 +418,4 @@ A big thank you to all the individuals who have contributed to Foxy!
 [Johan Steffens](https://github.com/johan-steffens)
 [Armand Eicker](https://github.com/Armand-Eicker-Dev)
 [Ohan Smit](https://github.com/Psynosaur)
+[Vikram Bindal](https://github.com/vikrambindal)
